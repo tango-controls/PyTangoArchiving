@@ -1,21 +1,22 @@
-Download PyTangoArchiving from sourceforge:
-
-   svn co https://svn.code.sf.net/p/tango-cs/code/archiving/tool/PyTangoArchiving/trunk
    
-This package allows to:
+PyTangoArchiving allows to:
+
 * Integrate Hdb and Snap archiving with other python/PyTango tools.
 * Start/Stop Archiving devices in the appropiated order.
 * Increase the capabilities of configuration and diagnostic.
 * Import/Export .csv and .xml files between the archiving and the database.
 
-
-PyTangoArchiving dependences are PyTango, Fandango and Soleil's Archiving
+PyTangoArchiving dependences are PyTango, Fandango and Soleil's Archiving or HDB++.
 
 All of them can be obtained from www.tango-controls.org
 
 Examples and usage of PyTangoArchiving can be found here:
 
-http://plone.tango-controls.org/Members/srubio/pytangoarchiving
+http://www.tango-controls.org/resources/howto/pytangoarchiving
+
+The old tags and branches are available in sourceforge: 
+
+   https://svn.code.sf.net/p/tango-cs/code/archiving/tool/PyTangoArchiving
 
 -------------------------------------------------------------------------------
 
