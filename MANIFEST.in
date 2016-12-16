@@ -1,0 +1,8 @@
+
+
+include AUTHORS
+include LICENSE
+include README
+include PyTangoArchiving/VERSION
+include CHANGES
+

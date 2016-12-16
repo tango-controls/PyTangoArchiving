@@ -1,0 +1,345 @@
+#!/usr/bin/python
+
+import sys,time,traceback,re
+import fandango
+import fandango as fun
+import pickle
+import numpy as np
+import PyTangoArchiving
+
+#Enabling virtual display:
+if '--no-plot' in sys.argv: 
+        import os
+        os.system('Xvfb :29 -screen 0 1500x900x24 &')
+        time.sleep(5.)
+
+HTML=False
+
+try:
+ import guiqwt
+ GUIQWT = False
+except:
+ GUIQWT = False
+
+try:
+ import matplotlib.pyplot as plt
+ MATPLOTLIB = True
+except:
+ MATPLOTLIB = False
+ 
+if not GUIQWT and not MATPLOTLIB:
+  print('No plotting libraries available!')
+  sys.exit(1)
+
+vals = {}
+
+#def filter_data(data,window=300,method=fandango.avg):
+    #ndata = []
+    #next = []
+    #i,t = 0,0
+    #for i,d in enumerate(data):
+        #if not ndata: 
+            #print('Initializing results')
+            ##Generating next interval (absolute time will help to correlate)
+            #t = window*(1+int(d[0]/window))            
+            #ndata.append((t-window,d[1]))
+        #elif i+1<len(data) and d[0]<t: 
+            ##print('Filling next window buffer')
+            #if d[1] is not None: next.append(d)
+        #else: 
+            ##Inserting data:
+            #cond = next and next[0][0] or d[0]
+            #while cond>=t:
+                #ndata.append((t,ndata[-1][1]))
+                #t+=window                 
+            #if next:
+                 ##print '%s ; averaging %d points (last = %s)' % (time.ctime(t),len(next),d)
+                 #ndata.append((t,method(t[1] for t in next)))
+            ##print 'Inserted %s'%str(ndata[-1])
+            #next = [d] if d[1] is not None else []
+            #while True:  
+              #if d[0]<t or t>data[-1][0]: break
+              #t+=window
+    #return ndata
+
+## DO NOT EDIT THIS METHOD, A FINAL VERSION AVAILABLE AT fandango.arrays.filter_array
+def filter_data(data,window=300,method=fun.avg,begin=0,end=0):
+    ndata = []
+    add2data = lambda T: (not ndata or T[0]!=ndata[-1][0]) and ndata.append(T)
+    next = []
+    i,t = 0,0
+    prev = begin and [v for v in data if v[0]<begin] or []
+    post = end and [v for v in data if v[0]>end] or []
+    if end: data = [v for v in data if begin<v[0]<end]
+    
+    #No data in expected range
+    if not data:
+        if not begin or (not prev and not post): 
+            return []
+        else:
+            if prev: nx = prev[-1][1]
+            else: nx = post[0][1]
+            [add2data((t,nx)) for t in range(window*(1+int(begin/window)),end,window)]
+            add2data((ndata[-1][0]+window,(post and post[0][1]) or nx))
+            return ndata
+    
+    #Filling initial range with data
+    if begin:
+        t = window*(1+int(begin/window))
+        if prev: nx = prev[-1][1]
+        elif data: nx = data[0][1]
+        else: nx = 0
+        while t<data[0][0]:
+            add2data((t,nx))
+            t+=window
+    else: t = window*(1+int(data[0][0]/window))
+    
+    #Inserting averaged data
+    for i,d in enumerate(data):
+        if not ndata: 
+            print('Initializing results')
+            #Generating next interval (absolute time will help to correlate)
+            add2data((t-window,d[1]))
+        elif ndata[-1][0]<d[0]<=t:
+            #print('Filling next window buffer: %s'%str(d))
+            if d[1] is not None: next.append(d)
+        else: 
+            #print('Inserting data: %d'%len(next))
+            print next
+            cond = next and next[0][0] or d[0]
+            #print('Filling until: %s'%date_to_string(cond))
+            #Filling until t
+            while t<cond:
+                add2data((t,ndata[-1][1]))
+                t+=window
+            #print('New time is: %s'%date_to_string(t))
+            if next:
+                 #print '%s ; averaging %d points (last = %s)' % (time.ctime(t),len(next),d)
+                 add2data((t,method(t[1] for t in next)))
+            #print 'Inserted %s'%str(ndata[-1])
+            next = [d] if (d[1] is not None) else []
+            #while d[0]>t:  t+=window
+            #while True:  
+                #if d[0]<t or t>data[-1][0]: break
+                #t+=window
+              
+    #Filling 'til end of range with data
+    if next: nx = method(t[1] for t in next)
+    elif ndata: nx = ndata[-1][1]
+    elif post: nx = post[0][1]
+    else: nx = 0
+    #print('Filling (%d) until: %s'%(len(next),date_to_string(end)))
+    while t<(end or window*(1+int(data[-1][0]/window))):
+        t+=window
+        add2data((t,nx))
+    return ndata
+            
+#ats = sys.argv[1:-2] #('bo01/vc/ccg-01/pressure','bo02/vc/ccg-02/pressure')
+#import time
+#t = [time.time()-24*3600,time.time()]
+#t = sys.argv[-2],sys.argv[-1]
+t = 1,time.time()
+args = sys.argv[1:] #('bo01/vc/ccg-01/pressure','bo02/vc/ccg-02/pressure')
+
+if not args or 'help' in str(args):
+  print "archiving2plot [--no-plot] [--log-x] attr1 attr2 attr3 time1 time2"
+  print "archiving2plot [--no-plot] file.csv/pck"
+  sys.exit(1)
+  
+options = [a for a in args if a.startswith('--')]
+files = [a for a in args if a.endswith('.pck') or a.endswith('.csv')]
+args = [a for a in args if a not in files and '--' not in a]
+folder = '/tmp/'
+
+ats = args[:-2]
+if len(args)>=2:    
+    t = map(fandango.str2time,(args[-2],args[-1]))
+if ats:
+    print 'Getting %s values'%ats
+    reader = PyTangoArchiving.reader.getArchivingReader(ats,t[0])
+    vals.update(reader.get_attributes_values(ats,t[0],t[1]))
+    for k in ats:
+        v = vals[k]
+        if not v: 
+            print('Attr %s has no values'%k)
+            vals.pop(k)
+        else:
+            try:
+                vals[k] = [(x[0],float(x[1] if x[1] is not None else 1e-12)) for x in v]
+                print('Attr %s: %d values'%(k,len(vals[k])))
+                print('%s ... %s'%(v[0],v[-1]))
+            except:
+                print('Attr %s has not a plotable type: %s'%v[0])
+                vals.pop(k)
+                
+import re
+get_varname = lambda p:re.sub('([-_]|(VAL(UE)?))','',('.' in p and p.split('/')[-1] or p).rsplit('.',1)[0].rsplit('--',1)[0]).replace('..','')
+
+
+if files:
+    #print 'Loading data from files: %s'%(files)
+    #print 't0 , t1 = %s , %s'%(map(fun.time2str,t))
+    for p in files:
+        print 'Loading data from %s'%(p)
+        if '/' in p: folder = p.rsplit('/',1)[0]
+        try:
+            if p.endswith('.pck'): data = pickle.load(open(p))
+            else: 
+              lines = open(p).readlines()[1:] #First line (titles) removed 
+              columns = [i for i,s in enumerate(lines[0].split('\t')) if fun.isNumber(s) or s.lower().strip() in ('none','null','nan','')]
+              data = [[
+                 (None if x[i].lower().strip() in ('none','null','nan','') 
+                 else float(x[i]))
+                 for i in columns]
+                for x in [l.split('\t') for l in lines]]
+            print '\tfiltering data not between %s and %s' % (time.ctime(t[0]),time.ctime(t[1]))
+            data = [x for x in data if t[0]<x[0]<t[1]]
+            #Patching repeated timestamps
+            for i,d in enumerate(data[1:]):
+                if not d[0]:
+                    data[i+1][0] = min(x[0] for x in data if x[0]>0)-3600
+                if d[0]==data[i][0]:
+                    data[i+1] = (d[0]+1,d[1])
+            k = p.split('/')[-1].rsplit('.',1)[0].rsplit('--',1)[0]
+            vals[k] = data
+            print 'File %s(%s) contains %d values' % (p,k,len(data))
+        except Exception,e:
+            print('Unable to load %s: \n%s'%(p,traceback.format_exc()))
+if not files and not args:
+    raise Exception('Nothing to load!')
+
+print '\nPlotting %d variables: %s\n\n' % (len(vals),vals.keys())
+
+if GUIQWT:
+    print('Using guiqwt')
+    import fandango.qt
+    from fandango.functional import time2str
+    import PyQt4
+    from PyQt4 import Qt
+    from PyQt4.Qwt5.Qwt import QwtText
+    from guiqwt.plot import CurveDialog
+    from guiqwt.builder import make
+    from guiqwt.styles import COLORS
+    import PyTangoArchiving
+    
+    import guidata
+    _app = guidata.qapplication()
+    
+    win = CurveDialog(edit=False, 
+        toolbar=True, 
+        wintitle="Archived Values",
+        options=dict(title='Archived Values',xlabel="Time(s)",ylabel=""))
+    
+    plot = win.get_plot()
+    Colors = 'brgcmk'
+    for i,a in enumerate(ats):
+        vs = [v for v in vals[a] if v[0] and v[1] is not None]
+        c = make.curve([v[0] for v in vs],[v[1] for v in vs],color=Colors[(i)%len(Colors)])
+        c.setTitle(a)
+        plot.add_item(c)
+    
+    win.get_itemlist_panel().show()
+    
+    from taurus.qt.qtgui.plot import DateTimeScaleEngine
+    DateTimeScaleEngine.enableInAxis(plot,plot.xBottom)
+    
+    win.show()
+    plot.replot()
+    win.exec_()
+
+elif MATPLOTLIB:    
+    print('Using matplotlib')
+    fsize = ([a for a in sys.argv if a.startswith('--size=')] or [None])[0]
+    if fsize:
+      fsize = fsize.split('=')[-1]
+      fsize = tuple(int(a) for a in fsize.split(','))
+      fig = plt.figure(figsize=fsize)
+    else:
+      fig = plt.figure()
+    #title = '[%s, ...][%d]'%(sorted(vals.keys())[0],len(vals))
+    #print title
+    #plt.title(title)
+    #fig.suptitle(title)
+    ax1 = fig.add_subplot(111)
+    lines = []
+    labels = []
+    logs = {}
+    if '--xy' not in sys.argv:
+      #ORDER OF COMMANDS MATTERS!
+      
+      if '--log-x' in options:
+        print('Setting Logarithmic time scale')
+        ax1.set_xscale("log")
+        tmin = min(v[0] for vs in vals.values() for v in vs)
+        #Remove time offset
+        for vs in vals.values():
+          for i,v in enumerate(vs):
+            vs[i] = v = list(v)
+            v[0] = max((v[0] - tmin,1))
+      
+      for k in sorted(vals.keys()):
+          vs = [v[1] for v in vals[k] if v[1] not in (None,0,0.0) and not v<0]
+          if vs:
+              n = min(vs)
+              x = max(vs)
+              print '%s in range (%s,%s)'%(k,n,x)
+              if 0<n<1 and (0<x<1e-2 or  0<1e3*n<x):
+                  logs[k] = vals.pop(k)
+
+      if logs:
+          print 'Setting Logarithmic scale for Axxis 1'
+          ax1.set_yscale("log")
+          #ax1.set_ylim(1e2, 1e3)
+          ax2 = ax1.twinx()
+          for k in sorted(logs):
+              print 'Adding %s values ...' % k
+              lines.extend(ax1.plot([v[0] for v in logs[k]],[v[1] for v in logs[k]],label=k))
+              labels.append(k)
+          for k in sorted(vals):
+              print 'Adding %s values ...' % k
+              lines.extend(ax2.plot([v[0] for v in vals[k]],[v[1] for v in vals[k]],'-.',label=k))
+              labels.append(k)
+      else:
+          for k in sorted(vals):
+              print 'Adding %s values ...' % k
+              lines.extend(ax1.plot([v[0] for v in vals[k]],[v[1] for v in vals[k]],label=k))
+              labels.append(k)
+              
+      if '--log-x' not in options:
+        #Must be here
+        ax1.set_xlabel('time (s)')
+        ax1.set_xticklabels([fandango.functional.time2str(d) for d in ax1.get_xticks()])
+      else:
+        ax1.set_xlim([1,time.time()])
+
+    else:
+      label = '%s vs %s'%tuple(vals.keys()[:2])
+      print 'Calcullating %s ...'%label
+      datax = [vals.keys()[0],filter_data(vals.values()[0])]
+      datay = [vals.keys()[1],filter_data(vals.values()[1])]
+      tmn,tmx = max((datax[1][0][0],datay[1][0][0])),min((datax[1][-1][0],datay[1][-1][0]))
+      print 'Cutting arrays to range dates: %s - %s' %(fandango.time2str(tmn),fandango.time2str(tmx))
+      datax[1] = [t for t in datax[1] if tmn<t[0]<tmx and t[0] in [tt[0] for tt in datay[1]]]
+      datay[1] = [t for t in datay[1] if tmn<t[0]<tmx and t[0] in [tt[0] for tt in datax[1]]]
+      print 'Lengths are %s vs %s' % tuple(map(len,(datax[1],datay[1])))
+      #print '\n'.join('%s - %s'%(fandango.time2str(t[0]),t[1]) for t in datax[1])
+      #print '\n'.join('%s - %s'%(fandango.time2str(t[0]),t[1]) for t in datay[1])
+      lines.extend(ax1.plot([v[1] for v in datax[1]],[v[1] for v in datay[1]],label=label))
+      labels.append(label)
+
+    fig.legend(lines,labels)
+    plt.grid(True)
+    try:
+        filename = ([f.split('=')[-1] for f in options if f.startswith('--file=')] or ['plot.png'])[0]
+        if '/' not in filename: filename = folder+'/%s'%filename
+        print 'Saving %s ...'%(filename)
+        plt.savefig(filename)
+        if '--no-plot' not in options:
+            plt.show()
+    except:
+        import traceback
+        print traceback.format_exc()
+        
+elif HTML:
+    from PyTangoArchiving.web import jqplot
+    

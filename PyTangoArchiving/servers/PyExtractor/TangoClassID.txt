@@ -1,0 +1,11 @@
+/**
+ * Device Class Identification:
+ * 
+ * Class Name   :	PyExtractor
+ * Contact      :	srubio@cells.es
+ * Class Family :	Archiving
+ * Platform     :	All Platforms
+ * Bus          :	Tango
+ * Manufacturer :	none
+ * Reference    :	
+ */

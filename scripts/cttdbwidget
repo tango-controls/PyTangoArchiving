@@ -1,0 +1,4 @@
+#!/bin/bash
+
+cd /homelocal/sicilia/lib/python/site-packages/PyTangoArchiving/tdbwidget
+/usr/bin/python tdbwidget.py

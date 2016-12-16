@@ -1,0 +1,82 @@
+<h2 id="SnapshotingAPIUsage">Snapshoting API Usage</h2>
+
+<ul><li>The Snapshot Archiving System provides a reliable system to Save/Restore attribute values linked to descriptive information.
+</li></ul><ul><li>It provides a common tool for all GUI's to save their settings and setpoints, allowing the users to introduce textual comment for each stored set of values.
+</li></ul><ul><li>The PyTangoArchiving  SnapAPI is build partially on top of Soleil's JAVA Api and Servers, providing new objects and methods to simplify its usage.
+</li></ul><p>
+The creation of an <strong>SnapAPI</strong> object requires a registered user and password in the <strong>MySQL</strong> host.
+</p>
+<div class="code"><pre><span class="kn">from</span> <span class="nn">PyTangoArchiving</span> <span class="kn">import</span> snap
+snapapi <span class="o">=</span> snap<span class="o">.</span>SnapAPI<span class="p">(</span><span class="s">'snapuser@snaphost'</span><span class="p">,</span><span class="s">'password'</span><span class="p">)</span>
+
+</pre></div><h3 id="ContextCreation">Context Creation</h3>
+<p>
+<strong>SnapContext</strong> objects are easily created and inserted in the database
+</p>
+<div class="code"><pre>new_ctx <span class="o">=</span> snapapi<span class="o">.</span>create_context<span class="p">(</span><span class="s">'Author'</span><span class="p">,</span><span class="s">'Name'</span><span class="p">,</span><span class="s">'Reason'</span><span class="p">,</span><span class="s">'Description'</span><span class="p">,[</span><span class="s">'test/sim/sergi/writable'</span><span class="p">,</span><span class="s">'test/sim/sergi/prova'</span><span class="p">,</span><span class="s">'test/sim/sergi/array'</span><span class="p">])</span>
+
+  SnapContext<span class="p">(</span><span class="mf">359</span><span class="p">,</span>Name<span class="p">,</span>Author<span class="p">,</span>Reason<span class="p">,</span>Attributes<span class="p">[</span><span class="mf">3</span><span class="p">],</span>Snapshots<span class="p">[</span><span class="mf">0</span><span class="p">])</span>
+
+</pre></div><h3 id="Readcontextsinformation">Read contexts information</h3>
+<p>
+Several methods allow to reload contexts information from the database and retrieve the <strong>SnapContext</strong> object
+</p>
+<div class="code"><pre>snapapi<span class="o">.</span>get_contexts<span class="p">()</span>
+  <span class="p">{</span><span class="mf">1</span><span class="p">:</span> SnapContext<span class="p">(</span><span class="mf">1</span><span class="p">,</span>Prova1<span class="p">,</span>SergiRubio<span class="p">,</span>Tests<span class="p">,</span>Attributes<span class="p">[</span><span class="mf">1</span><span class="p">],</span>Snapshots<span class="p">[</span><span class="mf">6</span><span class="p">]),</span>
+
+  <span class="o">...</span>
+  <span class="mf">359</span><span class="p">:</span> SnapContext<span class="p">(</span><span class="mf">359</span><span class="p">,</span>Name<span class="p">,</span>Author<span class="p">,</span>Reason<span class="p">,</span>Attributes<span class="p">[</span><span class="mf">3</span><span class="p">],</span>Snapshots<span class="p">[</span><span class="mf">0</span><span class="p">])}</span>
+
+last_ctx <span class="o">=</span> snapapi<span class="o">.</span>get_context<span class="p">(</span><span class="mf">359</span><span class="p">)</span> <span class="c">#It can be returned by using the context ID</span>
+  SnapContext<span class="p">(</span><span class="mf">359</span><span class="p">,</span>Name<span class="p">,</span>Author<span class="p">,</span>Reason<span class="p">,</span>Attributes<span class="p">[</span><span class="mf">3</span><span class="p">],</span>Snapshots<span class="p">[</span><span class="mf">0</span><span class="p">])</span>
+
+last_ctx <span class="o">=</span> snapapi<span class="o">.</span>get_context<span class="p">(</span><span class="nb">max</span><span class="p">(</span>snapapi<span class="o">.</span>contexts<span class="p">))</span> 
+  SnapContext<span class="p">(</span><span class="mf">359</span><span class="p">,</span>Name<span class="p">,</span>Author<span class="p">,</span>Reason<span class="p">,</span>Attributes<span class="p">[</span><span class="mf">3</span><span class="p">],</span>Snapshots<span class="p">[</span><span class="mf">0</span><span class="p">])</span>
+
+snapapi<span class="o">.</span>get_contexts<span class="p">(</span><span class="s">'Test*'</span><span class="p">)</span>
+  <span class="p">{</span><span class="mf">347</span><span class="p">:</span> SnapContext<span class="p">(</span><span class="mf">347</span><span class="p">,</span>TestContext<span class="p">,</span>srubio<span class="nd">@cells</span><span class="o">.</span>es<span class="p">,</span>test<span class="p">,</span>Attributes<span class="p">[</span><span class="mf">0</span><span class="p">],</span>Snapshots<span class="p">[</span><span class="mf">0</span><span class="p">]),</span>
+
+   <span class="mf">348</span><span class="p">:</span> SnapContext<span class="p">(</span><span class="mf">348</span><span class="p">,</span>TestContext2<span class="p">,</span>srubio<span class="nd">@cells</span><span class="o">.</span>es<span class="p">,</span>test<span class="p">,</span>Attributes<span class="p">[</span><span class="mf">4</span><span class="p">],</span>Snapshots<span class="p">[</span><span class="mf">1</span><span class="p">])}</span>
+
+snapapi<span class="o">.</span>get_context<span class="p">(</span><span class="s">'TestContext2'</span><span class="p">)</span>
+  SnapContext<span class="p">(</span><span class="mf">348</span><span class="p">,</span>TestContext2<span class="p">,</span>srubio<span class="nd">@cells</span><span class="o">.</span>es<span class="p">,</span>test<span class="p">,</span>Attributes<span class="p">[</span><span class="mf">4</span><span class="p">],</span>Snapshots<span class="p">[</span><span class="mf">1</span><span class="p">])</span>
+
+</pre></div><h3 id="GetTakeattributesandsnapshots">Get/Take attributes and snapshots</h3>
+<p>
+<strong>SnapContext</strong> objects allow to check <i>attributes/snapshots</i> information and create new snapshots
+</p>
+<div class="code"><pre>new_ctx<span class="o">.</span>get_attributes<span class="p">()</span>
+  <span class="p">{</span><span class="mf">1095</span><span class="p">:</span> <span class="p">{</span><span class="s">'full_name'</span><span class="p">:</span> <span class="s">'Test/Sim/Sergi/Array'</span><span class="p">,</span>
+
+         <span class="s">'data_format'</span><span class="p">:</span> PyTango<span class="o">.</span>_PyTango<span class="o">.</span>AttrDataFormat<span class="o">.</span>SPECTRUM<span class="p">,</span>
+         <span class="o">...</span> <span class="p">}</span>
+
+   <span class="mf">1097</span><span class="p">:</span> <span class="p">{</span><span class="s">'full_name'</span><span class="p">:</span> <span class="s">'Test/Sim/Sergi/Prova'</span><span class="p">,</span>
+       <span class="o">...</span> <span class="p">},</span>
+   <span class="o">...</span> <span class="p">}</span>
+
+new_ctx<span class="o">.</span>take_snapshot<span class="p">(</span><span class="s">'this is just a test'</span><span class="p">)</span>
+
+new_ctx<span class="o">.</span>get_snapshots<span class="p">()</span>
+  <span class="p">{</span><span class="mf">48</span><span class="p">:</span> <span class="p">[</span>datetime<span class="o">.</span>datetime<span class="p">(</span><span class="mf">2009</span><span class="p">,</span> <span class="mf">3</span><span class="p">,</span> <span class="mf">5</span><span class="p">,</span> <span class="mf">11</span><span class="p">,</span> <span class="mf">38</span><span class="p">,</span> <span class="mf">28</span><span class="p">),</span> <span class="s">'this is just a test'</span><span class="p">]}</span>
+
+</pre></div><h3 id="Snapshotobjects">Snapshot objects</h3>
+<p>
+The <strong>Snapshot</strong> objects contain timestamp and comment, but also are dictionaries containing {attribute:values} pairs.
+</p>
+<div class="code"><pre>first_snapshot <span class="o">=</span> new_ctx<span class="o">.</span>get_snapshot_by_date<span class="p">(</span><span class="mf">0</span><span class="p">)</span>
+
+last_snapshot <span class="o">=</span> new_ctx<span class="o">.</span>get_snapshot_by_date<span class="p">(</span><span class="o">-</span><span class="mf">1</span><span class="p">)</span>
+
+snapshot <span class="o">=</span> new_ctx<span class="o">.</span>get_snapshot<span class="p">(</span><span class="mf">48</span><span class="p">)</span>
+
+  Snapshot<span class="p">(</span><span class="mf">48</span><span class="p">,</span><span class="mf">1236249508.0</span><span class="p">,</span>this <span class="ow">is</span> just a test<span class="p">,{</span>test<span class="o">/</span>sim<span class="o">/</span>sergi<span class="o">/</span>writable<span class="p">,</span>test<span class="o">/</span>sim<span class="o">/</span>sergi<span class="o">/</span>prova<span class="p">,</span>test<span class="o">/</span>sim<span class="o">/</span>sergi<span class="o">/</span>array<span class="p">})</span>
+
+<span class="k">print</span> time<span class="o">.</span>ctime<span class="p">(</span>snapshot<span class="o">.</span>time<span class="p">),</span>snapshot<span class="o">.</span>comment
+  Thu Mar  <span class="mf">5</span> <span class="mf">11</span><span class="p">:</span><span class="mf">38</span><span class="p">:</span><span class="mf">28</span> <span class="mf">2009</span> this <span class="ow">is</span> just a test
+
+snapshot<span class="p">[</span><span class="s">'test/sim/sergi/writable'</span><span class="p">]</span> <span class="c">#Snapshot is a dictionary containing attribute values</span>
+
+  <span class="p">(</span><span class="mf">3.0</span><span class="p">,</span> <span class="mf">2.0</span><span class="p">)</span> <span class="c">#(read_value,write_value)</span>
+</pre></div><hr />
+

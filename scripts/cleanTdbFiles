@@ -1,0 +1,57 @@
+#!/bin/bash
+
+# srubio@cells.es, 2006
+
+if [ "$1" = "" ] || [ "$1" = "--no-prompt" ] ; then
+    if [ ! -d /tmp/archiving ] ; then
+        mkdir /tmp/archiving
+    fi
+    if [ ! -d /tmp/archiving/tdb ] ; then
+        mkdir /tmp/archiving/tdb
+    fi
+    FOLDER="/tmp/archiving/tdb/"
+else
+        FOLDER="$1"
+fi
+
+#Lines to add to crontab
+# 0 * * * * /homelocal/sicilia/applications/archiving/bin/cleanTdbFiles --no-prompt
+# 0 * * * * /homelocal/sicilia/applications/archiving/bin/cleanTdbFiles /ramdisk/archiving/tdb --no-prompt
+
+#FILES=`find $FOLDER -noleaf -iname "att_*" ! -atime 0`
+# ! -atime 1 ! -atime 2`
+# ! -amin -180`
+FILES=`find $FOLDER -noleaf -iname "att_*" ! -amin -120`
+
+if [ ! "$FILES" ] ; then
+    echo "There are no files to delete in $FOLDER ..."
+    exit 0
+else
+  echo "These are the files from $FOLDER that will be deleted: "
+  ls -l $FILES
+  ASK="Are You Sure that you want to delete all this files?(Yy/Nn)"
+  INPUT=""
+  DEFAULT="N"
+  echo "The Command is "$COMMAND
+
+  if [ "$1" = "--no-prompt" ] || [ "$2" = "--no-prompt" ] ; then 
+        INPUT="Y"
+  else
+      echo -n "$ASK"
+      read INPUT
+      test -z "$INPUT" && INPUT="$DEFAULT"
+  fi
+
+  case "$INPUT" in
+      [Yy])
+      echo Deleting...
+      for file in $FILES ; do rm -v $file ; done
+      #$COMMAND
+      echo `date`: cleanTdbFiles Done >> /tmp/archiving.log
+      ;;
+      *)
+      echo Aborted!
+      exit -1
+      ;;
+  esac
+fi

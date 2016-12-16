@@ -1,0 +1,19 @@
+
+PyTangoArchiving.widget.snaps README file
+-----------------------------------------
+
+Description of files/classes in the package:
+
+toolbar:
+ mini-toolbar opening the SnapForm classes
+
+snaps
+ SnapForm:
+
+
+snapdialogs
+ SnapLoader/SnapSaver
+  Classes used from the contexttoolbar module (!= from toolbar module)
+
+
+
