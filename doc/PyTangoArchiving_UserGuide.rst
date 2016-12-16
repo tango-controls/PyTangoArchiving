@@ -18,6 +18,16 @@ This package allows to:
 * Increase the capabilities of configuration and diagnostic.
 * Import/Export .csv and .xml files between the archiving and the database.
 
+sub modules
+-----------
+
+:api: getting servers/devices/instances implied in the archiving system and allowing DistributedArchiving
+:archiving: configuration and reading of historic data
+:snap: configuration and reading of snapshot data, see ArchivingSnapshots
+:xml: conversion between xml and csv files
+:scripts: configuration scripts
+:reader: providing the useful Reader and ReaderProcess objects to retrieve archived data
+
 Installing PyTangoArchiving
 ===========================
 
@@ -50,17 +60,17 @@ Although not needed, I recommend you to create a new MySQL user for data queryin
 
   mysql -u hdbmanager -p hdb
 
-  GRANT USAGE ON hdb.* TO 'browser'@'localhost' IDENTIFIED BY '**********';
-  GRANT USAGE ON hdb.* TO 'browser'@'%' IDENTIFIED BY '**********';
-  GRANT SELECT ON hdb.* TO 'browser'@'localhost';
-  GRANT SELECT ON hdb.* TO 'browser'@'%';
+  GRANT USAGE ON hdb.* TO 'user'@'localhost' IDENTIFIED BY '**********';
+  GRANT USAGE ON hdb.* TO 'user'@'%' IDENTIFIED BY '**********';
+  GRANT SELECT ON hdb.* TO 'user'@'localhost';
+  GRANT SELECT ON hdb.* TO 'user'@'%';
 
   mysql -u tdbmanager -p tdb
 
-  GRANT USAGE ON tdb.* TO 'browser'@'localhost' IDENTIFIED BY '**********';
-  GRANT USAGE ON tdb.* TO 'browser'@'%' IDENTIFIED BY '**********';
-  GRANT SELECT ON tdb.* TO 'browser'@'localhost';
-  GRANT SELECT ON tdb.* TO 'browser'@'%';
+  GRANT USAGE ON tdb.* TO 'user'@'localhost' IDENTIFIED BY '**********';
+  GRANT USAGE ON tdb.* TO 'user'@'%' IDENTIFIED BY '**********';
+  GRANT SELECT ON tdb.* TO 'user'@'localhost';
+  GRANT SELECT ON tdb.* TO 'user'@'%';
 
 Check in a python shell that your able to access the database::
 
@@ -79,16 +89,7 @@ Then configure the Hdb/Tdb Extractor class properties to use this user/password 
 You can test now access from a Reader (see recipes below) object or from a taurustrend/ArchivingBrowser UI (Taurus required)::
 
   python PyTangoArchiving/widget/ArchivingBrowser.py 
- 
-sub modules
-===========
 
-:api: getting servers/devices/instances implied in the archiving system and allowing DistributedArchiving
-:archiving: configuration and reading of historic data
-:snap: configuration and reading of snapshot data, see ArchivingSnapshots
-:xml: conversion between xml and csv files
-:scripts: configuration scripts
-:reader: providing the useful Reader and ReaderProcess objects to retrieve archived data
 
 General usage
 =============
@@ -99,6 +100,8 @@ Get archived values for an attribute
 ------------------------------------
 
 The reader object provides a fast access to archived values::
+
+.. code::python
 
   import PyTangoArchiving
   rd = PyTangoArchiving.Reader('hdb')
@@ -114,6 +117,8 @@ Start/Stop/Check attributes
 ---------------------------
 
 You must create an Archiving api object and pass to it the list of attributes with its archiving config::
+
+.. code::python
 
   import PyTangoArchiving
   hdb = PyTangoArchiving.ArchivingAPI('hdb')
@@ -149,7 +154,7 @@ The .csv file must have a shape like this one (any row starting with '#' is igno
                               
   #host	domain/family/member	attribute 	HDB/TDB/STOP	periodic/absolute/relative			
                               
-  cdi0404	LI/DI/BPM-ACQ-01	@DEFAULT		periodic	300		
+  host0404	DD/DI/BPM-ACQ-01	@DEFAULT		periodic	300		
                           ADCChannelAPeak	HDB	absolute	15	1	1
                                       TDB	absolute	5	1	1
                           ADCChannelBPeak	HDB	absolute	15	1	1
@@ -162,21 +167,15 @@ The .csv file must have a shape like this one (any row starting with '#' is igno
 The command to insert it is::
 
   import PyTangoArchiving
-  PyTangoArchiving.LoadArchivingConfiguration('/beamlines/bl24/controls/archiving/BL24_EM_fbecheri_20130319.csv','hdb',launch=True)
+   PyTangoArchiving.LoadArchivingConfiguration('..._20130319.csv','hdb',launch=True)
 
 There are some arguments to modify Loading behavior.
 
-launch::
+:launch: if not explicitly True then archiving is not triggered, it just verifies that format of the file is Ok and attributes are available
 
-  if not explicitly True then archiving is not triggered, it just verifies that format of the file is Ok and attributes are available
+:force: if False the loading will stop at first error, if True then it tries all attributes even if some failed
 
-force::
-
-  if False the loading will stop at first error, if True then it tries all attributes even if some failed
-
-overwrite::
-
-  if False attributes already archived will be skipped.
+:overwrite: if False attributes already archived will be skipped.
 
 Checking the status of the archiving
 ------------------------------------
