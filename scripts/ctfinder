@@ -1,0 +1,6 @@
+#!/usr/bin/sh
+
+. alba_blissrc
+cd $SICILIA/lib/python/site-packages/PyTangoArchiving/widget
+python ArchivingBrowser.py $*
+

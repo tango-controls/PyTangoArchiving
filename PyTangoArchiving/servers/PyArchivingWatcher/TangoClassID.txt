@@ -1,0 +1,11 @@
+/**
+ * Device Class Identification:
+ * 
+ * Class Name   :	PyArchivingWatcher
+ * Contact      :	srubio@cells.es
+ * Class Family :	Archiving
+ * Platform     :	All Platforms
+ * Bus          :	MySQL
+ * Manufacturer :	none
+ * Reference    :	
+ */
