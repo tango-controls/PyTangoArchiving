@@ -4,7 +4,7 @@ PYTANGOARCHIVING RECIPES
 
 by Sergi Rubio
 
-.. tree::
+.. contents::
 
 Description
 ===========
