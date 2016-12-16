@@ -12,20 +12,13 @@ All of them can be obtained from www.tango-controls.org
 
 Examples and usage of PyTangoArchiving can be found here:
 
-http://www.tango-controls.org/resources/howto/pytangoarchiving
+* https://github.com/sergirubio/PyTangoArchiving/blob/master/doc/PyTangoArchiving_UserGuide.rst
+* http://www.tango-controls.org/resources/howto/pytangoarchiving
 
 The old tags and branches are available in sourceforge: 
 
    https://svn.code.sf.net/p/tango-cs/code/archiving/tool/PyTangoArchiving
 
 -------------------------------------------------------------------------------
-
-Archiving Maintenance from Crontab:
-
-00 */6 * * * archiving_report_update
-00 00 * * * cleanTdbFiles --no-prompt
-00 01 * * * TdbCleaner.sh > /dev/null
-0 00 * 7 * db_repair.py --no-prompt manager manager
-23 00 * * 1 archiver_health_check.py hdb tdb email=...@... restart
 
 
