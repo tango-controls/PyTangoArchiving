@@ -34,7 +34,7 @@
 import PyTango
 import sys,time
 import fandango
-import fandango.functional as fun
+import fandango.functional as fn
 import PyTangoArchiving
 import traceback
 
@@ -42,13 +42,26 @@ import traceback
 class PyExtractor(PyTango.Device_4Impl):
 
 #--------- Add you global variables here --------------------------
+
+    @staticmethod
+    def dates2times(argin):
+        """
+        Parsing dates like 'Y-M-D h:m' or '+/-X(shmdw)'
+        """
+        return [fn.time2str(fn.str2time(a)) for a in argin]
+      
+    @staticmethod
+    def bool2float(argin):
+        return float(not fn.isFalse(argin))
     
-    def tag2attr(self,argin):
+    @staticmethod
+    def tag2attr(argin):
         if any(argin.endswith(s) for s in ('_r','_t','_w')): argin = argin[:-2]
         if '/' not in argin: argin = argin.replace('__','/')
         return argin
     
-    def attr2tag(self,argin):
+    @staticmethod
+    def attr2tag(argin):
         if '/' in argin: argin = argin.replace('/','__')
         return argin
 
@@ -57,23 +70,52 @@ class PyExtractor(PyTango.Device_4Impl):
         aname,values = attr.get_name(),[]
         attribute = self.tag2attr(aname)
         print time.ctime()+'In read_dyn_attr(%s)'%aname
-        if aname.endswith('_r'): 
-            values = [(v[1] or 1e-12) for v in self.AttrData[attribute]]
+
+        req,atformat,attype,data = self.AttrData[attribute]
+        conv = self.bool2float if attype is PyTango.DevBoolean \
+          else (float if attype is PyTango.DevDouble
+              else str)
+        
+        if aname.endswith('_r'):
+            if atformat is PyTango.SpectrumAttr:
+                values = [conv(v[1] or 0.) for v in data]
+            else:
+                values = [map(conv,v[1]) for v in data]
             if values: print time.ctime()+'In read_dyn_attr(%s): %s[%d]:%s...%s'%(aname,type(values[0]),len(values),values[0],values[-1])
             else: print '\tno values'
-            #print values
             attr.set_value(values,len(values))
+            
         elif aname.endswith('_w'): 
-            values = [(v[2] or 1e-12) for v in self.AttrData[attribute]]
+            if atformat is PyTango.SpectrumAttr:
+                values = [conv(v[2] or 0.) for v in data]
+            else:
+                values = [map(conv,v[2]) for v in data]
             if values: print time.ctime()+'In read_dyn_attr(%s): %s[%d]:%s...%s'%(aname,type(values[0]),len(values),values[0],values[-1])
             else: print '\tno values'
             attr.set_value(values,len(values))
+            
         elif aname.endswith('_t'): 
-            values = [(v[0] or 1e-12) for v in self.AttrData[attribute]]
+            values = [float(v[0] or 0.) for v in data]
             if values: print time.ctime()+'In read_dyn_attr(%s): %s[%d]:%s...%s'%(aname,type(values[0]),len(values),values[0],values[-1])
             else: print '\tno values'
-            #print values
             attr.set_value(values,len(values))
+            
+        else:
+            if atformat == PyTango.SpectrumAttr:
+              if attype == PyTango.DevString:
+                values = [(fn.time2str(d[0]),str(d[1])) for d in data]
+              else:
+                values = [(d[0],conv(d[1])) for d in data]
+            else:
+              if attype is PyTango.DevString:
+                values = [[fn.time2str(d[0])]+map(str,d[1]) for d in data]
+              else:
+                values = [[d[0]]+map(conv,d[1]) for d in data]
+              
+            if values: print time.ctime()+'In read_dyn_attr(%s): %s[%d]:%s...%s'%(aname,type(values[0]),len(values),values[0],values[-1])
+            else: print '\tno values'
+            attr.set_value(values,len(values))
+            
         print '\treturned %d values'%len(values)
         
     def is_dyn_attr_allowed(self,attr,req_type=None):
@@ -83,28 +125,34 @@ class PyExtractor(PyTango.Device_4Impl):
         """This method will be executed by the ReaderProcess to process the queried data.""" 
         try:
             print time.ctime()+'In reader_hook(%s,[%d])'%(attribute,len(values))
+            MAXDIM = 1024*1024*1024
             #First create the attributes
             epoch,data,aname = [],[],attribute.replace('/','__')
             [(epoch.append(v[0]),data.append(v[1])) for v in values]
-            AttrType = PyTango.AttrWriteType.READ
+            writable = PyTango.AttrWriteType.READ
+
             #Adding time attribute
-            #self.add_attribute(PyTango.Attr(aname+'_t',PyTango.DevDouble, AttrType),self.read_dyn_attr,None,self.is_dyn_attr_allowed)
-            self.add_attribute(PyTango.SpectrumAttr(aname+'_t',PyTango.DevDouble, AttrType,1024*1024*1024),self.read_dyn_attr,None,self.is_dyn_attr_allowed)
-            #dyntype = DynamicDSTypes['DevDouble']
-            #is_spectrum = data and fun.isSequence(data[0])
-            #for typename,dyntype in DynamicDSTypes.items(): pass
-            #dyntype = DynamicDSTypes['DevVarDoubleArray']
-            #if dyntype.dimx==1: pass
-            #self.add_attribute(PyTango.SpectrumAttr(aname,dyntype.tangotype, AttrType,max_size or dyntype.dimx), \
-            #    self.read_dyn_attr,self.write_dyn_attr,is_allowed)
-            
-            #self.add_attribute(PyTango.Attr(aname+'_r',PyTango.DevDouble, AttrType),self.read_dyn_attr,None,self.is_dyn_attr_allowed)
-            self.add_attribute(PyTango.SpectrumAttr(aname+'_r',PyTango.DevDouble, AttrType,1024*1024*1024),self.read_dyn_attr,None,self.is_dyn_attr_allowed)
+            m,atformat,dims = None,PyTango.SpectrumAttr,[MAXDIM]
+            for d in data:
+              if d is not None:
+                if fn.isSequence(d):
+                  atformat,dims = PyTango.ImageAttr,[MAXDIM,MAXDIM]
+                  m = d[0]
+                else:
+                  m = d
+                break
+
+            attype = PyTango.DevDouble if (fn.isNumber(m) or fn.isBool(m)) else PyTango.DevString
+            self.add_attribute(PyTango.ImageAttr(aname,attype,writable,MAXDIM,MAXDIM),self.read_dyn_attr,None,self.is_dyn_attr_allowed)
+            self.add_attribute(PyTango.SpectrumAttr(aname+'_t',PyTango.DevDouble, writable,MAXDIM),self.read_dyn_attr,None,self.is_dyn_attr_allowed)
+            self.add_attribute(atformat(aname+'_r',attype, writable,*dims),self.read_dyn_attr,None,self.is_dyn_attr_allowed)
             
             #Then add the data to Cache values, so IsDataReady will return True
-            self.AttrData[attribute] = values
+            t = fn.now()
+            self.AttrData[attribute] = (t,atformat,attype,values)
+            print('Done: %s,%s,%s,%s,%d'%(attribute,t,atformat,attype,len(values)))
         except:
-            print traceback.format_exc()
+            print(traceback.format_exc())
     
 #------------------------------------------------------------------
 #    Device constructor
@@ -140,6 +188,29 @@ class PyExtractor(PyTango.Device_4Impl):
 #------------------------------------------------------------------
     def always_executed_hook(self):
         print time.ctime()+"In ", self.get_name(), "::always_excuted_hook()"
+        status = 'The device is in %s state\n\n'%self.get_state()
+        status += 'Attributes in cache:\n\t%s\n'%','.join(self.AttrData.keys())
+        self.set_status(status)
+        try:
+          pending = []
+          for s in self.PeriodicQueries:
+            s = s.split(',')
+            a,t = s[0],max((float(s[-1]),60))
+            if a not in self.AttrData or self.AttrData[a][0]<(fn.now()-t):
+              if a in self.AttrData: 
+                print('%s data is %s seconds old'%(a,fn.now()-self.AttrData[a][0]))
+              pending.append(s[:3])
+          if pending: 
+            self.set_state(PyTango.DevState.RUNNING)
+            print('Executing %d scheduled queries:\n%s'%(len(pending),'\n'.join(map(str,pending))))
+            for p in pending:
+              self.GetAttDataBetweenDates(p)
+          else: 
+            self.set_state(PyTango.DevState.ON)
+        except:
+          self.set_state(PyTango.DevState.FAULT)
+          self.set_status(traceback.format_exc())
+          print(self.get_status())
 
 #==================================================================
 #
@@ -171,22 +242,36 @@ class PyExtractor(PyTango.Device_4Impl):
 #------------------------------------------------------------------
     def GetAttDataBetweenDates(self, argin):
         """
-        Arguments to be AttrName, StartDate, StopDate
+        Arguments to be AttrName, StartDate, StopDate, Synchronous
+        
+        If Synchronous is missing or False, data is buffered into attributes, which names are returned
+        If True or Yes, all the data is returned when ready
+        
+        Data returned will be (rows,[t0,v0,t1,v1,t2,v2,...])
         """
         print time.ctime()+"In ", self.get_name(), "::GetAttDataBetweenDates(%s)"%argin
         #    Add your own code here
         size = 0
         aname = argin[0]
         tag = self.attr2tag(aname)
-        dates = argin[1:3]
+        dates = self.dates2times(argin[1:3])
         RW = False
-        attrs = [tag+'_r',tag+'_w',tag+'_t'] if RW else [tag+'_r',tag+'_t']
+        synch = fn.searchCl('yes|true',str(argin[3:4]))
+        attrs = [tag,tag+'_r',tag+'_w',tag+'_t'] if RW else [tag,tag+'_r',tag+'_w',tag+'_t']
         if aname in self.AttrData: self.AttrData.pop(aname)
         self.reader.get_attribute_values(aname,(lambda v: self.reader_hook(aname,v)),dates[0],dates[1])
-        argout = [range(len(attrs)),[a for a in attrs]]
-        print '\t%s'%argout
-        return argout
-
+        argout = [fn.shape(attrs),[a for a in attrs]]
+        if not synch:
+          print '\t%s'%argout
+          return argout
+        else:
+          while not self.IsDataReady(aname):
+            fandango.wait(0.1)
+          data = self.AttrData[aname][-1]
+          for t,v in data:
+            argout.append(t)
+            argout.extend(fn.toSequence(v))
+          return [fn.shape(data),argout]
 
 #------------------------------------------------------------------
 #    RemoveDynamicAttribute command:
@@ -207,14 +292,17 @@ class PyExtractor(PyTango.Device_4Impl):
             #All this part disabled as it doesn't work well in PyTango 7.2.2
             try:
                 attrlist = self.get_device_attr().get_attribute_list()
-                attrlist = [a.get_name() for a in attrlist]
+                attrlist = [a.get_name().lower() for a in attrlist]
                 print 'Attributelist: %s'%[str(a) for a in attrlist]
             except:
                 print traceback.format_exc()
             aname = argin.replace('/','__').lower()
-            for s in ('_r','_t'):#,'_w'):
-                try: 
-                    self.remove_attribute(aname+s)
+            for s in ('_r','_t',''):#,'_w'):
+                try:
+                    if aname in attrlist:
+                        self.remove_attribute(aname+s)
+                    else:
+                        print('%s attribute does not exist!'%aname)
                 except Exception,e: 
                     print('\tremove_attribute(%s): %s'%(aname+s,e))
         return
@@ -227,6 +315,7 @@ class PyExtractor(PyTango.Device_4Impl):
     def RemoveDynamicAttributes(self):
         print "In ", self.get_name(), "::RemoveDynamicAttributes()"
         #    Add your own code here
+        remove = [a for a,v in self.AttrData.items() if v[0]<fn.now()-self.ExpireTime]
         for a in self.AttrData.keys()[:]:
             self.RemoveDynamicAttribute(a)
 
@@ -298,7 +387,15 @@ class PyExtractorClass(PyTango.DeviceClass):
         'DbSchema':
             [PyTango.DevString,
             "Database to use (hdb/tdb)",
-            ["hdb"] ],    
+            ["hdb"] ],
+        'ExpireTime':
+            [PyTango.DevLong,
+            "Seconds to cache each request",
+            [ 1800 ] ],
+        'PeriodicQueries':
+            [PyTango.DevVarStringArray,
+            "Queries to be executed periodically: Attr,Start,Stop,Period(s)",
+            [ ] ],
         }
 
 
