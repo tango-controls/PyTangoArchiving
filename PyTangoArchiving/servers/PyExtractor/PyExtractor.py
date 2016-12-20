@@ -181,36 +181,18 @@ class PyExtractor(PyTango.Device_4Impl):
         self.set_state(PyTango.DevState.ON)
         self.get_device_properties(self.get_device_class())
         if not self.reader: self.reader = PyTangoArchiving.reader.ReaderProcess(self.DbSchema)
-        if self.AttrData: self.RemoveDynamicAttributes()
+        if self.AttrData: self.RemoveCachedAttributes()
 
 #------------------------------------------------------------------
 #    Always excuted hook method
 #------------------------------------------------------------------
     def always_executed_hook(self):
-        print time.ctime()+"In ", self.get_name(), "::always_excuted_hook()"
+        print time.ctime()+"In ", self.get_name(), "::always_executed_hook()"
         status = 'The device is in %s state\n\n'%self.get_state()
         status += 'Attributes in cache:\n\t%s\n'%','.join(self.AttrData.keys())
         self.set_status(status)
-        try:
-          pending = []
-          for s in self.PeriodicQueries:
-            s = s.split(',')
-            a,t = s[0],max((float(s[-1]),60))
-            if a not in self.AttrData or self.AttrData[a][0]<(fn.now()-t):
-              if a in self.AttrData: 
-                print('%s data is %s seconds old'%(a,fn.now()-self.AttrData[a][0]))
-              pending.append(s[:3])
-          if pending: 
-            self.set_state(PyTango.DevState.RUNNING)
-            print('Executing %d scheduled queries:\n%s'%(len(pending),'\n'.join(map(str,pending))))
-            for p in pending:
-              self.GetAttDataBetweenDates(p)
-          else: 
-            self.set_state(PyTango.DevState.ON)
-        except:
-          self.set_state(PyTango.DevState.FAULT)
-          self.set_status(traceback.format_exc())
-          print(self.get_status())
+        self.GetCurrentQueries()
+
 
 #==================================================================
 #
@@ -274,13 +256,13 @@ class PyExtractor(PyTango.Device_4Impl):
           return [fn.shape(data),argout]
 
 #------------------------------------------------------------------
-#    RemoveDynamicAttribute command:
+#    RemoveCachedAttribute command:
 #
 #    Description: 
 #    argin:  DevString    
 #------------------------------------------------------------------
-    def RemoveDynamicAttribute(self, argin):
-        print time.ctime()+"In ", self.get_name(), "::RemoveDynamicAttribute(%s)"%argin
+    def RemoveCachedAttribute(self, argin):
+        print time.ctime()+"In ", self.get_name(), "::RemoveCachedAttribute(%s)"%argin
         #    Add your own code here
         argin = self.tag2attr(argin)
         if argin in self.AttrData:
@@ -308,16 +290,16 @@ class PyExtractor(PyTango.Device_4Impl):
         return
 
 #------------------------------------------------------------------
-#    RemoveDynamicAttributes command:
+#    RemoveCachedAttributes command:
 #
 #    Description: 
 #------------------------------------------------------------------
-    def RemoveDynamicAttributes(self):
-        print "In ", self.get_name(), "::RemoveDynamicAttributes()"
+    def RemoveCachedAttributes(self):
+        print "In ", self.get_name(), "::RemoveCachedAttributes()"
         #    Add your own code here
         remove = [a for a,v in self.AttrData.items() if v[0]<fn.now()-self.ExpireTime]
         for a in self.AttrData.keys()[:]:
-            self.RemoveDynamicAttribute(a)
+            self.RemoveCacheAttribute(a)
 
 #------------------------------------------------------------------
 #    IsArchived command:
@@ -356,6 +338,45 @@ class PyExtractor(PyTango.Device_4Impl):
         print "In ", self.get_name(), "::GetCurrentArchivedAtt()"
         #    Add your own code here
         return self.reader.available_attributes
+      
+    def GetCurrentQueries(self):
+        print "In ", self.get_name(), "::GetCurrentQueries()"
+        #self.get_device_properties()
+        #if not self.is_command_polled('state'):
+        #self.poll_command('state',3000)
+        try:
+          pending = []
+          for s in self.PeriodicQueries:
+            s = s.split(',')
+            a,t = s[0],max((float(s[-1]),60))
+            if a not in self.AttrData or self.AttrData[a][0]<(fn.now()-t):
+              if a in self.AttrData: 
+                print('%s data is %s seconds old'%(a,fn.now()-self.AttrData[a][0]))
+              pending.append(s[:3])
+          if pending: 
+            self.set_state(PyTango.DevState.RUNNING)
+            print('Executing %d scheduled queries:\n%s'%(len(pending),'\n'.join(map(str,pending))))
+            for p in pending:
+              self.GetAttDataBetweenDates(p)
+          else: 
+            self.set_state(PyTango.DevState.ON)
+        except:
+          self.set_state(PyTango.DevState.FAULT)
+          self.set_status(traceback.format_exc())
+          print(self.get_status())
+        return self.PeriodicQueries
+      
+    def AddPeriodicQuery(self,argin):
+        attribute = argin[0]
+        start = argin[1]
+        stop = argin[2] if len(argin)==4 else '-1'
+        period = argin[3]
+        self.get_device_properties()
+        queries = dict(p.split(',',1) for p in self.PeriodicQueries)
+        queries[attribute]='%s,%s,%s,%s'%(attribute,start,stop,period)
+        fandango.tango.put_device_property(self.get_name(),'PeriodicQueries',sorted(queries.values()))
+        self.get_device_properties()
+        return self.get_name()+'/'+self.attr2tag(attribute)
 
 
 #==================================================================
@@ -404,10 +425,10 @@ class PyExtractorClass(PyTango.DeviceClass):
         'GetAttDataBetweenDates':
             [[PyTango.DevVarStringArray, ""],
             [PyTango.DevVarLongStringArray, ""]],
-        'RemoveDynamicAttribute':
+        'RemoveCachedAttribute':
             [[PyTango.DevString, ""],
             [PyTango.DevVoid, ""]],
-        'RemoveDynamicAttributes':
+        'RemoveCachedAttributes':
             [[PyTango.DevVoid, ""],
             [PyTango.DevVoid, ""]],
         'IsArchived':
@@ -419,6 +440,15 @@ class PyExtractorClass(PyTango.DeviceClass):
         'GetCurrentArchivedAtt':
             [[PyTango.DevVoid, ""],
             [PyTango.DevVarStringArray, ""]],
+        'GetCurrentQueries':
+            [[PyTango.DevVoid, ""],
+            [PyTango.DevVarStringArray, ""],
+            {
+                'Polling period': "3000",
+            } ],
+        'AddPeriodicQuery':
+            [[PyTango.DevVarStringArray, ""],
+            [PyTango.DevString, ""]],            
         }
 
 
