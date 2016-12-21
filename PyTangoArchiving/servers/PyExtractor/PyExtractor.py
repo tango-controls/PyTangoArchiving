@@ -215,13 +215,6 @@ class PyExtractor(PyTango.Device_4Impl):
 #
 #==================================================================
 
-#------------------------------------------------------------------
-#    GetAttDataBetweenDates command:
-#
-#    Description: 
-#    argin:  DevVarStringArray    
-#    argout: DevVarLongStringArray    
-#------------------------------------------------------------------
     def GetAttDataBetweenDates(self, argin):
         """
         Arguments to be AttrName, StartDate, StopDate, Synchronous
@@ -254,13 +247,11 @@ class PyExtractor(PyTango.Device_4Impl):
             argout.append(t)
             argout.extend(fn.toSequence(v))
           return [fn.shape(data),argout]
+        
+    def GetCachedAttribute(self,argin):
+        n,a = self.get_name(),self.attr2tag(argin)
+        return [n+'/'+a+s for s in ('','_r','_t')] 
 
-#------------------------------------------------------------------
-#    RemoveCachedAttribute command:
-#
-#    Description: 
-#    argin:  DevString    
-#------------------------------------------------------------------
     def RemoveCachedAttribute(self, argin):
         print time.ctime()+"In ", self.get_name(), "::RemoveCachedAttribute(%s)"%argin
         #    Add your own code here
@@ -279,7 +270,7 @@ class PyExtractor(PyTango.Device_4Impl):
             except:
                 print traceback.format_exc()
             aname = argin.replace('/','__').lower()
-            for s in ('_r','_t',''):#,'_w'):
+            for s in ('','_r','_t',''):#,'_w'):
                 try:
                     if aname in attrlist:
                         self.remove_attribute(aname+s)
@@ -289,11 +280,6 @@ class PyExtractor(PyTango.Device_4Impl):
                     print('\tremove_attribute(%s): %s'%(aname+s,e))
         return
 
-#------------------------------------------------------------------
-#    RemoveCachedAttributes command:
-#
-#    Description: 
-#------------------------------------------------------------------
     def RemoveCachedAttributes(self):
         print "In ", self.get_name(), "::RemoveCachedAttributes()"
         #    Add your own code here
@@ -301,25 +287,11 @@ class PyExtractor(PyTango.Device_4Impl):
         for a in self.AttrData.keys()[:]:
             self.RemoveCacheAttribute(a)
 
-#------------------------------------------------------------------
-#    IsArchived command:
-#
-#    Description: 
-#    argin:  DevString   
-#    argout: DevBoolean 
-#------------------------------------------------------------------
     def IsArchived(self, argin):
         print "In ", self.get_name(), "::IsArchived()"
         #    Add your own code here
         return self.reader.is_attribute_archived(argin)
 
-#------------------------------------------------------------------
-#    IsDataReady command:
-#
-#    Description: 
-#    argin:  DevString   
-#    argout: DevBoolean 
-#------------------------------------------------------------------
     def IsDataReady(self, argin):
         print "In ", self.get_name(), "::IsDataReady(%s)"%argin
         #    Add your own code here
@@ -328,16 +300,10 @@ class PyExtractor(PyTango.Device_4Impl):
         print '\tIsDataReady(%s == %s): %s'%(argin,aname,argout)
         return argout
 
-#------------------------------------------------------------------
-#    GetCurrentArchivedAtt command:
-#
-#    Description: 
-#    argout: DevVarStringArray    
-#------------------------------------------------------------------
     def GetCurrentArchivedAtt(self):
         print "In ", self.get_name(), "::GetCurrentArchivedAtt()"
         #    Add your own code here
-        return self.reader.available_attributes
+        return self.reader.get_attributes(active=True)
       
     def GetCurrentQueries(self):
         print "In ", self.get_name(), "::GetCurrentQueries()"
@@ -425,6 +391,9 @@ class PyExtractorClass(PyTango.DeviceClass):
         'GetAttDataBetweenDates':
             [[PyTango.DevVarStringArray, ""],
             [PyTango.DevVarLongStringArray, ""]],
+        'GetCachedAttribute':
+            [[PyTango.DevString, ""],
+            [PyTango.DevVarStringArray, ""]],            
         'RemoveCachedAttribute':
             [[PyTango.DevString, ""],
             [PyTango.DevVoid, ""]],
