@@ -6,9 +6,21 @@
 @TODO Rename     widgetArchivingBrowser.ModelSearchWidget to widget.browser.ArchivingBrowser
 @TODO: rename ArchivingBrowser to browser
 
-7.2
+7.2 First release from git
+
+Add --log-x option to archiving2plot
+Rename ctfinder to ctsearch
+Added safer methods for HDBpp.config initialization
+Adding array management and get_full_attribute_name method
+
+PyExtractor device:
+Add GetCachedAttribute command 
+Add AddPeriodicQuery(), rename Dynamic to Cached Attributes, 
+Add Polling by default
+Add X/Y 2D attributes
 
 Added PyTangoArchiving.Schemas as Tango free property
+
 
 7.1
 
