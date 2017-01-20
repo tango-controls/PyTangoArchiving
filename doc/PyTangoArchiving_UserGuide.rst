@@ -177,8 +177,23 @@ There are some arguments to modify Loading behavior.
 
 :overwrite: if False attributes already archived will be skipped.
 
-Checking the status of the archiving
-------------------------------------
+Checking the status of some attributes archiving
+------------------------------------------------
+
+This code will check the last 5 min. values for all vacuum attributes (/vc/) and list those that have no values in the interval.
+
+.. code:: python
+
+  import PyTangoArchiving
+  rd = PyTangoArchiving.Reader()
+  attrs = rd.get_attributes(active=True)
+  vcattrs = [a for a in attrs if '/vc/' in a]
+  values = rd.get_attributes_values(vcattrs,-300)
+  sorted(a for a,v in values.items() if len(v)==0)
+
+
+Checking the status of the archiving (all)
+------------------------------------------
 
 .. code:: python
 
