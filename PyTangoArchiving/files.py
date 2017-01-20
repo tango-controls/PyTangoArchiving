@@ -1038,7 +1038,7 @@ if __name__ == '__main__':
     filename = args[1]
     schema = args[2] if len(args)>2 else ''
     if action in ('load','check'):
-        attrs = ParseCSV(filename,schema)
+        attrs = ParseCSV(filename,schema,log=False)
         if action in 'check' and schema: 
             from PyTangoArchiving import ArchivingAPI
             api = ArchivingAPI(schema)
