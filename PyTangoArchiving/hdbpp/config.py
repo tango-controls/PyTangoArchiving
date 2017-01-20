@@ -210,12 +210,12 @@ class HDBpp(ArchivingDB,SingletonMap):
         try:
           self.info('start_archiving(%s)'%attribute)
           d = self.get_manager()
-          attribute = self.is_attribute_archived(attribute)
-          if not attribute:
+          fullname = self.is_attribute_archived(attribute)
+          if not fullname:
             self.add_attribute(attribute,*args,**kwargs)
             time.sleep(10.)
-            attribute = self.is_attribute_archived(attribute)
-          d.AttributeStart(attribute)
+            fullname = self.is_attribute_archived(attribute)
+          d.AttributeStart(fullname)
           return True
         except Exception,e:
           self.error('start_archiving(%s): %s'%(attribute,traceback.format_exc().replace('\n','')))
