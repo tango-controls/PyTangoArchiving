@@ -295,6 +295,7 @@ class Schemas(object):
             m,c = dct.get('reader').rsplit('.',1)
             if m not in k.MODULES:
               fandango.evalX('import %s'%m,modules=k.MODULES)
+            #print('getSchema(%s): load %s reader'%(schema,dct.get('reader')))
             dct['reader'] = fandango.evalX(
                         dct.get('reader'),
                         modules=k.MODULES,
@@ -314,20 +315,26 @@ class Schemas(object):
     
     @classmethod
     def checkSchema(k,schema,attribute='',start=None,end=None):
+      #print('In reader.Schemas.checkSchema(%s,%s,%s,%s)'%(schema,attribute,start,end))
       schema = k.getSchema(schema)
       f = schema.get('check')
-      if not f: return True
-      try:
-        now = time.time()
-        start = fun.notNone(start,now-1)
-        end = fun.notNone(end,now)
-        k.LOCALS.update({'attribute':attribute,
-              'start':start,'end':end,'now':now,
-              'reader':schema.get('reader')})
-        return fun.evalX(f,k.LOCALS,k.MODULES)
-      except:
-        traceback.print_exc()
-        return False
+      if not f: 
+        v = True
+      else:
+        try:
+          now = time.time()
+          start = fun.notNone(start,now-1)
+          end = fun.notNone(end,now)
+          k.LOCALS.update({'attribute':attribute,
+                'start':start,'end':end,'now':now,
+                'reader':schema.get('reader')})
+          #print('(%s)%%(%s)'%(f,[t for t in k.LOCALS.items() if t[0] in f]))
+          v =fun.evalX(f,k.LOCALS,k.MODULES)
+        except:
+          traceback.print_exc()
+          v =False
+      #print('checkSchema(%s): %s'%(schema,v))
+      return v
     
 def getArchivingReader(attr_list=None,start_date=0,stop_date=0,hdb=None,tdb=None,logger=None,tango=''): 
     """
@@ -361,10 +368,13 @@ def getArchivingReader(attr_list=None,start_date=0,stop_date=0,hdb=None,tdb=None
         
         for a in attr_list:
           if not Schemas.checkSchema(name,a,start_date,stop_date):
+            #print('getArchivingReader(%s): out of range!'%name)
             failed[name]+=1
           elif not data['reader'].is_attribute_archived(a):
+            #print('getArchivingReader(%s,%s): not archived!'%(name,a))
             failed[name]+=1
-      except:
+      except Exception,e:
+        print('getArchivingReader(%s,%s): failed!: %s'%(name,a,e))
         failed[name]+=1
           
       if not failed[name]: 
@@ -379,7 +389,7 @@ def getArchivingReader(attr_list=None,start_date=0,stop_date=0,hdb=None,tdb=None
       return rd
     return None
     
-    ## OLD CODE, TO BE REMOVED IN NEXT RELEASE
+    ##@TODO: OLD CODE, TO BE REMOVED IN NEXT RELEASE
     #hdb,tdb = hdb or Reader('hdb',logger=logger),tdb or Reader('tdb',logger=logger)
     #attr_list = map(tdb.get_attribute_alias,attr_list if fandango.isSequence(attr_list) else [attr_list])
     #intdb,inhdb = all(map(tdb.is_attribute_archived,attr_list)),any(map(hdb.is_attribute_archived,attr_list))
