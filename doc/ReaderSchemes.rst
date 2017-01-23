@@ -32,7 +32,8 @@ Parameters
     
 reader
   will contain the default object to be used as data reader. 
-  It should implement is_attribute_archived and get_attribute(s)_values methods.
+  The methods is_attribute_archived and get_attribute(s)_values will be 
+  used by default if implemented.
 
 method
   method to be called as equivalent to get_attribute_values
