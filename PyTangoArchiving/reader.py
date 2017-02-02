@@ -327,7 +327,10 @@ class Schemas(object):
           end = fun.notNone(end,now)
           k.LOCALS.update({'attribute':attribute,
                 'start':start,'end':end,'now':now,
-                'reader':schema.get('reader')})
+                'reader':schema.get('reader'),
+                'schema':schema.get('schema'),
+                'dbname':schema.get('dbname',schema.get('schema','')),
+                })
           #print('(%s)%%(%s)'%(f,[t for t in k.LOCALS.items() if t[0] in f]))
           v =fun.evalX(f,k.LOCALS,k.MODULES)
         except:
