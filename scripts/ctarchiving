@@ -28,7 +28,7 @@ case $1 in
  python $PTAROOT/files.py check $*
   ;;
  --parse|parse)
-  python -c "import PyTangoArchiving as pta;print('\n');print('\n'.join(map(str,pta.files.ParseCSV('$2').items())))"
+  python -c "import PyTangoArchiving as pta;print('\n');print('\n'.join(map(str,pta.files.ParseCSV('$2',log=True).items())))"
   ;;
  --export|export)
   shift 1
