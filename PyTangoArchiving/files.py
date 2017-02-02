@@ -667,6 +667,7 @@ def ParseCSV(filename,schema='',filters=None,exclude=None,dedicated=None,deletel
     trace('In ParseCSV(%s,%s,%s,-%s) ...'%(filename,schema,filters,exclude))
     
     config = CSVArray()
+    config.trace = log
     config.load(filename,comment='#')
     assert len(config.rows)>1, 'File is empty!'
     
@@ -678,8 +679,14 @@ def ParseCSV(filename,schema='',filters=None,exclude=None,dedicated=None,deletel
         if not all(h in ''.join(head) for h in headers):
             print 'WRONG FILE HEADERS!'
             exit()
-      
-    [config.fill(head=h) for h in head]
+    
+    for h in head:
+      if not h: 
+        trace('In ParseCSV, empty headers!?: %s'%head)
+        break
+      else:
+        trace('In ParseCSV(...): fill column "%s"'%h)
+        config.fill(head=h)
     config.setOffset(1)
   
     trace('Getting attributes from the file ...')
