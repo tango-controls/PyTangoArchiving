@@ -25,13 +25,16 @@
 
 __doc__ = """ABBA, Archiving Best Browser for Alba"""
 
-from PyQt4 import Qt
-import taurus
-import PyTango
 import re,sys,os,time,traceback,threading
+import PyTango
 import fandango
 import fandango.functional as fun
 
+#from PyQt4 import Qt
+import taurus
+from taurus.external.qt import Qt,Qwt5
+from taurus.qt.qtgui.plot import TaurusTrend,TaurusPlot
+from taurus.qt.qtgui.panel import TaurusDevicePanel
 #from fandango.qt import modelSetter,TauEmitterThread,SingletonWorker
 from taurus.qt.qtgui.panel import TaurusValue
 from taurus.qt.qtgui.display import TaurusLabel,TaurusValueLabel

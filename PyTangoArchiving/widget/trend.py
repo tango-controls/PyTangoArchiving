@@ -1004,6 +1004,7 @@ def getArchivedTrendValues(trend_set,model,start_date=0,stop_date=None,log='INFO
             v = all(curr) and (not prev or not any(prev[:2]) or any(abs(x-y)>MARGIN for x,y in zip(curr,prev)))
             return v #print(prev,curr,all(curr) and all(prev[:2]) and [abs(x-y) for x,y in zip(curr,prev)],v)
         logger,reader = logger_obj.info,logger_obj.reader
+        print('using reader: %s(%s)' %(type(reader),reader.schema))
         if not multiprocess and time.time() < STARTUP+STARTUP_DELAY:
             logger_obj.warning('PyTangoArchiving.Reader waiting until %s'%fandango.time2str(STARTUP+STARTUP_DELAY))
             return []
