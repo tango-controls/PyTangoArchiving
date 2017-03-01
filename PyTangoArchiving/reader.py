@@ -34,7 +34,7 @@ from fandango.objects import Object,SingletonMap
 from fandango.log import Logger
 import fandango.functional as fun
 from fandango.functional import isString,isSequence,isCallable,str2time as str2epoch
-from fandango.functional import time2str as epoch2str
+from fandango.functional import clmatch, time2str as epoch2str
 from fandango.functional import ctime2time, mysql2time
 from fandango.linos import check_process,get_memory
 from fandango.tango import get_tango_host
@@ -273,9 +273,9 @@ class Schemas(object):
     LOCALS = fandango.functional.__dict__.copy()
     
     @classmethod
-    def load(k,tango=''):
+    def load(k,tango='',prop=''):
         tangodb = fandango.tango.get_database(tango)
-        schemas = tangodb.get_property('PyTangoArchiving','Schemas')['Schemas']
+        schemas = prop or tangodb.get_property('PyTangoArchiving','Schemas')['Schemas']
         if not schemas:
           schemas = ['tdb','hdb']
           tangodb.put_property('PyTangoArchiving',{'Schemas':schemas})
@@ -283,30 +283,37 @@ class Schemas(object):
         return k.SCHEMAS
     
     @classmethod
-    def getSchema(k,schema,tango='',logger=None):
+    def getSchema(k,schema,tango='',prop='',logger=None):
         if schema in k.SCHEMAS:
           return k.SCHEMAS[schema]
         dct = {'schema':schema,'dbname':schema} 
+
         try:
           tango = fandango.tango.get_database(tango)
-          props = tango.get_property('PyTangoArchiving',schema)[schema]
-          dct.update(map(str.strip,t.split('=',1)) for t in props)
+          props = prop or tango.get_property('PyTangoArchiving',schema)[schema]
+          if fandango.isSequence(props):
+            props = [map(str.strip,t.split('=',1)) for t in props]
+          dct.update(props)
+
           if dct.get('reader'):
             m,c = dct.get('reader').rsplit('.',1)
             if m not in k.MODULES:
               fandango.evalX('import %s'%m,modules=k.MODULES)
             #print('getSchema(%s): load %s reader'%(schema,dct.get('reader')))
-            dct['reader'] = fandango.evalX(
+            dct['logger'] = logger 
+            dct['reader'] = rd = fandango.evalX(
                         dct.get('reader'),
                         modules=k.MODULES,
-                        _locals={'logger':logger})
+                        _locals=dct)
+            
             if not hasattr(dct['reader'],'is_attribute_archived'):
               dct['reader'].is_attribute_archived = lambda *a,**k:True
             if not hasattr(dct['reader'],'get_attributes'):
               dct['reader'].get_attributes = lambda *a,**k:[]
             if not hasattr(dct['reader'],'get_attribute_values'):
               if dct['method']:
-                dct['reader'].get_attribute_values = getattr(dct['reader'],dct['method'])
+                dct['reader'].get_attribute_values = getattr(rd,dct['method'])
+            if not hasattr(rd,'schema'): rd.schema = dct['schema']
         except:
           traceback.print_exc()
           
@@ -326,6 +333,7 @@ class Schemas(object):
           start = fun.notNone(start,now-1)
           end = fun.notNone(end,now)
           k.LOCALS.update({'attribute':attribute,
+                'match':clmatch,'clmatch':clmatch,
                 'start':start,'end':end,'now':now,
                 'reader':schema.get('reader'),
                 'schema':schema.get('schema'),
@@ -377,7 +385,7 @@ def getArchivingReader(attr_list=None,start_date=0,stop_date=0,hdb=None,tdb=None
             #print('getArchivingReader(%s,%s): not archived!'%(name,a))
             failed[name]+=1
       except Exception,e:
-        print('getArchivingReader(%s,%s): failed!: %s'%(name,a,e))
+        print('getArchivingReader(%s,%s): failed!: %s'%(name,a,traceback.format_exc()))
         failed[name]+=1
           
       if not failed[name]: 
