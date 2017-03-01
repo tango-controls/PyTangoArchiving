@@ -1,7 +1,7 @@
 import taurus, sys, traceback
-from PyQt4 import Qt, QtCore, QtGui
+from taurus.external.qt import Qt, QtCore, QtGui
 from PyTangoArchiving import SnapAPI
-from taurus.qt.qtgui.panel import TaurusAttributeChooser
+from PyTangoArchiving.widget.taurusattributechooser import TaurusAttributeChooser
 
 class ContextEditUi(object):
     def setupUi(self, Form):
@@ -41,7 +41,7 @@ class ContextEditUi(object):
         self.verticalLayout = QtGui.QVBoxLayout()
         self.verticalLayout.setObjectName("verticalLayout")
 
-        self.attch=taurus.qt.qtgui.panel.TaurusAttributeChooserOLD()
+        self.attch=TaurusAttributeChooser()
         self.wMainVerticalLayout = QtGui.QVBoxLayout()
         self.wMainVerticalLayout.setObjectName("wMainVerticalLayout")
         self.label_4=self.attch.ui.label_4
