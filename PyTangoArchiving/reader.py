@@ -286,7 +286,7 @@ class Schemas(object):
     def getSchema(k,schema,tango='',prop='',logger=None):
         if schema in k.SCHEMAS:
           return k.SCHEMAS[schema]
-        dct = {'schema':schema,'dbname':schema} 
+        dct = {'schema':schema,'dbname':schema,'match':clmatch} 
 
         try:
           tango = fandango.tango.get_database(tango)
@@ -313,9 +313,12 @@ class Schemas(object):
             if not hasattr(dct['reader'],'get_attribute_values'):
               if dct['method']:
                 dct['reader'].get_attribute_values = getattr(rd,dct['method'])
+
             if not hasattr(rd,'schema'): rd.schema = dct['schema']
-        except:
-          traceback.print_exc()
+
+        except Exception,e:
+          print('Reader.getSchema(%s): failed! %s'%(schema,e))
+          dct = None
           
         k.SCHEMAS[schema] = dct
         return dct
@@ -324,6 +327,7 @@ class Schemas(object):
     def checkSchema(k,schema,attribute='',start=None,end=None):
       #print('In reader.Schemas.checkSchema(%s,%s,%s,%s)'%(schema,attribute,start,end))
       schema = k.getSchema(schema)
+      if not schema: return False
       f = schema.get('check')
       if not f: 
         v = True
@@ -530,7 +534,8 @@ class Reader(Object,SingletonMap):
                 if s in self.DefaultSchemas and any(c.lower().startswith(s.lower()) for c in tclasses):
                   self.configs[s] = Reader(s,logger=logger)
                 else:
-                  self.configs[s] = Schemas.getSchema(s).get('reader')
+                  sch = Schemas.getSchema(s)
+                  if sch: self.configs[s] = sch.get('reader')
             self.log.info("... created")
         
         if self.schema.lower() == 'tdb': 
