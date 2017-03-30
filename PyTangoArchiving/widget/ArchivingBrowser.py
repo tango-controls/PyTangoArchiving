@@ -37,7 +37,13 @@ from taurus.qt.qtgui.plot import TaurusTrend,TaurusPlot
 from taurus.qt.qtgui.panel import TaurusDevicePanel
 #from fandango.qt import modelSetter,TauEmitterThread,SingletonWorker
 from taurus.qt.qtgui.panel import TaurusValue
-from taurus.qt.qtgui.display import TaurusLabel,TaurusValueLabel
+from taurus.qt.qtgui.display import TaurusLabel
+
+try:
+  from taurus.qt.qtgui.display import TaurusValueLabel as TaurusLabel
+except:
+  from taurus.qt.qtgui.display import TaurusLabel
+
 from taurus.qt.qtcore.util.emitter import SingletonWorker
 
 
