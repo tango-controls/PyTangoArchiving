@@ -8,24 +8,22 @@ Just one schema, using DbConfig
 
 You should setup your PyTangoArchiving.DbConfig property
 
-In Jive:
+In Jive::
 
-Edit => Create Free Property => PyTangoArchiving
+  Edit => Create Free Property => PyTangoArchiving
 
-Tabs => Property => New Property => DbConfig = user:password@host/db_name
+  Tabs => Property => New Property => DbConfig = user:password@host/db_name
 
-It should be enough, to test it do:
+It should be enough, to test it do::
 
-
-import PyTangoArchiving as pta
-rd = pta.Reader()
-print(rd.get_attributes())
-
+  import PyTangoArchiving as pta
+  rd = pta.Reader()
+  print(rd.get_attributes())
 
 Your archived attributes should appear in the list, then just read the values from
-the API or the GUI:
+the API or the GUI::
 
-rd.get_attribute_values('lmc/c01/fecb/…',-600)
+  rd.get_attribute_values('your/tango/device/attribute',-600)
 
 Using multiple schemas
 ----------------------
