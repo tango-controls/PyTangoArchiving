@@ -36,7 +36,8 @@ import fandango
 from fandango.db import FriendlyDB
 import fandango.functional as fun
 import fandango.linos as linos
-from fandango.functional import date2time,date2str,mysql2time,ctime2time,time2str,isNumber,clmatch
+from fandango.functional import date2time,date2str,mysql2time,ctime2time,\
+    time2str,isNumber,clmatch
 from fandango.functional import reldiff,absdiff,seqdiff
 from fandango.arrays import decimate_custom,decimate_array
 
@@ -122,29 +123,37 @@ def interpolate_array(array,mint=None,maxt=None,step=None,nsteps=None):
     ys = np.interp(xs,get_col(array,0),get_col(array,1))
     return np.array((xs,ys)).T
     
-def decimate_array(array,step=None,nsteps=None,diff=None,interpolate=False):
-    """
-    It decimates an array taking into account values in the first column
-    """
-    import numpy as np
-    if interpolate:
-        return interpolate_array(array,step=step,nsteps=nsteps)
-    if any((step,nsteps)):
-        mint,maxt = np.min(get_col(array,0)),np.max(get_col(array,0))
-        if step is None: step  = float(maxt-mint)/nsteps
-        tround = np.array(get_col(array,0)/step,dtype='int')
-        array = array[get_array_steps(tround)]
-    elif diff is None:
-        diff = 0
-    if diff is not None:
-        if diff is True: diff = 0
-        vs = array[:,1]
-        diff1 = np.insert(np.abs(vs[:-1]-vs[1:])>diff,0,True) #Different from next value
-        diff2 = np.append(np.abs(vs[1:]-vs[:-1])>diff,True) #Different from previous value
-        nans = get_array_steps(np.isnan(vs))
-        #print 'diff1,diff2,nans: %d,%d,%d'%tuple(len(np.nonzero(a)[0]) for a in (diff1,diff2,nans))
-        array = array[diff1|diff2|nans]
-    return array
+#def decimate_array(array,step=None,nsteps=None,diff=None,interpolate=False):
+    #"""
+    # DEPRECATED!!! Use fandango.arrays.decimate_array instead!
+    #It decimates an array taking into account values in the first column
+    #"""
+    #import numpy as np
+    #if not isinstance(array,np.ndarray):
+        #array = np.array(array)
+    #if interpolate:
+        #return interpolate_array(array,step=step,nsteps=nsteps)
+    #if any((step,nsteps)):
+        #mint,maxt = np.min(get_col(array,0)),np.max(get_col(array,0))
+        #if step is None: step  = float(maxt-mint)/nsteps
+        #tround = np.array(get_col(array,0)/step,dtype='int')
+        #array = array[get_array_steps(tround)]
+    #elif diff is None:
+        #diff = 0
+    #if diff is not None:
+        #if diff is True: diff = 0
+        #vs = array[:,1] #[:,1]
+        #nans = get_array_steps(np.isnan(vs))
+        #try:
+            ### But this step crashes with nans!!
+            #diff1 = np.insert(np.abs(vs[:-1]-vs[1:])>diff,0,True) #Different from next value
+            #diff2 = np.append(np.abs(vs[1:]-vs[:-1])>diff,True) #Different from previous value
+        #except TypeError,e:
+            #diff1 = np.insert(np.abs(vs[:-1]!=vs[1:]),0,True)
+            #diff2 = np.append(np.abs(vs[1:]!=vs[:-1]),True)
+        ##print 'diff1,diff2,nans: %d,%d,%d'%tuple(len(np.nonzero(a)[0]) for a in (diff1,diff2,nans))
+        #array = array[diff1|diff2|nans]
+    #return array
         
 def patch_booleans(history,trace=TRACE):
     if trace: print 'In patch_booleans(%d,%s)'%(len(history),history and history[0] or '')
@@ -174,7 +183,7 @@ def patch_booleans(history,trace=TRACE):
 ###############################################################################
 # Reporting
 
-def get_attributes_as_event_list(attributes,start_date,stop_date=None,formula=None):
+def get_attributes_as_event_list(attributes,start_date=None,stop_date=None,formula=None):
     """
     This method returns attribute changes ordered by time (event_list format)
     Attributes can be passed as a list or as a formula (TangoEval) or both. 
@@ -184,6 +193,7 @@ def get_attributes_as_event_list(attributes,start_date,stop_date=None,formula=No
     from fandango import isSequence,isString,TangoEval
     rd = Reader()
     te = fandango.TangoEval()
+
     if isString(attributes) and formula is None:
         try:
             formula = attributes
@@ -191,14 +201,21 @@ def get_attributes_as_event_list(attributes,start_date,stop_date=None,formula=No
             if len(attributes)==1: formula = None
         except:
             formula,attributes = None,[]
-    avals = rd.get_attributes_values(attributes,start_date,stop_date)
+
+    if isSequence(attributes):
+        assert start_date, 'start_date argument is missing!'
+        attributes = rd.get_attributes_values(attributes,start_date,stop_date)
+    
+    avals = dict((k,decimate_array(v)) for k,v in attributes.items())
     buffer = sorted((v[0],k,v[1]) for k,l in avals.items() for i,v in enumerate(l) if not i or v[1]!=l[i-1][1])
+    
     if formula is not None:
         cache,parsed = {},te.parse_formula(formula)
         for i,event in enumerate(buffer):
             cache[event[1]] = event[2]
             f = te.eval(parsed,cache) if all(k in cache for k in attributes) else None
             buffer[i] = (event[0],event[1],event[2],f)
+            
     return buffer
 
 ###############################################################################
@@ -206,39 +223,76 @@ def get_attributes_as_event_list(attributes,start_date,stop_date=None,formula=No
 
 SCHEMAS = ('hdb','tdb','snap')
     
-def decimate_db_table(db_name,host,user,passwd,table,start=0,period=300,iteration=1000):
+def decimate_db_table(db_name,host,user,passwd,table,start=0,end=0,period=300,
+        iteration=1000,condition='',columns=['time','value'],us=True,test=False):
     """ 
-    This method will remove all values from a MySQL table that seem duplicated in time or value.
+    This method will remove all values from a MySQL table that seem duplicated 
+    in time or value.
     All values with a difference in time lower than period will be kept.
+    
+    To use it with hdb++:
+    
+    decimate_db_table('hdbpp',user='...',passwd='...',
+      table = 'att_scalar_devdouble_ro',
+      start = 0,
+      end = now()-600*86400,
+      period = 60, #Keep a value every 60s
+      condition = 'att_conf_id = XX',
+      iteration = 1000,
+      columns = ['data_time','value_r'],
+      us=True,
+      )
     """
-    print 'Decimating all values in %s with equal values and less than %d seconds in between.'%(table,period)
+    print('Decimating all values in %s with equal values and less '
+      'than %d seconds in between.'%(table,period))
     
     db = FriendlyDB(db_name,host,user,passwd)
-    rw = 'write_value' in ','.join([l[0] for l in db.Query("describe %s"%table)]).lower()
-    column = 'read_value,write_value' if rw else 'value'
-    t0,v0,w0,now = start,None,None,time.time()
+    #rw = 'write_value' in ','.join([l[0] for l in db.Query("describe %s"%table)]).lower()
+    #date,column = 'read_value,write_value' if rw else 'value'
+    date,column = columns[0],columns[1:]
+    t0,vw0,now = time2date(start),None,time.time()
     removed,pool = 0,[]
-    while t0<now:
-        query = "select time,%s from %s where time>'%s' limit %d"%(column,table,time2str(t0),iteration)
+    
+    while t0<(end or now):
+        query = "select %s,%s from %s where %s>'%s'"%(
+                  date,','.join(column),table,date,time2str(t0))
+        
+        if condition: query+=' and %s'%condition
+        query += ' limit %d'%iteration
         values = db.Query(query)
-        print '%d values returned'%len(values)
+        print('inspecting %d values'%len(values))
+        
         if not values: 
             break
+          
         for v in values:
-            t1,v1,w1 = mysql2time(v[0]),v[1],(rw and v[2] or None)
-            if (t1-t0)<period and v1==v0 and w1==w0:
+            t1,vw1 = v[0],v[1:len(column)] #v[1],(rw and v[2] or None)
+            if date2time(t1-t0)<period and vw0==vw1:
                 if t1==t0:
-                    db.Query("delete from %s where time = '%s' limit 1" % (table,time2str(t1)))
+                    if not test:
+                        db.Query("delete from %s where time = '%s' limit 1" % (
+                          table,date2str(t1,us=us)))
                     removed +=1
                 else:
                     pool.append(t1)
+                    
             else:
                 if pool:
-                    db.Query("delete from %s where time between '%s' and '%s'" % (table,time2str(t0+1),time2str(t1-1)))
-                    removed += len(pool)                    
+                    if not test:
+                        #Don't use the between syntax
+                        q = "delete from %s where "%table
+                        q+= "time > '%s' and "%date2str(t0)
+                        q+= "time < '%s'"%date2str(t1)
+                        db.Query(q)
+
+                    removed += len(pool)
                     pool = []
+                    
                 t0,v0,w0 = t1,v1,w1
-        print 't0: %s; removed %d values' % (time2str(t0),removed)
+                
+        print('t0: %s; removed %d values' % (time2str(t0),removed))
+    print('decimate_db_table(%s,%s) took %d seconds to remove %d values'%(
+      table,condition,time.time()-now,removed))
     return removed
 
 def check_backtracking(api,schema='hdb',attributes=[],nvalues=10):
