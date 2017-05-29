@@ -6,7 +6,21 @@
 @TODO Rename     widgetArchivingBrowser.ModelSearchWidget to widget.browser.ArchivingBrowser
 @TODO: rename ArchivingBrowser to browser
 
-7.2 First release from git
+
+7.3 Identify multiples schemas (including HDB++) - May 2017
+
+ctarchiving: updated launcher
+ctarchiving: reduce logging for shell-launched commands
+api: fix bug in start_archiving, pull request #1 from cmft/patch-1
+reader.get_attribute_values: make cache usage optional
+schemas.Schemas: identify new archiving schemas, property based
+schemas.Schemas: filter out unreachable Schemas
+servers.PyExtractor: enable as submodule
+taurusfinder: adapt imports to taurus4 (unfinished)
+utils.decimate_db_tables: adapt to hdbpp, move decimate_array to fandango
+widget: adapt to Taurus4, include TaurusAttributeChooser widget
+
+7.2 First release from git - 2017/01/13
 
 Add --log-x option to archiving2plot
 Rename ctfinder to ctsearch
