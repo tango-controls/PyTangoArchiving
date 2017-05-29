@@ -51,7 +51,8 @@ class Schemas(object):
     @classmethod
     def getSchema(k,schema,tango='',prop='',logger=None):
 
-        if k.SCHEMAS.get(schema,None):
+        if schema in k.SCHEMAS:
+          # Failed schemas should be also returned (to avoid unneeded retries)
           return k.SCHEMAS[schema]
         
         dct = {'schema':schema,'dbname':schema,
