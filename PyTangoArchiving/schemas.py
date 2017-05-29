@@ -50,8 +50,10 @@ class Schemas(object):
     
     @classmethod
     def getSchema(k,schema,tango='',prop='',logger=None):
-        if schema in k.SCHEMAS:
+
+        if k.SCHEMAS.get(schema,None):
           return k.SCHEMAS[schema]
+        
         dct = {'schema':schema,'dbname':schema,
                'match':clmatch,'clmatch':clmatch} 
 
