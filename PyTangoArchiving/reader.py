@@ -802,7 +802,9 @@ class Reader(Object,SingletonMap):
         return start_date,start_time,stop_date,stop_time
         
         
-    def get_attribute_values(self,attribute,start_date,stop_date=None,asHistoryBuffer=False,decimate=False,notNone=False,N=-1):
+    def get_attribute_values(self,attribute,start_date,stop_date=None,
+            asHistoryBuffer=False,decimate=False,notNone=False,N=-1,
+            cache=True):
         '''         
         This method reads values for an attribute between specified dates.
         This method may use MySQL queries or an H/TdbExtractor DeviceServer to get the values from the database.
@@ -888,15 +890,19 @@ class Reader(Object,SingletonMap):
         
         #######################################################################
         # CACHE MANAGEMENT
-        self.log.debug('Checking Keys in Cache: %s'%self.cache.keys())
-        margin = max((60.,.01*abs(l2-l1)))
-        nearest = [(a,s1,s2,h,d) for a,s1,s2,h,d in self.cache 
-            if a==attribute and h==asHistoryBuffer and d==bool(decimate) 
-            and (s1-margin<=l1 and l2<=s2+margin)]
-        if nearest: attribute,l1,l2,asHistoryBuffer,decimate = nearest[0]
-        if (attribute,l1,l2,asHistoryBuffer,bool(decimate)) in self.cache:
-            self.log.info('Reusing Cached values for (%s)' % (str((attribute,start_date,stop_date,asHistoryBuffer,decimate))))
-            values = self.cache[(attribute,l1,l2,asHistoryBuffer,bool(decimate))]
+        cache = self.cache if cache else {}
+        if cache:
+            self.log.debug('Checking Keys in Cache: %s'%self.cache.keys())
+            margin = max((60.,.01*abs(l2-l1)))
+            nearest = [(a,s1,s2,h,d) for a,s1,s2,h,d in self.cache 
+                if a==attribute and h==asHistoryBuffer and d==bool(decimate) 
+                and (s1-margin<=l1 and l2<=s2+margin)]
+            if nearest: 
+                attribute,l1,l2,asHistoryBuffer,decimate = nearest[0]
+        ckey = (attribute,l1,l2,asHistoryBuffer,bool(decimate))
+        if cache.get(ckey,False):
+            self.log.info('Reusing Cached values for (%s)' % (str(ckey)))
+            values = self.cache[ckey]
         else:
             #######################################################################
             # QUERYING NEW HDB/TDB VALUES
