@@ -295,12 +295,13 @@ def getArchivingReader(attr_list=None,start_date=0,stop_date=0,
         log = logger and logger.info or None
 
     log('getArchivingReader(%s): %s'%(attr_list,schemas))
-      
-    failed = fandango.defaultdict(int)
+    a,failed = '',fandango.defaultdict(int)
     
     for name in schemas:
       try:
         data = Schemas.getSchema(name,tango=tango)
+        if data is None: continue #Unreached schema
+      
         ## Backwards compatibility
         if 'tdb' in (name,data.get('schema'),data.get('dbname')):
           if not data.get('reader'):
@@ -319,6 +320,7 @@ def getArchivingReader(attr_list=None,start_date=0,stop_date=0,
           elif not data['reader'].is_attribute_archived(a):
             #print('getArchivingReader(%s,%s): not archived!'%(name,a))
             failed[name]+=1
+            
       except Exception,e:
         print('getArchivingReader(%s,%s): failed!: %s'%(name,a,traceback.format_exc()))
         failed[name]+=1
