@@ -22,7 +22,8 @@
 #############################################################################
 
 """
-PyTangoArchiving.reader: This module provides the Reader object; a lightweith api for archiving clients and/or scripts.
+PyTangoArchiving.reader: This module provides the Reader object; 
+a lightweigth api for archiving clients and/or scripts.
 """
 
 import traceback,time,os,re
@@ -42,6 +43,7 @@ from fandango.tango import get_tango_host
 from PyTangoArchiving.utils import PyTango
 import PyTangoArchiving.utils as utils
 from PyTangoArchiving.dbs import ArchivingDB
+from PyTangoArchiving.schemas import Schemas
 import MySQLdb,MySQLdb.cursors
 
 __test__ = {}
@@ -245,7 +247,8 @@ def expandEvalAttribute(attribute):
 def isAttributeArchived(attribute,reader=None,schema=''):
     """
     This method returns whether an attribute contains values or not in the database.
-    The attribute could be no longer archived, but if there's data to retrieve it will return True
+    The attribute could be no longer archived, but if there's data to retrieve 
+    it will return True
     """
     reader = reader or Reader(schema)
     reader.debug('In PyTangoArchiving.reader.isAttributeArchived(%s)'%attribute)
@@ -254,104 +257,27 @@ def isAttributeArchived(attribute,reader=None,schema=''):
           return all(isAttributeArchived(a) for a in expandEvalAttribute(a))
       attribute = reader.alias.get(attribute,attribute)
       attribute = attribute.lower().split('[')[0]
-      if not reader.check_state() or attribute in reader.failed_attributes: return False
-      if attribute in reader.available_attributes: return True
+
+      if not reader.check_state() or attribute in reader.failed_attributes: 
+        return False
+
+      if attribute in reader.available_attributes: 
+        return True
+
       try:
         value = attribute in reader.get_attributes()
       except:
         value = False
+
       (reader.available_attributes if value else reader.failed_attributes).append(attribute)
       return value
+
     except:
       return False
   
-class Schemas(object):
-    """ Schemas kept in a singleton object """
     
-    SCHEMAS = fandango.SortedDict()
-    MODULES = {'fandango':fun,'fun':fun} #Limited access to fandango library
-    LOCALS = fandango.functional.__dict__.copy()
-    
-    @classmethod
-    def load(k,tango='',prop=''):
-        tangodb = fandango.tango.get_database(tango)
-        schemas = prop or tangodb.get_property('PyTangoArchiving','Schemas')['Schemas']
-        if not schemas:
-          schemas = ['tdb','hdb']
-          tangodb.put_property('PyTangoArchiving',{'Schemas':schemas})
-        [k.getSchema(schema,tango) for schema in schemas]
-        return k.SCHEMAS
-    
-    @classmethod
-    def getSchema(k,schema,tango='',prop='',logger=None):
-        if schema in k.SCHEMAS:
-          return k.SCHEMAS[schema]
-        dct = {'schema':schema,'dbname':schema,'match':clmatch} 
-
-        try:
-          tango = fandango.tango.get_database(tango)
-          props = prop or tango.get_property('PyTangoArchiving',schema)[schema]
-          if fandango.isSequence(props):
-            props = [map(str.strip,t.split('=',1)) for t in props]
-          dct.update(props)
-
-          if dct.get('reader'):
-            m,c = dct.get('reader').rsplit('.',1)
-            if m not in k.MODULES:
-              fandango.evalX('import %s'%m,modules=k.MODULES)
-            #print('getSchema(%s): load %s reader'%(schema,dct.get('reader')))
-            dct['logger'] = logger 
-            dct['reader'] = rd = fandango.evalX(
-                        dct.get('reader'),
-                        modules=k.MODULES,
-                        _locals=dct)
-            
-            if not hasattr(dct['reader'],'is_attribute_archived'):
-              dct['reader'].is_attribute_archived = lambda *a,**k:True
-            if not hasattr(dct['reader'],'get_attributes'):
-              dct['reader'].get_attributes = lambda *a,**k:[]
-            if not hasattr(dct['reader'],'get_attribute_values'):
-              if dct['method']:
-                dct['reader'].get_attribute_values = getattr(rd,dct['method'])
-
-            if not hasattr(rd,'schema'): rd.schema = dct['schema']
-
-        except Exception,e:
-          print('Reader.getSchema(%s): failed! %s'%(schema,e))
-          dct = None
-          
-        k.SCHEMAS[schema] = dct
-        return dct
-    
-    @classmethod
-    def checkSchema(k,schema,attribute='',start=None,end=None):
-      #print('In reader.Schemas.checkSchema(%s,%s,%s,%s)'%(schema,attribute,start,end))
-      schema = k.getSchema(schema)
-      if not schema: return False
-      f = schema.get('check')
-      if not f: 
-        v = True
-      else:
-        try:
-          now = time.time()
-          start = fun.notNone(start,now-1)
-          end = fun.notNone(end,now)
-          k.LOCALS.update({'attribute':attribute,
-                'match':clmatch,'clmatch':clmatch,
-                'start':start,'end':end,'now':now,
-                'reader':schema.get('reader'),
-                'schema':schema.get('schema'),
-                'dbname':schema.get('dbname',schema.get('schema','')),
-                })
-          #print('(%s)%%(%s)'%(f,[t for t in k.LOCALS.items() if t[0] in f]))
-          v =fun.evalX(f,k.LOCALS,k.MODULES)
-        except:
-          traceback.print_exc()
-          v =False
-      #print('checkSchema(%s): %s'%(schema,v))
-      return v
-    
-def getArchivingReader(attr_list=None,start_date=0,stop_date=0,hdb=None,tdb=None,logger=None,tango=''): 
+def getArchivingReader(attr_list=None,start_date=0,stop_date=0,hdb=None,tdb=None,
+    logger=None,tango=''): 
     """
     It returns the most suitable reader for a list of attributes
     """
@@ -460,8 +386,10 @@ class Reader(Object,SingletonMap):
     RetentionPeriod = 3*24*3600
     ExportPeriod = 600
     CacheTime = 600
-    DefaultSchemas = ['hdb','tdb',] #'snap',) #'*','all') @TODO: Snap should be readable by Reader
-    ValidArgs = ['db','config','servers','schema','timeout','log','logger','tango_host','alias_file']
+    DefaultSchemas = ['hdb','tdb',] #'snap',) 
+                     #'*','all') @TODO: Snap should be readable by Reader
+    ValidArgs = ['db','config','servers','schema','timeout',
+                 'log','logger','tango_host','alias_file']
     
     @classmethod
     def parse_instance_key(cls,*p,**k):
@@ -491,7 +419,8 @@ class Reader(Object,SingletonMap):
         self._last_db = ''
         self.dbs = {}
         self.alias,self.servers,self.extractors = {},{},[]
-        self.schema = schema if schema is not None else ([s for s in self.DefaultSchemas if s in db.lower()] or ['*'])[0]
+        self.schema = schema if schema is not None else (
+            [s for s in self.DefaultSchemas if s in db.lower()] or ['*'])[0]
         self.tango_host = tango_host or get_tango_host()
         self.tango = PyTango.Database(*self.tango_host.split(':'))
         self.timeout = timeout
@@ -527,15 +456,18 @@ class Reader(Object,SingletonMap):
                 self.log.warning('Unable to connect to MySQL, using Java %sExtractor devices'%self.schema.upper())
         else:
             self.log.info("Creating 'universal' reader")
-            getArchivingReader()
+            rd = getArchivingReader()
             #Hdb++ classes will be scanned when searching for HDB
             tclasses = map(str.lower,fandango.get_database().get_class_list('*'))
             for s in Schemas.SCHEMAS:
-                if s in self.DefaultSchemas and any(c.lower().startswith(s.lower()) for c in tclasses):
+                if (s in self.DefaultSchemas 
+                      and any(c.startswith(s.lower()) for c in tclasses)):
                   self.configs[s] = Reader(s,logger=logger)
+
                 else:
                   sch = Schemas.getSchema(s)
                   if sch: self.configs[s] = sch.get('reader')
+
             self.log.info("... created")
         
         if self.schema.lower() == 'tdb': 
@@ -694,7 +626,6 @@ class Reader(Object,SingletonMap):
               except:
                 self.log.debug(traceback.format_exc())
             return sorted(set(attrs))
-            #return sorted(set(a for l in (x.get_attributes(active=active) for x in self.configs.values()) for a in l))
         
         if self.available_attributes and self.current_attributes and time.time()<(self.updated+self.CacheTime):
             return self.available_attributes
@@ -824,7 +755,9 @@ class Reader(Object,SingletonMap):
             self.log.info('In PyTangoArchiving.Reader.get_attribute_values: Archiving not available!')
             return []
 
-        start_date,start_time,stop_date,stop_time = self.get_time_interval(start_date,stop_date)
+        start_date,start_time,stop_date,stop_time = \
+            self.get_time_interval(start_date,stop_date)
+          
         GET_LAST = 0 < (time.time()-stop_time) < 3
         
         ######################################################################    
