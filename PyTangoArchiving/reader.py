@@ -276,8 +276,8 @@ def isAttributeArchived(attribute,reader=None,schema=''):
       return False
   
     
-def getArchivingReader(attr_list=None,start_date=0,stop_date=0,hdb=None,tdb=None,
-    logger=None,tango=''): 
+def getArchivingReader(attr_list=None,start_date=0,stop_date=0,
+                       hdb=None,tdb=None,logger=None,tango=''): 
     """
     It returns the most suitable reader for a list of attributes
     """
@@ -289,8 +289,13 @@ def getArchivingReader(attr_list=None,start_date=0,stop_date=0,hdb=None,tdb=None
       
     if not attr_list: return None
 
-    if logger is True: log,logger = fandango.printf,None
-    else: log = logger and logger.info or None
+    if logger is True: 
+        log,logger = fandango.printf,None
+    else: 
+        log = logger and logger.info or None
+
+    log('getArchivingReader(%s): %s'%(attr_list,schemas))
+      
     failed = fandango.defaultdict(int)
     
     for name in schemas:

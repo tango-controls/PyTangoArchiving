@@ -26,10 +26,10 @@ PyTangoArchiving.schemas: This module provides the Schemas object;
 a singleton to detect and manage multiple archiving schemas.
 """
 
-
-
+import traceback,time,re
 import fandango
 import fandango.functional as fun
+from fandango import clmatch
 
 class Schemas(object):
     """ Schemas kept in a singleton object """
@@ -52,7 +52,8 @@ class Schemas(object):
     def getSchema(k,schema,tango='',prop='',logger=None):
         if schema in k.SCHEMAS:
           return k.SCHEMAS[schema]
-        dct = {'schema':schema,'dbname':schema,'match':clmatch} 
+        dct = {'schema':schema,'dbname':schema,
+               'match':clmatch,'clmatch':clmatch} 
 
         try:
           tango = fandango.tango.get_database(tango)
