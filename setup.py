@@ -34,14 +34,14 @@ f = './scripts/'
 scripts = [
 f+'taurusfinder',
 f+'ctarchiving',
-f+'ctsnaps',
-f+'archiving2csv',
-f+'archiving2plot',
-f+'archiving_report.py',
-f+'archiving_service.py',
-f+'archiver_health_check.py',
-f+'cleanTdbFiles',
-f+'db_repair.py',
+#f+'ctsnaps',
+#f+'archiving2csv',
+#f+'archiving2plot',
+#f+'archiving_report.py',
+#f+'archiving_service.py',
+#f+'archiver_health_check.py',
+#f+'cleanTdbFiles',
+#f+'db_repair.py',
 ]
 
 entry_points = {
