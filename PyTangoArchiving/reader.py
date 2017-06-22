@@ -742,7 +742,7 @@ class Reader(Object,SingletonMap):
         
     def get_attribute_values(self,attribute,start_date,stop_date=None,
             asHistoryBuffer=False,decimate=False,notNone=False,N=-1,
-            cache=True):
+            cache=True,fallback=True):
         '''         
         This method reads values for an attribute between specified dates.
         This method may use MySQL queries or an H/TdbExtractor DeviceServer to get the values from the database.
@@ -795,16 +795,44 @@ class Reader(Object,SingletonMap):
         # Generic Reader, using PyTangoArchiving.Schemas properties
         
         if self.db_name=='*':
-            rd = getArchivingReader(attribute,start_time,stop_time,self.configs.get('hdb',None),self.configs.get('tdb',None),logger=self.log)
+          
+            rd = getArchivingReader(attribute,start_time,stop_time,
+                  self.configs.get('hdb',None),self.configs.get('tdb',None),
+                  logger=self.log)
             if not rd: 
-                self.log.warning('In PyTangoArchiving.Reader.get_attribute_values(%s): No valid schema at %s'%(attribute,start_date))
+                self.log.warning('In get_attribute_values(%s): '
+                  'No valid schema at %s'%(attribute,start_date))
                 return []
-            self.log.info('In PyTangoArchiving.Reader.get_attribute_values(%s): Using %s schema at %s'%(attribute,rd.schema,start_date))
-            vals = rd.get_attribute_values(attribute,start_date,stop_date,asHistoryBuffer,decimate,notNone,N)
-            if not len(vals) and rd.schema.lower()=='tdb' and self.configs['hdb'].is_attribute_archived(attribute):
-                #if not history and reader.schema.lower()=='tdb' and tau_trend.HDBArchivingReader.is_attribute_archived(attribute):
-                self.log.info('In get_attribute_values(%s,%s,%s)(%s): fallback to HDB as TDB returned no data'%(attribute,start_date,stop_date,rd.schema))
-                vals = self.configs['hdb'].get_attribute_values(attribute,start_date,stop_date,asHistoryBuffer=asHistoryBuffer,decimate=decimate,N=N)
+            self.log.info('In get_attribute_values(%s): '
+              'Using %s schema at %s'%(attribute,rd.schema,start_date))
+
+            vals = rd.get_attribute_values(attribute,start_date,stop_date,
+                                           asHistoryBuffer,decimate,notNone,N)
+            
+            if fallback:
+
+                if not len(vals) and rd.schema.lower()=='tdb' \
+                  and 'hdb' in self.configs \
+                  and self.configs['hdb'].is_attribute_archived(attribute):
+                    
+                    self.log.info('In get_attribute_values(%s,%s,%s)(%s): '
+                      'fallback to HDB as TDB returned no data'%(
+                        attribute,start_date,stop_date,rd.schema))
+                    vals = self.configs['hdb'].get_attribute_values(
+                      attribute,start_date,stop_date,
+                      asHistoryBuffer=asHistoryBuffer,decimate=decimate,N=N)
+                    
+                elif not len(vals) and rd.schema.lower()=='hdb' \
+                  and 'tdb' in self.configs \
+                  and self.configs['tdb'].is_attribute_archived(attribute):
+                    
+                    self.log.info('In get_attribute_values(%s,%s,%s)(%s): '
+                      'fallback to TDB as HDB returned no data'%(
+                        attribute,start_date,stop_date,rd.schema))
+                    vals = self.configs['tdb'].get_attribute_values(
+                      attribute,start_date,stop_date,
+                      asHistoryBuffer=asHistoryBuffer,decimate=decimate,N=N)
+                
             return vals
           
         # END OF GENERIC CODE
