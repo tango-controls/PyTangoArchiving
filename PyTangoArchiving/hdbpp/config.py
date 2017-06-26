@@ -59,8 +59,10 @@ class HDBpp(ArchivingDB,SingletonMap):
               user = get_device_property(mans[0],'DbUser')
               passwd = get_device_property(mans[0],'DbPassword')
         ArchivingDB.__init__(self,db_name,host,user,passwd)
-        if not self.get_manager():
-            self.warning('HdbConfigurationManager not found!!')
+        try:
+            assert self.get_manager(),'HdbConfigurationManager not found!!'
+        except Exception,e:
+            print(e)
         
     def get_all_managers(self):
         return get_class_devices('HdbConfigurationManager')

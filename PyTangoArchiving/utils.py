@@ -225,7 +225,7 @@ SCHEMAS = ('hdb','tdb','snap')
 
 from fandango import time2date,str2time
     
-def my_decimate_db_table(db,table,host='',user='',passwd='',start=0,end=0,period=300,iteration=1000,condition='',cols=None,us=True,test=False):
+def decimate_db_table(db,table,host='',user='',passwd='',start=0,end=0,period=300,iteration=1000,condition='',cols=None,us=True,test=False, repeated = False):
     """ 
     This method will remove all values from a MySQL table that seem duplicated 
     in time or value.
@@ -244,95 +244,116 @@ def my_decimate_db_table(db,table,host='',user='',passwd='',start=0,end=0,period
       us=True,
       )
     """
-    print('Decimating all values in %s with equal values and less '
-      'than %d seconds in between.'%(table,period))
+    print('Decimating all repeated values in %s(%s) with less '
+      'than %d seconds in between.'%(table,condition,period))
     
     db = FriendlyDB(db,host,user,passwd) if not isinstance(db,FriendlyDB) else db
     #rw = 'write_value' in ','.join([l[0] for l in db.Query("describe %s"%table)]).lower()
     #date,column = 'read_value,write_value' if rw else 'value'
     columns = cols or ['time','value']
     date,column = columns[0],columns[1:]
-    t0,vw0,now = time2date(start) if isNumber(start) else time2date(str2time(start)),None,time2date(time.time())
+    start = time2date(start) if isNumber(start) else time2date(str2time(start))
+    t0,vw0,now = start,None,time2date(time.time())
     end = time2date(end) if isNumber(end) else time2date(str2time(end))
-    removed,pool = 0,[]
+    removed,pool,reps = 0,[],[]
     count = 0
+    
+    ## WHY T0 AND END ARE DATES!?!? : to be easy to compare against read values
 
     while t0<(end or now):
 
         query = "select %s,%s from %s where" %(date,','.join(column),table)
-	query += " %s>'%s'"%(date,date2str(t0))
+        query += " '%s' < %s"%(date2str(t0,us=True),date)#,date2str(end))
         if condition: query+=' and %s'%condition
         query += ' order by %s'%date
         query += ' limit %d'%iteration
         values = db.Query(query)
-        print(query+': %d'%len(values))
+        #print(query+': %d'%len(values))
         #print('inspecting %d values between %s and %s'%(len(values),date2str(t0),date2str(end)))
         
         if not values: 
             break
           
         for i,v in enumerate(values):
-
-            t1,vw1 = v[0],v[1:len(column)] #v[1],(rw and v[2] or None)
-            e0,e1 = 1e-3*int(1e3*date2time(t0)),1e-3*int(1e3*date2time(t1))
+            count += 1
+            t1,vw1 = v[0],v[1:1+len(column)] #v[1],(rw and v[2] or None)
+            #print((i,count,t1,vw0,vw1))
+            e0,e1 = 1e-3*int(1e3*date2time(t0)),1e-3*int(1e3*date2time(t1)) #millisecs
             tdelta = e1-e0
-            is_last = (i >= len(values)-2)
+            is_last = i >= (len(values)-1) or t1 >= end
             buff = len(pool)
 
-            if i and (is_last or tdelta>=period or vw0!=vw1):
+            if is_last or tdelta>=period or vw0!=vw1:
+                #if tdelta>=period: print('%s >= %s'%(tdelta,period))
+                #elif vw0!=vw1: print('%s != %s'%(vw0,vw1))
+                #else: print('i = %s/%s'%(i,len(values)))
                 # End of repeated values, apply decimation ...
-                e1 = date2time(values[i-1][0])
                 if buff:
-                    if (int(e1)-int(e0))>1:
-                        print('remove %d values in pool'%len(pool))
+                    # Dont apply remove on windows < 1 second
+                    e1 = date2time(values[i-1][0]) #previous value
+                    if True: #(int(e1)-int(e0))>1:
+                        #print('remove %d values in pool'%len(pool))
                         if not test:
-                            #Don't use the between syntax
+                            #Don't use the between syntax!!
                             q = "delete from %s where "%table
                             if condition:
                                 q+= condition+' and '
-                            e0,e1 = e0+1,e1-1 #t0 should not be removed!
-                            q+= "%s > '%s' and "%(date,time2str(e0)) 
-                            q+= "%s < '%s'"%(date,time2str(e1))
-                            print(q)
+                            #e0,e1 = e0+1,e1-1 #t0 should not be removed!
+                            q+= "%s > '%s' and "%(date,time2str(e0,us=us)) 
+                            q+= "%s < '%s'"%(date,time2str(e1,us=us))
+                            #print(q)
+                            #removed += buff
                             db.Query(q)
 
-                        #removed += buff
-                        print('t0: %s; removed %d values' % (date2str(t0),removed))
+                        #print('t0: %s; removed %d values' % (date2str(t0),buff-1))
+                        #print('pool:%s'%str(pool))
+                        
+                if reps:
+                    if not test:
+                        #print('repeated timestamp: %s,%s == %s,%s'%(t0,vw0,t1,vw1))
+                        q = "delete from %s where "%(table)
+                        if condition:
+                            q+= condition+' and '
+                        q+= "%s = '%s' limit %d" % (
+                          date,date2str(reps[-1],us=us),len(reps))
+                        #print(q)
+                        db.Query(q)                
  
-                    pool = []
-
-                print('%s => %s'%(t0,t1))
+                pool,reps = [],[]
+                #print('%s => %s'%(t0,t1))
                 t0,vw0 = t1,vw1
 
             else:
-                # repeated timestamps are removed directly
-                if not tdelta:
-
-                    if not test:
-                        print('repeated timestamp: %s,%s == %s,%s'%(t0,vw0,t1,vw1))
-                        q = "delete from %s where"%(table)
-                        if condition:
-                            q+= condition+' and '
-                        q+= "%s = '%s' limit 1" % (
-                          date,date2str(t1,us=us))
-                        print(q)
-                        db.Query(q)
-
-                    removed +=1
-
                 # repeated values with tdiff<period will be removed in a single query
+                    
+                # This should apply only if values are different and timestamp equal?
+                # if timestamp is repeated the condition t < d < t is useless
+                # repeated timestamps are removed directly
+                #print(tdelta)
+                if repeated and not tdelta:
+                    reps.append(t1)
+                    #print(('reps',t1))
+                        
                 elif vw0 == vw1:
                     #if buff and not buff%100:
                     #    print('%s repeated values in %s seconds'%(buff,tdelta))
                     pool.append(t1)
 
-        #count += 1   
-        #if count == 3: break
+                    #removed +=1  
+                
+                else: pass
+                #print((vw0,vw1))                  
+                    
+            if is_last: break
+    
+    query = "select count(*) from %s where" %(table)
+    query += " '%s' < %s and %s < '%s'"%(date2str(start,us=us),date,date,date2str(end,us=us))
+    if condition: query+=' and %s'%condition   
+    cur =  db.Query(query)[0][0]
+    removed = count-cur
 
-    if pool: print('%d values still in pool!!'%len(pool))
-
-    print('decimate_db_table(%s,%s) took %d seconds to remove %d values'%(
-      table,condition,time.time()-date2time(now),removed))
+    print('decimate_db_table(%s,%s) took %d seconds to remove %d = %d - %d values'%(
+      table,condition,time.time()-date2time(now),removed,count,cur))
 
     return removed
 
