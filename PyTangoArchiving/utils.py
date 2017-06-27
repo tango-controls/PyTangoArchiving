@@ -408,7 +408,7 @@ def translate_attribute_alias(attribute):
     if ':' in attribute.split('/')[0]: 
         attribute = attribute.split('/',1)[-1] #removing tango_host
     if attribute.count('/') in (0,1):
-        dev = fandango.get_device_for_alias(attribute.split('/')[0])
+        dev = fandango.get_device_for_alias(attribute.split('/')[0]) or ''
         attribute = dev if '/' not in attribute else dev+'/'+attribute.split('/')[1]
     if attribute.count('/') == 2: 
         if any(attribute.lower().startswith(s+'/') for s in ('ioregister','pc','expchan',)):
