@@ -277,7 +277,7 @@ def isAttributeArchived(attribute,reader=None,schema=''):
   
     
 def getArchivingReader(attr_list=None,start_date=0,stop_date=0,
-                       hdb=None,tdb=None,logger=None,tango=''): 
+                       hdb=None,tdb=None,logger=None,tango='',schema=''): 
     """
     It returns the most suitable reader for a list of attributes
     """
@@ -287,14 +287,16 @@ def getArchivingReader(attr_list=None,start_date=0,stop_date=0,
     except:
       schemas = ['hdb','tdb']
       
+    if schema: schemas = dict(s for s in schemas.items() if schema in s[0])
+      
     if not attr_list: return None
 
     if logger is True: 
         log,logger = fandango.printf,None
     else: 
-        log = logger and logger.info or None
+        log = logger and logger.info or (lambda *args:None)
 
-    log('getArchivingReader(%s): %s'%(attr_list,schemas))
+    log('getArchivingReader(%s): %s'%(attr_list,schemas.keys()))
     a,failed = '',fandango.defaultdict(int)
     
     for name in schemas:
@@ -314,11 +316,13 @@ def getArchivingReader(attr_list=None,start_date=0,stop_date=0,
             data['reader'] = hdb or Reader('hdb',tango_host=tango,logger=logger)
         
         for a in attr_list:
+          log('getArchivingReader(%s): trying on %s'%(a,name))
           if not Schemas.checkSchema(name,a,start_date,stop_date):
-            #print('getArchivingReader(%s): out of range!'%name)
+            log('getArchivingReader(%s,%s,%s): not in %s schema!'%(
+              a,start_date,stop_date,name))
             failed[name]+=1
           elif not data['reader'].is_attribute_archived(a):
-            #print('getArchivingReader(%s,%s): not archived!'%(name,a))
+            log('getArchivingReader(%s,%s): not archived!'%(name,a))
             failed[name]+=1
             
       except Exception,e:
@@ -667,12 +671,12 @@ class Reader(Object,SingletonMap):
                 alias = self.alias.get(attribute)
                 #self.log.debug('In PyTangoArchiving.Reader: using alias %s for %s'%(alias,attribute))
                 attribute,alias = alias,attribute #Needed to record last read values for both alias and real name
-            else:
+            elif attribute:
                 attribute = utils.translate_attribute_alias(attribute)
                 if attribute != str(model):
                     attribute,alias = self.get_attribute_alias(attribute),attribute
-        except:
-            print traceback.format_exc()
+        except Exception,e:
+             print('Unable to find alias for %s: %s'%(model,str(e)[:40]))
         return attribute
                 
     def get_attribute_modes(self,attribute,force=False):
