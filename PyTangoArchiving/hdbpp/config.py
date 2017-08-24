@@ -76,13 +76,17 @@ class HDBpp(ArchivingDB,SingletonMap):
             managers = self.get_all_managers()
             for m in managers:
                 d = get_device_property(m,'DbName')
+                if not d:
+                    d = str(get_device_property(m,'LibConfiguration'))
                 if self.db_name in d:
                     self.manager = m
                     break
+                    
         return get_device(self.manager) if self.manager else None
       
     def get_archived_attributes(self,search=''):
-        return sorted(str(a).lower().replace('tango://','') for a in self.get_manager().AttributeSearch(search))
+        return sorted(str(a).lower().replace('tango://','') 
+                      for a in self.get_manager().AttributeSearch(search))
     
     def get_archivers(self):
         #return list(self.tango.get_device_property(self.manager,'ArchiverList')['ArchiverList'])
@@ -156,7 +160,8 @@ class HDBpp(ArchivingDB,SingletonMap):
             print('add_attribute(%s) failed!: %s'%(a,traceback.print_exc()))
         return
 
-    def add_attribute(self,attribute,archiver,period=0,rel_event=None,per_event=300000,abs_event=None):
+    def add_attribute(self,attribute,archiver,period=0,
+                      rel_event=None,per_event=300000,abs_event=None):
         import fandango  as fn
         attribute = get_full_name(str(attribute).lower())
         self.info('add_attribute(%s)'%attribute)
