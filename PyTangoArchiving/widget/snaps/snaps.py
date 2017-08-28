@@ -41,7 +41,6 @@ try:
 except:
     from PyQt4 import Qt,QtCore,QtGui
 from taurus.qt.qtgui import container
-
 from snapdialogs import SnapDialog
 from ui.core import *
 from ui.diff import *
@@ -680,7 +679,7 @@ class SnapForm(Snap_Core_Ui_Form, SnapDialog):
         try:
             cid = self.getCurrentContext()
             ctx = self.snapapi.contexts[cid]
-            from taurus.qt.Qt import QMessageBox as QMB
+            QMB = Qt.QMessageBox
             qmsg = QMB(QMB.Warning,"Delete Context","Are you sure that you want to delete this context?\n\n%s-%s"%(ctx.reason,ctx.name),
                 QMB.Ok|QMB.Cancel)
             if qmsg.exec_()==QMB.Ok:
@@ -692,7 +691,7 @@ class SnapForm(Snap_Core_Ui_Form, SnapDialog):
         
     def onDelSnapPressed(self):
         sid = self.getCurrentSnap()
-        from taurus.qt.Qt import QMessageBox as QMB
+        QMB = Qt.QMessageBox
         qmsg = QMB(QMB.Warning,"Delete Snapshot","Are you sure that you want to delete this snapshot?\n\n%s - %s"%tuple(self.snapshots[sid]),QMB.Ok|QMB.Cancel)
         if qmsg.exec_()==QMB.Ok:
             try: self.snapapi.db.remove_snapshot(sid)
