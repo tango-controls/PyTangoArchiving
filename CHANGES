@@ -6,6 +6,10 @@
 @TODO Rename     widgetArchivingBrowser.ModelSearchWidget to widget.browser.ArchivingBrowser
 @TODO: rename ArchivingBrowser to browser
 
+7.4 Solve bugs on HDB++ queries - September 2017
+
+Solve bugs on HDB++ queries
+Solve Taurus deprecation warnings
 
 7.3 Identify multiples schemas (including HDB++) - May 2017
 
