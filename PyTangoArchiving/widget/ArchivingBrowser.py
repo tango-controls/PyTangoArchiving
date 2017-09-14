@@ -40,9 +40,19 @@ from taurus.qt.qtgui.panel import TaurusValue
 from taurus.qt.qtgui.display import TaurusLabel
 
 try:
-  from taurus.qt.qtgui.display import TaurusValueLabel as TaurusLabel
+    # Tau / Taurus < 3.4
+    from taurus.qt.qtgui.display import TaurusValueLabel as TaurusLabel
 except:
-  from taurus.qt.qtgui.display import TaurusLabel
+    # Taurus > 3.4
+    from taurus.qt.qtgui.display import TaurusLabel
+  
+try:
+    # taurus 4
+    from taurus.core.tango.util import tangoFormatter
+    from taurus.qt.qtgui.display import TaurusLabel
+    TaurusLabel.FORMAT=tangoFormatter  
+except:
+    pass
 
 from taurus.qt.qtcore.util.emitter import SingletonWorker
 
@@ -77,7 +87,7 @@ PARENT_KLASS = QGridTable #Qt.QFrame #Qt.QWidget
 class AttributesPanel(PARENT_KLASS):
     
     _domains = ['ALL EPS']+['LI','LT']+['LT%02d'%i for i in range(1,3)]+['SR%02d'%i for i in range(1,17)]
-    _fes = [f for f in get_distinct_domains(taurus.Database().get_device_exported('fe*')) if fun.matchCl('fe[0-9]',f)]
+    _fes = [f for f in get_distinct_domains(fandango.get_database().get_device_exported('fe*')) if fun.matchCl('fe[0-9]',f)]
     
     def __init__(self,parent=None,devices=None):
         print '~'*80
@@ -296,7 +306,7 @@ class ArchivingBrowser(Qt.QWidget):
         
     def load_all_devices(self,filters='*'):
         import fandango
-        self.tango = taurus.Database()
+        self.tango = fandango.get_database()
         self.alias_devs = fandango.defaultdict_fromkey(lambda k,s=self: str(s.tango.get_device_alias(k)))
         self.archattrs = []
         self.archdevs = []
