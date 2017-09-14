@@ -42,6 +42,12 @@ def get_full_name(model):
       model = 'tango://'+model
     return model
 
+def get_search_model(model):
+    if model.count(':')<2:
+        model = '%/'+model
+    model = clsub('[:][0-9]+','%:%',model)
+    return model
+
 class HDBpp(ArchivingDB,SingletonMap):
     
     def __init__(self,db_name='',host='localhost',user='archiver',passwd='archiver',other=None):
@@ -196,7 +202,9 @@ class HDBpp(ArchivingDB,SingletonMap):
           d.AttributeAdd()
         except Exception,e:
           if 'already archived' not in str(e).lower():
-            self.error('add_attribute(%s,%s,%s): %s'%(attribute,archiver,period,traceback.format_exc().replace('\n','')))
+            self.error('add_attribute(%s,%s,%s): %s'
+                       %(attribute,archiver,period,
+                         traceback.format_exc().replace('\n','')))
             return False
         finally:
           #self.warning('unlocking %s ..'%self.manager)
@@ -225,21 +233,23 @@ class HDBpp(ArchivingDB,SingletonMap):
           d.AttributeStart(fullname)
           return True
         except Exception,e:
-          self.error('start_archiving(%s): %s'%(attribute,traceback.format_exc().replace('\n','')))
+          self.error('start_archiving(%s): %s'
+                     %(attribute,traceback.format_exc().replace('\n','')))
           return False        
         
     def get_attribute_ID(self,attr):
         return self.get_attribute_IDs(attr,as_dict=0)[0][0]
       
     def get_attribute_IDs(self,attr,as_dict=1):
-        if attr.count(':')<2: attr = '%/'+attr
-        ids = self.Query("select att_name,att_conf_id from att_conf where att_name like '%s'"%attr)
+        ids = self.Query("select att_name,att_conf_id from att_conf "\
+            +"where att_name like '%s'"%get_search_model(attr))
         if not ids: return None
         elif not as_dict: return ids
         else: return dict(ids)
       
     def get_attribute_names(self,active=False):
-        return [a[0].lower() for a in self.Query('select att_name from att_conf')]
+        return [a[0].lower() for a 
+                in self.Query('select att_name from att_conf')]
       
     def get_table_name(self,attr):
         return get_attr_id_type_table(attr)
@@ -248,16 +258,20 @@ class HDBpp(ArchivingDB,SingletonMap):
         if fn.isNumber(attr):
             where = 'att_conf_id = %s'%attr
         else:
-            if attr.count(':')<2: attr = '%/'+attr
-            where = "att_name like '%s'"%attr
-        ids = self.Query("select att_conf_id,att_conf_data_type_id from att_conf where %s"%where)
+            where = "att_name like '%s'"%get_search_model(attr)
+        q = "select att_conf_id,att_conf_data_type_id from att_conf where %s"\
+                %where
+        ids = self.Query(q)
+        print(q,ids)        
         if not ids: 
             return []
         aid,tid = ids[0]
-        table = self.Query("select data_type from att_conf_data_type where att_conf_data_type_id = %s"%tid)[0][0]
+        table = self.Query("select data_type from att_conf_data_type "\
+            +"where att_conf_data_type_id = %s"%tid)[0][0]
         return aid,tid,'att_'+table
       
-    def set_attr_event_config(self,attr,polling=0,abs_event=0,per_event=0,rel_event=0):
+    def set_attr_event_config(self,attr,polling=0,abs_event=0,
+                              per_event=0,rel_event=0):
         ac = get_attribute_config(attr)
       
     #def get_default_archiving_modes(self,attr):
@@ -303,8 +317,9 @@ class HDBpp(ArchivingDB,SingletonMap):
         
     __test__['get_last_attribute_values'] = [(['bl01/vc/spbx-01/p1'],None,lambda r:len(r)>0)] #should return array
             
-    def get_attribute_values(self,table,start_date=None,stop_date=None,desc=False,N=-1,
-                             unixtime=True,extra_columns='quality',decimate=0,human=False):
+    def get_attribute_values(self,table,start_date=None,stop_date=None,
+                             desc=False,N=-1,unixtime=True,
+                             extra_columns='quality',decimate=0,human=False):
         """
         This method returns values between dates from a given table.
         If stop_date is not given, then anything above start_date is returned.
@@ -339,6 +354,7 @@ class HDBpp(ArchivingDB,SingletonMap):
             human = 1
             
         query = 'select %s from %s %s order by data_time' % (what,table,interval)
+        #print(query)
         if desc or (not stop_date and N>0): query+=" desc"
         if N>0: query+=' limit %s'%N
         self.debug(query)
@@ -350,18 +366,20 @@ class HDBpp(ArchivingDB,SingletonMap):
           
         #result = [t for t in self.Query(query)]
         if 'array' in table:
-          data = fandango.dicts.defaultdict(list)
-          for t in result:
-            data[float(t[0])].append(t[1:])
-          result = []
-          for k,v in sorted(data.items()):
-            l = [0]+len(v)
-            for t in v:
-              if None in t: 
-                l = None
-                break
-              l[t[0]] = t[1] #Ignoring extra columns
-            result.append(k,l)
+            data = fandango.dicts.defaultdict(list)
+            for t in result:
+                data[float(t[0])].append(t[1:])
+            result = []
+            #print('array',data)
+            for k,v in sorted(data.items()):
+                l = [0]*len(v)
+                for t in v:
+                    if None in t: 
+                        l = None
+                        break
+                    l[t[0]] = t[1] #Ignoring extra columns (e.g. quality)
+                result.append((k,l))
+            #print('result',result)
           
         if N>1 and decimate!=0: 
           result = self.decimate_values(result,N=decimate)
@@ -370,7 +388,7 @@ class HDBpp(ArchivingDB,SingletonMap):
         else:
           #Converting the timestamp from Decimal to float
           if len(result[0]) == 2: 
-            result = [(float(t[0]),t) for t in result]
+            result = [(float(t[0]),t[1]) for t in result]
           elif len(result[0]) == 3: 
             result = [(float(t[0]),t[1],t[2]) for t in result]
           elif len(result[0]) == 4: 
