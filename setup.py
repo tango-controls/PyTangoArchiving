@@ -87,7 +87,6 @@ setup(
         'Topic :: Software Development :: Libraries',
     ],
     platforms=[ "Linux" ],
-    install_requires=[],
     scripts=scripts,
     entry_points=entry_points,
     include_package_data=True,
