@@ -92,5 +92,6 @@ setup(
     entry_points=entry_points,
     include_package_data=True,
     package_data=package_data,
+    install_requires=['fandango','PyTango','MySQL-python'],
     zip_safe=False
   )
