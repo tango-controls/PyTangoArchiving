@@ -37,6 +37,17 @@ __all__= ['show_history']
 
 TABS = []
 
+"""
+@TODO
+
+This dialog hungs on exit and is very hard to debug
+
+Do not use it outside of TaurusFinder
+
+It should be refactored in next release
+
+"""
+
 tformat = '%Y-%m-%d %H:%M:%S'    
 str2epoch = lambda s: time.mktime(time.strptime(s,tformat))
 epoch2str = lambda f: time.strftime(tformat,time.localtime(f))
@@ -95,7 +106,7 @@ class ShowHistoryDialog(fandango.Object):
       formatter = get_value_formatter(attribute)
       
       for i,tup in enumerate(values):
-          date,value = tup
+          date,value = tup[:2]
           qdate = Qt.QTableWidgetItem(epoch2str(date))
           qdate.setTextAlignment(Qt.Qt.AlignRight)
           tab.setItem(i,0,qdate)
@@ -134,8 +145,8 @@ class ShowHistoryDialog(fandango.Object):
           traceback.print_exc()
           dates = epoch2str(),epoch2str()
 
-      
-      if rd.is_attribute_archived(attribute):
+      schemas = rd.is_attribute_archived(attribute)
+      if schemas:
           print '%s is being archived' % attribute
           di = Qt.QDialog(parent)
           wi = di #QtGui.QWidget(di)
@@ -157,16 +168,25 @@ class ShowHistoryDialog(fandango.Object):
           wi.layout().addWidget(end,3,1,1,1)
           wi.layout().addWidget(tfilter,4,1,1,1)
           wi.layout().addWidget(vfilter,5,1,1,1)
-          buttons = Qt.QDialogButtonBox(Qt.QDialogButtonBox.Ok|Qt.QDialogButtonBox.Cancel)
+          wi.layout().addWidget(Qt.QLabel('Schema'),6,0,1,1)
+          qschema = Qt.QComboBox()
+          qschema.insertItems(0,['*']+list(schemas))
+          wi.layout().addWidget(qschema,6,1,1,1)
+          buttons = Qt.QDialogButtonBox(Qt.QDialogButtonBox.Open\
+                                        |Qt.QDialogButtonBox.Close)
           wi.connect(buttons,Qt.SIGNAL('accepted()'),wi.accept)
           wi.connect(buttons,Qt.SIGNAL('rejected()'),wi.reject)
-          wi.layout().addWidget(buttons,6,0,1,2)
+          wi.layout().addWidget(buttons,7,0,1,2)
           
           def check_values():
               di.exec_()
+              print 'checking schema ...'
+              schema = str(qschema.currentText()).strip()
+              if schema != '*':
+                    rd.set_preferred_schema(attribute,schema)              
               if di.result():
+                  print 'checking result ...'
                   try:
-                      print 'checking result ...'
                       start,stop = str(begin.text()),str(end.text())
                       try: tf = int(str(tfilter.text()))
                       except: tf = 0
@@ -261,4 +281,4 @@ if __name__ == '__main__':
   import sys,fandango.qt
   qapp = fandango.qt.getApplication()
   w = __test__(sys.argv[1:])
-  qapp.exec_()
+  sys.exit(qapp.exec_())

@@ -215,7 +215,7 @@ class AttributesPanel(PARENT_KLASS):
             from PyTangoArchiving.widget.panel import showArchivingModes,show_history
             if archived:
               active = self.reader.is_attribute_archived(model,active=True)
-              txt = ','.join(a.upper() if a in active else a for a in archived)
+              txt = '/'.join(a.upper() if a in active else a for a in archived)
             else:
               txt = '...'
             q = Qt.QPushButton(txt)
@@ -293,6 +293,7 @@ class ArchivingBrowser(Qt.QWidget):
         self.load_all_devices()
         try:
             import PyTangoArchiving
+            self.reader = PyTangoArchiving.Reader()
             self.hreader = PyTangoArchiving.Reader('hdb')
             self.treader = PyTangoArchiving.Reader('tdb')
             self.archattrs = sorted(set(map(str.lower,(a for l in (self.hreader.get_attributes(),self.hreader.alias.keys(),self.treader.get_attributes(active=True)) for a in l))))
@@ -608,11 +609,12 @@ class ArchivingBrowser(Qt.QWidget):
                 #ATTRIBUTES ARE FILTERED HERE!! <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
                 for k,v in self.load_attributes(*filters).items():
                     try: 
-                        archived = ['hdb'] if self.hreader.is_attribute_archived(k) else []
-                        if self.treader.is_attribute_archived(k,active=True): archived.append('tdb')
+                        archived = self.reader.is_attribute_archived(k)
                     except Exception,e: 
-                        print('Archiving not available!: %s'%e)
+                        print('Archiving not available!:\n %s'
+                              %traceback.format_exc())
                         archived = []
+                    #print(k,v,archived)
                     table.append((k,v[0],v[2],v[1],archived,v[3] is not None))
                 self.panel.setValues(sorted(table))
                 if hasattr(self,'_scroll'): 

@@ -39,6 +39,10 @@ class Schemas(object):
     LOCALS = fandango.functional.__dict__.copy()
     
     @classmethod
+    def keys(k):
+        return k.SCHEMAS.keys()
+    
+    @classmethod
     def load(k,tango='',prop=''):
         tangodb = fandango.tango.get_database(tango)
         schemas = prop or tangodb.get_property('PyTangoArchiving','Schemas')['Schemas']

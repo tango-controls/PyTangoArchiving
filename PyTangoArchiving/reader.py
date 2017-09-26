@@ -37,6 +37,7 @@ import fandango.functional as fun
 from fandango.functional import isString,isSequence,isCallable,str2time as str2epoch
 from fandango.functional import clmatch, time2str as epoch2str
 from fandango.functional import ctime2time, mysql2time
+from fandango.dicts import CaselessDict
 from fandango.linos import check_process,get_memory
 from fandango.tango import get_tango_host
 
@@ -225,7 +226,7 @@ def read_alias_file(alias_file,trace=False):
     # The format of the file will be:
     #   Alias                                   Attribute
     #   sr01/vc/eps-plc-01/sr01_vc_tc_s0112     sr01/vc/eps-plc-01/thermocouples[11]
-    alias = fandango.dicts.CaselessDict()
+    alias = CaselessDict()
     if alias_file:
         try:
             csv = fandango.arrays.CSVArray(alias_file)
@@ -287,6 +288,8 @@ def getArchivingReader(attr_list=None,start_date=0,stop_date=0,
     except:
       schemas = ['hdb','tdb']
       
+    pref = set(Reader.get_preferred_schema(a) for a in attr_list)    
+    if any(pref): schemas = dict(s for s in schemas.items() if s[0] in pref)
     if schema: schemas = dict(s for s in schemas.items() if schema in s[0])
       
     if not attr_list: return None
@@ -401,6 +404,20 @@ class Reader(Object,SingletonMap):
                      #'*','all') @TODO: Snap should be readable by Reader
     ValidArgs = ['db','config','servers','schema','timeout',
                  'log','logger','tango_host','alias_file']
+    
+    Preferred = CaselessDict() #Store specific attribute/schema user preferences
+    
+    @classmethod
+    def set_preferred_schema(k,attr,sch):
+        if sch=='*': sch = None
+        print('Reader.set_preferred_schema(%s,%s)'%(attr,sch))
+        k.Preferred[attr] = sch
+
+    @classmethod
+    def get_preferred_schema(k,attr):
+        sch = k.Preferred.get(attr,None)
+        print('Reader.get_preferred_schema(%s): %s'%(attr,sch))
+        return sch
     
     @classmethod
     def parse_instance_key(cls,*p,**k):
@@ -696,6 +713,7 @@ class Reader(Object,SingletonMap):
         """ This method uses two list caches to avoid redundant device proxy calls, launch .reset() to clean those lists. """
 
         if self.is_hdbpp: # NEVER CALLED IF setting reader=HDBpp(...)
+            self.warning('HDBpp.is_attribute_archived() OVERRIDE!!')
             return True
         if expandEvalAttribute(attribute):
             return all(self.is_attribute_archived(a,active) for a in expandEvalAttribute(attribute))
@@ -703,7 +721,12 @@ class Reader(Object,SingletonMap):
         self.get_attributes()
         if self.db_name=='*':
             # Universal reader
-            return tuple(a for a in self.configs if self.configs.get(a) \
+            pref = self.get_preferred_schema(attribute)
+            if pref not in (None,'*'): 
+                return [pref]
+            else:
+                return tuple(a for a in self.configs if self.configs.get(a) \
+                and (a not in Schemas.keys() or Schemas.checkSchema(a,attribute))
                 and self.configs[a].is_attribute_archived(attribute,active))
         else:
             # Schema reader
