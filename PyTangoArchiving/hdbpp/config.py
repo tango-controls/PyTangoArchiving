@@ -25,6 +25,7 @@
 from PyTangoArchiving.dbs import ArchivingDB
 from PyTangoArchiving.common import CommonAPI
 from PyTangoArchiving.reader import Reader
+from PyTangoArchiving.utils import CatchedAndLogged
 import fandango as fn
 from fandango.objects import SingletonMap
 from fandango.tango import *
@@ -91,8 +92,16 @@ class HDBpp(ArchivingDB,SingletonMap):
         return get_device(self.manager) if self.manager else None
       
     def get_archived_attributes(self,search=''):
+        # DB API
         return sorted(str(a).lower().replace('tango://','') 
                       for a in self.get_manager().AttributeSearch(search))
+    
+    def get_attributes(self,active=None):
+        """
+        Alias for Reader API
+        @TODO active argument not implemented
+        """
+        return self.get_archived_attributes()
     
     def get_archivers(self):
         #return list(self.tango.get_device_property(self.manager,'ArchiverList')['ArchiverList'])
@@ -211,7 +220,8 @@ class HDBpp(ArchivingDB,SingletonMap):
           d.unlock()
         print('%s added'%attribute)
         
-    def is_attribute_archived(self,attribute):
+    def is_attribute_archived(self,attribute,active=None):
+        # @TODO active argument not implemented
         d = self.get_manager()
         attribute = d.AttributeSearch(attribute.lower())
         if len(attribute)>1: 
@@ -223,24 +233,30 @@ class HDBpp(ArchivingDB,SingletonMap):
           
     def start_archiving(self,attribute,*args,**kwargs):
         try:
-          self.info('start_archiving(%s)'%attribute)
-          d = self.get_manager()
-          fullname = self.is_attribute_archived(attribute)
-          if not fullname:
-            self.add_attribute(attribute,*args,**kwargs)
-            time.sleep(10.)
-            fullname = self.is_attribute_archived(attribute)
-          d.AttributeStart(fullname)
-          return True
+            if isSequence(attribute):
+                for attr in attribute:
+                    self.start_archiving(attr,*args,**kwargs)
+            else:
+                self.info('start_archiving(%s)'%attribute)
+                d = self.get_manager()
+                fullname = self.is_attribute_archived(attribute)
+                if not fullname:
+                    self.add_attribute(attribute,*args,**kwargs)
+                    time.sleep(10.)
+                    fullname = self.is_attribute_archived(attribute)
+                d.AttributeStart(fullname)
+                return True
         except Exception,e:
-          self.error('start_archiving(%s): %s'
-                     %(attribute,traceback.format_exc().replace('\n','')))
-          return False        
+            self.error('start_archiving(%s): %s'
+                        %(attribute,traceback.format_exc().replace('\n','')))
+        return False        
         
     def get_attribute_ID(self,attr):
+        # returns only 1 ID
         return self.get_attribute_IDs(attr,as_dict=0)[0][0]
       
     def get_attribute_IDs(self,attr,as_dict=1):
+        # returns all matching IDs
         ids = self.Query("select att_name,att_conf_id from att_conf "\
             +"where att_name like '%s'"%get_search_model(attr))
         if not ids: return None
@@ -262,7 +278,7 @@ class HDBpp(ArchivingDB,SingletonMap):
         q = "select att_conf_id,att_conf_data_type_id from att_conf where %s"\
                 %where
         ids = self.Query(q)
-        print(q,ids)        
+        self.debug(str((q,ids)))
         if not ids: 
             return []
         aid,tid = ids[0]
@@ -273,6 +289,7 @@ class HDBpp(ArchivingDB,SingletonMap):
     def set_attr_event_config(self,attr,polling=0,abs_event=0,
                               per_event=0,rel_event=0):
         ac = get_attribute_config(attr)
+        raise Exception('@TODO')
       
     #def get_default_archiving_modes(self,attr):
         #if isString(attr) and '/' in attr:
@@ -313,53 +330,73 @@ class HDBpp(ArchivingDB,SingletonMap):
         return result
       
     def get_last_attribute_values(self,table,n=1,check_table=False):
-        return self.get_attribute_values(table,N=n)
+        #if N==1:
+            #return result and result[0 if 'desc' in query else -1] or []
+        vals = self.get_attribute_values(table,N=n,human=True)
+        if abs(n)==1: return vals[0]
+        else: return vals
+    
+    def load_last_values(self,attributes,n=1):
+        return dict((a,self.get_last_attribute_values(a,n=n)) 
+                    for a in fn.toList(attributes))
         
-    __test__['get_last_attribute_values'] = [(['bl01/vc/spbx-01/p1'],None,lambda r:len(r)>0)] #should return array
+    __test__['get_last_attribute_values'] = \
+        [(['bl01/vc/spbx-01/p1'],None,lambda r:len(r)>0)] #should return array
             
+    @CatchedAndLogged(throw=True)
     def get_attribute_values(self,table,start_date=None,stop_date=None,
                              desc=False,N=-1,unixtime=True,
-                             extra_columns='quality',decimate=0,human=False):
+                             extra_columns='quality',decimate=0,human=False,
+                             **kwargs):
         """
         This method returns values between dates from a given table.
         If stop_date is not given, then anything above start_date is returned.
         desc controls the sorting of values
         
-        unixtime = True enhances the speed of querying by a 60%!!!! (due to MySQLdb implementation of datetime)
+        unixtime = True enhances the speed of querying by a 60%!!!! 
+            #(due to MySQLdb implementation of datetime)
         
         If N is specified:
         
             * Query will return last N values if there's no stop_date
-            * If there is, then it will return the first N values
+            * If there is, then it will return the first N values (windowing?)
+            * IF N is negative, it will return the last N values instead
             
         start_date and stop_date must be in a format valid for SQL
         """
+        self.setLogLevel('INFO')
+        self.info('HDBpp.get_attribute_values(%s,%s,%s,%s,%s)'
+              %(table,start_date,stop_date,N,kwargs))
         aid,tid,table = self.get_attr_id_type_table(table)
             
         what = 'UNIX_TIMESTAMP(data_time)' if unixtime else 'data_time'
         if 'array' in table: what+=",idx"
-        what += ',value_r' if 'value_r' in self.getTableCols(table) else ',value'
+        what += ',value_r' if 'value_r' in self.getTableCols(table) \
+                                else ',value'
         if extra_columns: what+=','+extra_columns
-        interval = 'where att_conf_id = %s'%aid if aid is not None else 'where att_conf_id >= 0 '
-
+        interval = 'where att_conf_id = %s'%aid if aid is not None \
+                                                else 'where att_conf_id >= 0 '
+        if N<0:
+            N = abs(N)
+            desc =  True
         if start_date or stop_date:
-          start_date,start_time,stop_date,stop_time = Reader.get_time_interval(start_date,stop_date)
+          start_date,start_time,stop_date,stop_time = \
+              Reader.get_time_interval(start_date,stop_date)
           if start_date and stop_date:
             interval += " and data_time between '%s' and '%s'"%(start_date,stop_date)
           elif start_date and fandango.str2epoch(start_date):
             interval += " and data_time > '%s'"%start_date
-        elif N<0:
-            N = 1
         if N == 1:
             human = 1
             
-        query = 'select %s from %s %s order by data_time' % (what,table,interval)
-        #print(query)
+        query = 'select %s from %s %s order by data_time' \
+                        % (what,table,interval)
         if desc or (not stop_date and N>0): query+=" desc"
         if N>0: query+=' limit %s'%N
         self.debug(query)
 
         result = self.Query(query)
+        self.info('read [%d]'%len(result))
         if not result or not result[0]: return []
         #if len(result[0]) == 2: ## Just data_time and value_r
           #result = [(float(t[0]),t) for t in result]
@@ -379,8 +416,8 @@ class HDBpp(ArchivingDB,SingletonMap):
                         break
                     l[t[0]] = t[1] #Ignoring extra columns (e.g. quality)
                 result.append((k,l))
-            #print('result',result)
-          
+            self.debug('arranged [%d]'%len(result))
+            
         if N>1 and decimate!=0: 
           result = self.decimate_values(result,N=decimate)
         if human: 
@@ -395,9 +432,9 @@ class HDBpp(ArchivingDB,SingletonMap):
             result = [(float(t[0]),t[1],t[2],t[3]) for t in result]
           else:
             result = [[float(t[0])]+t[1:] for t in result]
-        if N==1:
-            return result and result[0 if 'desc' in query else -1] or []
-        elif not desc and not stop_date and N>0:
+        self.debug('decimated: [%d]'%len(result))
+
+        if not desc and not stop_date and N>0:
             #THIS WILL BE APPLIED ONLY WHEN LAST N VALUES ARE ASKED
             return list(reversed(result))
         else:

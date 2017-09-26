@@ -26,7 +26,7 @@ utilities for managing tango and mysql datatypes within PyTangoArchiving
 """
 
 
-import time,datetime,os,re,traceback,xml,sys
+import time,datetime,os,re,traceback,xml,sys,functools
 from random import randrange
 import MySQLdb
 
@@ -37,7 +37,7 @@ from fandango.db import FriendlyDB
 import fandango.functional as fun
 import fandango.linos as linos
 from fandango.functional import date2time,date2str,mysql2time,ctime2time,\
-    time2str,isNumber,clmatch
+    time2str,isNumber,clmatch,isCallable
 from fandango.functional import reldiff,absdiff,seqdiff
 from fandango.arrays import decimate_custom,decimate_array
 
@@ -45,14 +45,67 @@ try:
     import PyTango
     from fandango.servers import ServersDict
     from fandango.device import get_matching_attributes,check_device,check_attribute,get_distinct_devices
-    from fandango.device import get_distinct_domains,get_distinct_members,get_distinct_families,get_distinct_attributes
+    from fandango.device import get_distinct_domains,get_distinct_members, \
+            get_distinct_families,get_distinct_attributes
     from fandango.device import get_device_host
     from fandango.tango import parse_tango_model,cast_tango_type
 except:
     PyTango=ServersDict=check_attribute=None
     
+class CatchedAndLogged(fandango.objects.Decorator):
+    """
+    based on fandango.objects.Cached
+    in the future it should replace Catched decorator
+    """
+    def __init__(self,target=None,log=True,throw=False,default=None):
+        self.log = log
+        self.throw = throw
+        self.default = default
+        self.decorate(target)
+          
+    def __call__(self,*args,**kwargs):
+        """
+        This method will either decorate a method (with args) or execute it
+        """
+        if self.f is None: # Deferred decorator
+            self.decorate(args[0])
+            return self
+        else: # Instantiated decorator
+            return self.execute(*args,**kwargs)
+          
+    def _log(self,msg):
+        if isCallable(self.log): self.log(msg) 
+        elif self.log: print(msg)
+          
+    def decorate(self,target):
+        if isCallable(target):
+            self.f = target
+            self.f_name = target.__name__
+            #self.call = wraps(self.f)(self.__call__) #Not for methods!!
+            functools.update_wrapper(self,self.f)
+        else:
+            self.f = None
+            
+    def execute(self,*args,**kwargs):
+        try:
+           return self.f(*args,**kwargs)
+        except:
+            self._log('%s(*%s,**%s) failed!'%(self.f_name,args,kwargs))
+            self._log(traceback.format_exc())
+            if self.throw: raise
+        return self.default
+        
+    def __get__(self,obj,objtype=None):
+        """
+        This bounding method will be called only when decorating an
+        instance method
+        """
+        from types import MethodType
+        return MethodType(self,obj,objtype)        
+        
+        
 
-########################################################################################
+###############################################################################
 # Numpy based methods for decimation/filtering
             
 def to_array(l):

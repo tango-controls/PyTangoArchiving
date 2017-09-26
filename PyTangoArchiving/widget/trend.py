@@ -903,7 +903,13 @@ def updateTrendBuffers(self,data,logger=None):
         ###Adding archiving values
         logger.info('In updateTrendBuffers(%d,fromHistoryBuffer=%s)'%(len(data or []),fromHistoryBuffer))
         if data is not None and len(data): 
-            ntrends = self._checkDataDimensions(data[0].value if fromHistoryBuffer else data[0][1]) #It may clean existing buffers!
+            try:
+                ntrends = self._checkDataDimensions(data[0].value 
+                                        if fromHistoryBuffer 
+                                        else data[0][1]) #It may clean existing buffers!
+            except:
+                print(data[0])
+                raise
             newsize = checkTrendBuffers(self,data,logger)
             logger.debug('reader.updateTrendBuffers(): filling Buffer')
             try:
@@ -968,7 +974,9 @@ def replaceQtConnection(qobj,signal,callback):
     qobj.connect(qobj,Qt.SIGNAL(signal),callback)
     QT_CONNECTIONS[signal].append((qobj,callback))
 
-def getArchivedTrendValues(trend_set,model,start_date=0,stop_date=None,log='INFO',use_db=True,db_config='',decimate=True,multiprocess=USE_MULTIPROCESS,insert=False):
+def getArchivedTrendValues(trend_set,model,start_date=0,stop_date=None,
+            log='INFO',use_db=True,db_config='',decimate=True,
+            multiprocess=USE_MULTIPROCESS,insert=False):
     """This method allows to extract the values from the archiving system either using HdbExtractor device servers or MySQL access (requires permissions).
     
     This method can be tested with the following code:
@@ -1004,7 +1012,7 @@ def getArchivedTrendValues(trend_set,model,start_date=0,stop_date=None,log='INFO
             v = all(curr) and (not prev or not any(prev[:2]) or any(abs(x-y)>MARGIN for x,y in zip(curr,prev)))
             return v #print(prev,curr,all(curr) and all(prev[:2]) and [abs(x-y) for x,y in zip(curr,prev)],v)
         logger,reader = logger_obj.info,logger_obj.reader
-        print('using reader: %s(%s)' %(type(reader),reader.schema))
+        logger_obj.debug('using reader: %s(%s)' %(type(reader),reader.schema))
         if not multiprocess and time.time() < STARTUP+STARTUP_DELAY:
             logger_obj.warning('PyTangoArchiving.Reader waiting until %s'%fandango.time2str(STARTUP+STARTUP_DELAY))
             return []

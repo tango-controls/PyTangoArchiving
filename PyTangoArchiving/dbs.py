@@ -45,7 +45,8 @@ class ArchivingDB(FriendlyDB):
     
     #def __init__(self,api,db_name,user='',passwd='', host=''):
         #if not api or not database:
-            #self.log.error('ArchivingAPI and database are required arguments for ArchivingDB initialization!')
+            #self.log.error('ArchivingAPI and database are required arguments '
+            # 'for ArchivingDB initialization!')
             #return
         #self.api=api
         #self.db_name=db_name
@@ -169,7 +170,8 @@ class ArchivingDB(FriendlyDB):
         else:
             return self.Query('SELECT time,value from %s T order by T.time desc limit %d'%(query,n))
     
-    def get_attribute_values(self,table,start_date=None,stop_date=None,desc=False,N=-1,unixtime=True):
+    def get_attribute_values(self,table,start_date=None,stop_date=None,
+                             desc=False,N=-1,unixtime=True):
         """
         This method returns values between dates from a given table.
         If stop_date is not given, then anything above start_date is returned.

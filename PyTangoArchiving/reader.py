@@ -695,22 +695,27 @@ class Reader(Object,SingletonMap):
     def is_attribute_archived(self,attribute,active=False):
         """ This method uses two list caches to avoid redundant device proxy calls, launch .reset() to clean those lists. """
 
-        if self.is_hdbpp: 
+        if self.is_hdbpp: # NEVER CALLED IF setting reader=HDBpp(...)
             return True
         if expandEvalAttribute(attribute):
             return all(self.is_attribute_archived(a,active) for a in expandEvalAttribute(attribute))
 
         self.get_attributes()
         if self.db_name=='*':
-            return tuple(a for a in ('hdb','tdb') if self.configs.get(a) and self.configs[a].is_attribute_archived(attribute,active))
+            # Universal reader
+            return tuple(a for a in self.configs if self.configs.get(a) \
+                and self.configs[a].is_attribute_archived(attribute,active))
         else:
+            # Schema reader
             attribute = re.sub('\[([0-9]+)\]','',attribute.lower())
-            if attribute in (self.current_attributes if active else self.available_attributes):
+            if attribute in (self.current_attributes if active 
+                    else self.available_attributes):
                 return attribute
             else: #Reloading attribute lists
                 alias = self.get_attribute_alias(attribute)
                 alias = re.sub('\[([0-9]+)\]','',alias.lower())
-                cache = (self.current_attributes if active else self.available_attributes) #Lists have been updated
+                cache = (self.current_attributes if active 
+                    else self.available_attributes) #Lists have been updated
                 return alias if alias in cache else False
         
     def get_last_attribute_dates(self,attribute):
@@ -728,8 +733,10 @@ class Reader(Object,SingletonMap):
         This method will take any valid input time format and will return four values:
         start_date,start_time,stop_date,stop_time
         """
-        start_time = start_date if isinstance(start_date,(int,float)) else (start_date and str2epoch(start_date) or 0)
-        stop_time = stop_date if isinstance(stop_date,(int,float)) else (stop_date and str2epoch(stop_date) or 0)
+        start_time = start_date if isinstance(start_date,(int,float)) \
+                            else (start_date and str2epoch(start_date) or 0)
+        stop_time = stop_date if isinstance(stop_date,(int,float)) \
+                                else (stop_date and str2epoch(stop_date) or 0)
         if not start_time or 0<=start_time<START_OF_TIME:
             raise Exception('StartDateTooOld(%s)'%start_date)
         elif start_time<0: 
@@ -745,7 +752,7 @@ class Reader(Object,SingletonMap):
         
         
     def get_attribute_values(self,attribute,start_date,stop_date=None,
-            asHistoryBuffer=False,decimate=False,notNone=False,N=-1,
+            asHistoryBuffer=False,decimate=False,notNone=False,N=0,
             cache=True,fallback=True):
         '''         
         This method reads values for an attribute between specified dates.
@@ -810,8 +817,10 @@ class Reader(Object,SingletonMap):
             self.log.info('In get_attribute_values(%s): '
               'Using %s schema at %s'%(attribute,rd.schema,start_date))
 
+            #@TODO, implemented classes should have polimorphic methods
             vals = rd.get_attribute_values(attribute,start_date,stop_date,
-                                           asHistoryBuffer,decimate,notNone,N)
+                    asHistoryBuffer=asHistoryBuffer,decimate=decimate,
+                    notNone=notNone,N=N)
             
             if fallback:
 
