@@ -14,6 +14,10 @@ fi
 FOLDER=$(python -c "import imp;print(imp.find_module('PyTangoArchiving')[1])")
 #cd $FOLDER/widget
 CMD=$FOLDER/widget/ArchivingBrowser.py
+
+if [ "$(which t3)" ]; then
+ CMD="t3 $CMD"
+fi
 if [ "$TRACE" ] ; then
  python "$CMD" $* &>$TRACE
 else
