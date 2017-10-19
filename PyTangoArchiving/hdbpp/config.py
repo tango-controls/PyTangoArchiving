@@ -376,9 +376,7 @@ class HDBpp(ArchivingDB,SingletonMap):
         if extra_columns: what+=','+extra_columns
         interval = 'where att_conf_id = %s'%aid if aid is not None \
                                                 else 'where att_conf_id >= 0 '
-        if N<0:
-            N = abs(N)
-            desc =  True
+
         if start_date or stop_date:
           start_date,start_time,stop_date,stop_time = \
               Reader.get_time_interval(start_date,stop_date)
@@ -391,7 +389,7 @@ class HDBpp(ArchivingDB,SingletonMap):
             
         query = 'select %s from %s %s order by data_time' \
                         % (what,table,interval)
-        if desc or (not stop_date and N>0): query+=" desc"
+        if desc: query+=" desc" # or (not stop_date and N>0):
         if N>0: query+=' limit %s'%N
         self.debug(query)
 
