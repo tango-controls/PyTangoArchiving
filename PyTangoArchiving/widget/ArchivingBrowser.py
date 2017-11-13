@@ -115,8 +115,8 @@ class AttributesPanel(PARENT_KLASS):
         try:
             import PyTangoArchiving
             self.reader = PyTangoArchiving.Reader('*')
-            self.hreader = self.reader.configs['hdb']
-            self.treader = self.reader.configs.get('tdb',self.hreader)
+            #self.hreader = self.reader.configs['hdb']
+            #self.treader = self.reader.configs.get('tdb',self.hreader)
         except:
             traceback.print_exc()
             
@@ -294,9 +294,10 @@ class ArchivingBrowser(Qt.QWidget):
         try:
             import PyTangoArchiving
             self.reader = PyTangoArchiving.Reader()
-            self.hreader = PyTangoArchiving.Reader('hdb')
-            self.treader = PyTangoArchiving.Reader('tdb')
-            self.archattrs = sorted(set(map(str.lower,(a for l in (self.hreader.get_attributes(),self.hreader.alias.keys(),self.treader.get_attributes(active=True)) for a in l))))
+            #self.hreader = PyTangoArchiving.Reader('hdb')
+            #self.treader = PyTangoArchiving.Reader('tdb')
+            #self.archattrs = sorted(set(map(str.lower,(a for l in (self.hreader.get_attributes(),self.hreader.alias.keys(),self.treader.get_attributes(active=True)) for a in l))))
+            self.archattrs = sorted(set(self.reader.get_attributes()))
             self.archdevs = list(set(a.rsplit('/',1)[0] for a in self.archattrs))
         except:
             traceback.print_exc()
