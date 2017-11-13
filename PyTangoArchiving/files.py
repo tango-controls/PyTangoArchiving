@@ -25,7 +25,7 @@
 PyTangoArchiving methods for loading/exporting into text files
 """
 
-import time,os,re,traceback
+import sys,time,os,re,traceback
 from collections import defaultdict
 from xml.dom import minidom
 from os.path import abspath
@@ -1035,22 +1035,57 @@ def parse_raw_file(filename,section='',is_key=fandango.tango.parse_tango_model):
         
 ####################################################################################
 
-if __name__ == '__main__':
+def exxit():
+    print('Usage:\n\tPyTangoArchiving/files.py check/load/start/stop '
+                'filename/attribute [schema]\n')
+    sys.exit(-1)
+    
+def main(args):
     #@todo: this script features can be part of ctarchiving script
-    import sys
-    print('Usage:\n\tPyTangoArchiving/files.py check/load filename [schema]\n')
-    args = sys.argv[1:]
-    if not args: sys.exit(-1)
+    if not args: 
+        exxit()
+        
     action = args[0]
-    filename = args[1]
-    schema = args[2] if len(args)>2 else ''
-    if action in ('load','check'):
-        attrs = ParseCSV(filename,schema,log=False)
-        if action in 'check' and schema: 
-            from PyTangoArchiving import ArchivingAPI
-            api = ArchivingAPI(schema)
-            for a in sorted(attrs):
-              t = ArchivingAPI(schema).get(a)
-              print((a,t,t and api.load_last_values(a)))
-    if action in ('load',):
-        LoadArchivingConfiguration(filename,schema,launch=True,force='force' in args)
+    filenames = args[1:]
+    if len(args)>2:
+        schema = filenames.pop(-1)
+    else:
+        schema = raw_input('Schema?').strip() or ''
+    
+    if all(map(os.path.isfile,filenames)):
+    
+        if action in ('load','check'):
+            attrs = ParseCSV(filename,schema,log=False)
+            if action in 'check' and schema: 
+                from PyTangoArchiving import ArchivingAPI
+                api = ArchivingAPI(schema)
+                for a in sorted(attrs):
+                    t = ArchivingAPI(schema).get(a)
+                    print((a,t,t and api.load_last_values(a)))
+                
+        if action in ('load',):
+            LoadArchivingConfiguration(filename,schema,launch=True,
+                                       force='force' in args)
+            
+    else:
+        import fandango.tango as ft
+        if schema and all(map(ft.parse_tango_model,filenames)):
+            api = PyTangoArchiving.ArchivingAPI(schema)
+
+            if 'start' in action.lower():
+                modes = eval(raw_input('Archiving modes?'))
+                api.start_archiving(filenames,modes)
+
+            if 'stop' in action.lower():
+                api.stop_archiving(filenames)
+                
+            if 'check' in action.lower():
+                print(api.load_last_values(filenames))
+        else:
+            print('Unknown args: %s' % filenames)
+            exxit()
+        
+
+if __name__ == '__main__':
+    print sys.argv
+    main(sys.argv[1:])
