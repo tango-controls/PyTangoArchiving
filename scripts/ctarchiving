@@ -12,9 +12,10 @@ case $1 in
   echo "Usage:"
   echo "  ctarchiving --help"
   echo "  ctarchiving --load <filename.csv> <hdb/tdb> [force] ; adds attributes to archiving "
-  echo "  ctarchiving --check <filename.csv> <hdb/tdb> [force] ; checks if attributes from .csv are archived"
-  echo "  ctarchiving --parse <filename.csv>"
-  echo '   ctarchiving --export [--resolution=X(s)] [--hdb] [--tdb] [--modes] [attributes] ["Y-m-d H:M"] ["Y-m-d H:M"] filename.csv'
+  echo "  ctarchiving --parse <filename.csv>"  
+  echo "  ctarchiving --check <filename.csv/attrs> <hdb/tdb> [force] ; checks if attributes from .csv are archived"
+  echo "  ctarchiving --start/stop <attributes> <hdb/tdb> ; starts/stops attribute archiving"
+  echo '  ctarchiving --export [--resolution=X(s)] [--hdb] [--tdb] [--modes] [attributes] ["Y-m-d H:M"] ["Y-m-d H:M"] filename.csv'
   echo "  ctarchiving --search <device/attributes> ; searchs for matching archived attributes, returns configuration"
   echo "  ctarchiving --gui <device/attributes> ; shows Archiving GUI, TaurusFinder"
   echo "  ctarchiving [attributes] ; shows Archiving GUI, TaurusFinder"
@@ -43,6 +44,14 @@ case $1 in
  --gui|gui)
   shift 1
   ctarchiving $*
+  ;;  
+ --start)
+  shift 1
+  python $PTAROOT/files.py start $*
+  ;;
+ --stop)
+  shift 1
+  python $PTAROOT/files.py stop $*
   ;;  
  *)
   cd $PTAROOT/widget
