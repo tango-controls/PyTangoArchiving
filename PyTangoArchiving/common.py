@@ -117,12 +117,15 @@ class CommonAPI(Object,fandango.SingletonMap):
         return self.ArchivingClasses
 
     def __del__(self):
-        self.log.debug( 'Deleting ArchivingAPI ...')
-        for p in self.proxies.values():
-            del p
-        del self.tango
-        for d in self.dbs.values():
-            del d
+        try:
+            self.log.debug( 'Deleting ArchivingAPI ...')
+            for p in self.proxies.values():
+                del p
+            del self.tango
+            for d in self.dbs.values():
+                del d
+        except:
+            pass #print('Unable to delete API object')
             
     def __repr__(self):
         '''def server_Report(self): The status of Archiving device servers '''
@@ -130,9 +133,10 @@ class CommonAPI(Object,fandango.SingletonMap):
         for k,v in self.servers.items():
             report+='%s:\t%s\n'%(k,v.state)
         if self.WatcherClass:
-            try: report+=self.proxies(self.servers.get_class_devices(self.WatcherClass)[0]).command_inout('GetReportCurrent')+'\n'
+            try: report+=self.proxies(
+                self.servers.get_class_devices(self.WatcherClass)[0]
+                ).command_inout('GetReportCurrent')+'\n'
             except: pass
-        self.log.debug(report)
         return report         
 
     ####################################################################################################
