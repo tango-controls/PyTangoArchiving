@@ -416,7 +416,7 @@ class Reader(Object,SingletonMap):
     @classmethod
     def get_preferred_schema(k,attr):
         sch = k.Preferred.get(attr,None)
-        print('Reader.get_preferred_schema(%s): %s'%(attr,sch))
+        #print('Reader.get_preferred_schema(%s): %s'%(attr,sch))
         return sch
     
     @classmethod
@@ -725,9 +725,19 @@ class Reader(Object,SingletonMap):
             if pref not in (None,'*'): 
                 return [pref]
             else:
-                return tuple(a for a in self.configs if self.configs.get(a) \
-                and (a not in Schemas.keys() or Schemas.checkSchema(a,attribute))
-                and self.configs[a].is_attribute_archived(attribute,active))
+                sch = []
+                for a,c in self.configs.items():
+                    try:
+                        if c and (a not in Schemas.keys() or
+                                Schemas.checkSchema(a,attribute)) \
+                            and c.is_attribute_archived(attribute,active):
+                            sch.append(a)
+                    except: 
+                        traceback.print_exc()
+                return tuple(sch) 
+                #return tuple(a for a in self.configs if self.configs.get(a) \
+                #and (a not in Schemas.keys() or Schemas.checkSchema(a,attribute))
+                #and self.configs[a].is_attribute_archived(attribute,active))
         else:
             # Schema reader
             attribute = re.sub('\[([0-9]+)\]','',attribute.lower())
