@@ -17,6 +17,7 @@ case $1 in
   echo "  ctarchiving --start/stop <attributes> <hdb/tdb> ; starts/stops attribute archiving"
   echo '  ctarchiving --export [--resolution=X(s)] [--hdb] [--tdb] [--modes] [attributes] ["Y-m-d H:M"] ["Y-m-d H:M"] filename.csv'
   echo "  ctarchiving --search <device/attributes> ; searchs for matching archived attributes, returns configuration"
+  echo "  ctarchiving --search2 <device/attributes> ; searchs only for active attributes"
   echo "  ctarchiving --gui <device/attributes> ; shows Archiving GUI, TaurusFinder"
   echo "  ctarchiving [attributes] ; shows Archiving GUI, TaurusFinder"
   ;;
@@ -45,11 +46,11 @@ case $1 in
   shift 1
   ctarchiving $*
   ;;  
- --start)
+ --start|start)
   shift 1
   python $PTAROOT/files.py start $*
   ;;
- --stop)
+ --stop|stop)
   shift 1
   python $PTAROOT/files.py stop $*
   ;;  
