@@ -6,6 +6,21 @@
 @TODO Rename     widgetArchivingBrowser.ModelSearchWidget to widget.browser.ArchivingBrowser
 @TODO: rename ArchivingBrowser to browser
 
+
+7.7 Bugfixes, ctarchiving, pyextractor
+
+Requires fandango 13.4
+PyExtractor with dates
+ctarchiving start/stop of attributes, 
+Qt imports bugfixes, 
+remove hdb/tdb dependencies, 
+decimation and dates in PyExtractor
+add archiving2csv/plot in Debian packages
+
+7.6, bugfixes on HDB++, taurus3, API object exit
+
+7.5.0 Added Schema chooser on ArchivingBrowser
+
 7.4 Solve bugs on HDB++ queries - September 2017
 
 Solve bugs on HDB++ queries
