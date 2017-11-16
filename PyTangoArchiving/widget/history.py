@@ -140,7 +140,7 @@ class ShowHistoryDialog(fandango.Object):
           traceback.print_exc()
           dates = epoch2str(),epoch2str()
 
-      schemas = rd.is_attribute_archived(attribute)
+      schemas = rd.is_attribute_archived(attribute,preferent=False)
       if schemas:
           print '%s is being archived' % attribute
           di = Qt.QDialog(parent)

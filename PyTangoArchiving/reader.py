@@ -709,7 +709,7 @@ class Reader(Object,SingletonMap):
                 self.modes[attribute] = dict((a,self.configs[a].get_attribute_modes(attribute,force)) for a in ('hdb','tdb') if a in self.configs)
         return self.modes[attribute]
     
-    def is_attribute_archived(self,attribute,active=False):
+    def is_attribute_archived(self,attribute,active=False,preferent=True):
         """ This method uses two list caches to avoid redundant device proxy calls, launch .reset() to clean those lists. """
 
         if self.is_hdbpp: # NEVER CALLED IF setting reader=HDBpp(...)
@@ -722,7 +722,7 @@ class Reader(Object,SingletonMap):
         if self.db_name=='*':
             # Universal reader
             pref = self.get_preferred_schema(attribute)
-            if pref not in (None,'*'): 
+            if preferent and pref not in (None,'*'): 
                 return [pref]
             else:
                 sch = []
