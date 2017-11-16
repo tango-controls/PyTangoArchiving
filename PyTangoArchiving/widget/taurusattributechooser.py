@@ -31,7 +31,7 @@ __all__ = ["TaurusAttributeChooser"]
 
 __docformat__ = 'restructuredtext'
 
-from taurus.external.qt import Qt
+from fandango.qt import Qt
 
 from taurus.qt.qtgui.base import TaurusBaseWidget
 from taurus.core.util.containers import CaselessList

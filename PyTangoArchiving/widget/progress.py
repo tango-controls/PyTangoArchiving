@@ -1,6 +1,6 @@
 import traceback,time,os,re
 import fandango as fun,PyTango as pt,PyTangoArchiving as pta
-from PyQt4 import Qt
+from fandango.qt import Qt
 
 class ReaderProgress(Qt.QWidget):
     

@@ -43,10 +43,12 @@ from fandango.qt import Qt,QTextBuffer,setDialogCloser,QWidgetWithLayout
 from fandango.dicts import defaultdict
 from fandango import SingletonMap,str2time
 
+from fandango.qt import Qt, Qwt5
+
 from taurus.qt.qtgui.plot import TaurusTrend
 from taurus.qt.qtgui.base import TaurusBaseWidget
 from taurus.qt.qtgui.container import TaurusWidget,TaurusGroupBox
-from taurus.external.qt import Qt, Qwt5
+
 from fandango.objects import BoundDecorator
 
 USE_MULTIPROCESS=False
@@ -1135,8 +1137,8 @@ def get_archiving_trend(models=None,length=12*3600,show=False,n_trends=1):
             #TaurusTrend.showEvent(self,event)
     global STARTUP_DELAY
     STARTUP_DELAY = 0
-    try:from taurus.external.qt import Qwt5,Qt
-    except:from PyQt4 import Qwt5,Qt
+
+    from fandango.qt import Qwt5,Qt
 
     qw = Qt.QWidget()
     qw.setLayout(Qt.QVBoxLayout())

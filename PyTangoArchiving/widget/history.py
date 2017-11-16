@@ -26,12 +26,7 @@
 import time,sys,os,re,fandango,traceback
 from fandango.functional import *
 import PyTangoArchiving
-try:
- from taurus.external.qt import Qt
-except:
- from PyQt4 import Qt
-
-from fandango.qt import QOptionDialog
+from fandango.qt import Qt, QOptionDialog
 
 __all__= ['show_history']
 

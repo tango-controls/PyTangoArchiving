@@ -30,9 +30,8 @@ import PyTango
 import fandango
 import fandango.functional as fun
 
-#from PyQt4 import Qt
 import taurus
-from taurus.external.qt import Qt,Qwt5
+from fandango.qt import Qt,Qwt5
 from taurus.qt.qtgui.plot import TaurusTrend,TaurusPlot
 from taurus.qt.qtgui.panel import TaurusDevicePanel
 #from fandango.qt import modelSetter,TauEmitterThread,SingletonWorker

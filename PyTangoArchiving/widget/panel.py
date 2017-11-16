@@ -25,12 +25,11 @@
 
 ## author: srubio@cells.es, 2015
 
-from PyQt4 import Qt
-import taurus
 import PyTango
 import re,sys,os,time,traceback,threading
 import fandango,fandango as F
 import fandango.qt as fqt
+from fandango.qt import Qt
 import fandango.functional as fun
 from threading import Thread
 import PyTangoArchiving as pta

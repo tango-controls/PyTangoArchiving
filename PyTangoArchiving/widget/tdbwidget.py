@@ -1,6 +1,6 @@
 import PyTangoArchiving, traceback, taurus, time, re
 
-from taurus.external.qt import QtCore, QtGui, Qt, Qwt5
+from fandango.qt import QtCore, QtGui, Qt, Qwt5
 from PyTangoArchiving.widget.taurusattributechooser import TaurusAttributeChooser
 from taurus.qt.qtgui.panel import TaurusForm
 from taurus.qt.qtgui.resource import getThemeIcon
