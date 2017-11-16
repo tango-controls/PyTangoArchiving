@@ -329,7 +329,8 @@ def getArchivingReader(attr_list=None,start_date=0,stop_date=0,
             failed[name]+=1
             
       except Exception,e:
-        print('getArchivingReader(%s,%s): failed!: %s'%(name,a,traceback.format_exc()))
+        log('getArchivingReader(%s,%s): failed!: %s'%(
+            name,a,traceback.format_exc()))
         failed[name]+=1
           
       if not failed[name]: 
@@ -713,7 +714,7 @@ class Reader(Object,SingletonMap):
         """ This method uses two list caches to avoid redundant device proxy calls, launch .reset() to clean those lists. """
 
         if self.is_hdbpp: # NEVER CALLED IF setting reader=HDBpp(...)
-            self.warning('HDBpp.is_attribute_archived() OVERRIDE!!')
+            self.log.warning('HDBpp.is_attribute_archived() OVERRIDE!!')
             return True
         if expandEvalAttribute(attribute):
             return all(self.is_attribute_archived(a,active) for a in expandEvalAttribute(attribute))
@@ -733,7 +734,8 @@ class Reader(Object,SingletonMap):
                             and c.is_attribute_archived(attribute,active):
                             sch.append(a)
                     except: 
-                        traceback.print_exc()
+                        self.log.info('%s archiving not available'%a)
+                        #traceback.print_exc()
                 return tuple(sch) 
                 #return tuple(a for a in self.configs if self.configs.get(a) \
                 #and (a not in Schemas.keys() or Schemas.checkSchema(a,attribute))
@@ -1339,10 +1341,10 @@ class ReaderByBunches(Reader):
         """
         while not self._threading_event.is_set():
             try:
-                #self.info('... ReaderThread: Polling ...')
+                #self.log.info('... ReaderThread: Polling ...')
                 assert self._reader.is_alive()
                 if self._pipe1.poll(0.1):
-                    #self.info('... ReaderThread: Receiving ... (%s)'%(ReaderProcess.__instances.keys()))
+                    #self.log.info('... ReaderThread: Receiving ... (%s)'%(ReaderProcess.__instances.keys()))
                     key,query = self._pipe1.recv()
                     if key.lower() in self.asked_attributes:
                         #Updating last_dates dictionary
