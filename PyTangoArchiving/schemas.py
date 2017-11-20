@@ -91,9 +91,11 @@ class Schemas(object):
             if not hasattr(rd,'schema'): rd.schema = dct['schema']
 
         except Exception,e:
-          print('Reader.getSchema(%s): failed! %s'
-                %(schema,traceback.format_exc()))
-          dct = None
+            print('Reader.getSchema(%s): failed!'%schema)
+            if logger: 
+                try: logger.debug(traceback.format_exc())
+                except: pass
+            dct = None
           
         k.SCHEMAS[schema] = dct
         return dct
