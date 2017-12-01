@@ -96,26 +96,37 @@ def data_has_changed(value,previous,next=None,t=300):
     """
     return value[1]!=previous[1] or (next is not None and next[1]!=previous[1]) or value[0]>(t+previous[0])
 
-def decimation(history,decimation,window='0',logger_obj=None):
+def decimation(history,decimation,window='0',logger_obj=None, N=10*1080):
     l0 = len(history)
     if not l0: return history
     trace = getattr(logger_obj,'info',fandango.printf)
     utils.patch_booleans(history)
-    try: window = fandango.str2time(window or '0') #str(logger_obj._windowedit.text()).strip() or '0')
-    except: window = 0
-    start_date,stop_date = history[0][0],history[-1][0]
-    if decimation is not None and len(history) and not fandango.isSequence(history[0][1]):
+    try: 
+        window = fandango.str2time(window or '0') 
+        #str(logger_obj._windowedit.text()).strip() or '0')
+    except: 
+        window = 0
+    start_date,stop_date = float(history[0][0]),float(history[-1][0])
+    
+    if (decimation is not None and len(history) 
+            and not fandango.isSequence(history[0][1])):
         history = [v for v in history if v[1] is not None and not isNaN(v[1])]
         trace('Removed %d values in (None,NaN)'%(l0-len(history)))  
+        
     if decimation and len(history) and type(history[0][-1]) in (int,float,type(None)):
         #history = fandango.arrays.decimate_array(data=history,fixed_size=2*trend_set._xBuffer.maxSize())
         #DATA FROM EVAL IS ALREADY FILTERED; SHOULD NOT PASS THROUGH HERE
-        wmin,wauto = max(1.,(stop_date-start_date)/(100*1080.)),max(1.,(stop_date-start_date)/(10*1080.))
+        wmin = max(1.,(stop_date-start_date)/(100*1080.))
+        wauto = max(1.,(stop_date-start_date)/(N))
         trace('WMIN,WUSER,WAUTO = %s,%s,%s'%(wmin,window,wauto))
         window = wauto if not window else max((wmin,window))
+        
         if len(history) > (stop_date-start_date)/window:
-            history = fandango.arrays.filter_array(data=history,window=window,method=decimation)
-            trace('Decimated %d values to %d using %s every %s seconds'%(l0,len(history),decimation,window))
+            history = fandango.arrays.filter_array(
+                data=history,window=window,method=decimation)
+            trace('Decimated %d values to %d using %s every %s seconds'
+                  %(l0,len(history),decimation,window))
+            
     return history
 
 def choose_first_value(v,w,t=0,tmin=-300):
