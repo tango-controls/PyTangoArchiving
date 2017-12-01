@@ -21,7 +21,7 @@
 ## along with this program; if not, see <http://www.gnu.org/licenses/>.
 #############################################################################
 
-
+import PyTangoArchiving
 from PyTangoArchiving.dbs import ArchivingDB
 from PyTangoArchiving.common import CommonAPI
 from PyTangoArchiving.reader import Reader
@@ -305,29 +305,31 @@ class HDBpp(ArchivingDB,SingletonMap):
           return dict((t,self.Query("select att_name from att_conf where att_conf_data_type_id = %s"%i))
                       for t,i in types)
           
-    @staticmethod
-    def decimate_values(self,values,N=540,method=None):
-        """
-        values must be a sorted (time,...) array
-        it will be decimated in N equal time intervals 
-        if method is not provided, only the first value of each interval will be kept
-        if method is given, it will be applied to buffer to choose the value to keep
-        first value of buffer will always be the last value kept
-        """
-        tmin,tmax = sorted((values[0][0],values[-1][0]))
-        result,buff = [values[0]],[values[0]]
-        interval = float(tmax-tmin)/N
-        if not method:
-          for v in values:
-            if v[0]>=(interval+float(result[-1][0])):
-              result.append(v)
-        else:
-          for v in values:
-            if v[0]>=(interval+float(result[-1][0])):
-              result.append(method(buff))
-              buff = [result[-1]]
-            buff.append(v)
-        return result
+    #@staticmethod
+    #def decimate_values(values,N=540,method=None):
+        #"""
+        #values must be a sorted (time,...) array
+        #it will be decimated in N equal time intervals 
+        #if method is not provided, only the first value of each interval will be kept
+        #if method is given, it will be applied to buffer to choose the value to keep
+        #first value of buffer will always be the last value kept
+        #"""
+        #tmin,tmax = sorted((values[0][0],values[-1][0]))
+        #result,buff = [values[0]],[values[0]]
+        #interval = float(tmax-tmin)/N
+        #if not method:
+          #for v in values:
+            #if v[0]>=(interval+float(result[-1][0])):
+              #result.append(v)
+        #else:
+          #for v in values:
+            #if v[0]>=(interval+float(result[-1][0])):
+              #result.append(method(buff))
+              #buff = [result[-1]]
+            #buff.append(v)
+
+        #print(tmin,tmax,N,interval,len(values),len(result),method)
+        #return result
       
     def get_last_attribute_values(self,table,n=1,check_table=False):
         #if N==1:
@@ -364,9 +366,16 @@ class HDBpp(ArchivingDB,SingletonMap):
             
         start_date and stop_date must be in a format valid for SQL
         """
+        if decimate:
+            # When called from thrends, decimate may be the decimation method
+            try:
+                N = int(decimate)
+            except:
+                N = N if N > 0 else 1080
+            
         self.setLogLevel('INFO')
-        self.info('HDBpp.get_attribute_values(%s,%s,%s,%s,%s)'
-              %(table,start_date,stop_date,N,kwargs))
+        self.info('HDBpp.get_attribute_values(%s,%s,%s,%s,decimate=%s,%s)'
+              %(table,start_date,stop_date,N,decimate,kwargs))
         aid,tid,table = self.get_attr_id_type_table(table)
             
         what = 'UNIX_TIMESTAMP(data_time)' if unixtime else 'data_time'
@@ -416,8 +425,13 @@ class HDBpp(ArchivingDB,SingletonMap):
                 result.append((k,l))
             self.debug('arranged [%d]'%len(result))
             
-        if N>1 and decimate!=0: 
-          result = self.decimate_values(result,N=decimate)
+        #if N>1 and decimate!=0: 
+          #result = self.decimate_values(result,N=decimate)
+          #self.info('decimated: [%d]'%len(result))
+          
+        if decimate:
+          result = PyTangoArchiving.reader.decimation(result,decimate,window=0,N=N)
+          
         if human: 
           result = [list(t)+[fn.time2str(t[0])] for t in result]
         else:
@@ -430,7 +444,6 @@ class HDBpp(ArchivingDB,SingletonMap):
             result = [(float(t[0]),t[1],t[2],t[3]) for t in result]
           else:
             result = [[float(t[0])]+t[1:] for t in result]
-        self.debug('decimated: [%d]'%len(result))
 
         if not desc and not stop_date and N>0:
             #THIS WILL BE APPLIED ONLY WHEN LAST N VALUES ARE ASKED
