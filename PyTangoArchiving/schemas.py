@@ -31,6 +31,12 @@ import fandango
 import fandango.functional as fun
 from fandango import clmatch
 
+import sys
+EXPERT_MODE = any(a in str(sys.argv) for a in 
+        ('ArchivingBrowser.py','ctarchiving','taurustrend',
+         'taurusfinder','ctsearch','ipython',
+         'archiving2csv','archiving2plot','matlab'))
+
 class Schemas(object):
     """ Schemas kept in a singleton object """
     
@@ -54,6 +60,10 @@ class Schemas(object):
     
     @classmethod
     def getSchema(k,schema,tango='',prop='',logger=None):
+        
+        if schema.startswith('#') and EXPERT_MODE:
+            schema = schema.strip('#')
+            print('%s available only in EXPERT_MODE'%schema)
 
         if schema in k.SCHEMAS:
           # Failed schemas should be also returned (to avoid unneeded retries)

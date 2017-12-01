@@ -506,7 +506,8 @@ class Reader(Object,SingletonMap):
 
                 else:
                   sch = Schemas.getSchema(s)
-                  if sch: self.configs[s] = sch.get('reader')
+                  if sch: 
+                      self.configs[sch.get('schema')] = sch.get('reader')
 
             self.log.info("... created")
         
