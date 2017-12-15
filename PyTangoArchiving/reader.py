@@ -328,6 +328,8 @@ def getArchivingReader(attr_list=None,start_date=0,stop_date=0,
         if 'hdb' in (name,data.get('schema'),data.get('dbname')):
           if not data.get('reader'):
             data['reader'] = hdb or Reader('hdb',tango_host=tango,logger=logger)
+            
+        if not data.get('reader'): continue
         
         for a in attr_list:
           log('getArchivingReader(%s): trying on %s'%(a,name))
@@ -1017,7 +1019,7 @@ class Reader(Object,SingletonMap):
                     self.log.debug('\tParsed [%d] in %s s'%(len(values),time.time()-t1))
                     t1 = time.time()
                     #DECIMATION IS DONE HERE ##########################################################################
-                    if len(values) and decimate:
+                    if len(values)>128 and decimate:
                         decimate,window = decimate if isSequence(decimate) else (decimate,'0')
                         if isString(decimate):
                             try: decimate = eval(decimate)
