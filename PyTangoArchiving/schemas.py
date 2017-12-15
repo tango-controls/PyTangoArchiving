@@ -78,9 +78,11 @@ class Schemas(object):
           if fandango.isSequence(props):
             props = [map(str.strip,t.split('=',1)) for t in props]
           dct.update(props)
-
-          if dct.get('reader'):
-            m,c = dct.get('reader').rsplit('.',1)
+          
+          rd = dct.get('reader')
+          if rd:
+            m = rd.split('(')[0].rsplit('.',1)[0]
+            c = rd[len(m)+1:]
             if m not in k.MODULES:
               fandango.evalX('import %s'%m,modules=k.MODULES)
             #print('getSchema(%s): load %s reader'%(schema,dct.get('reader')))
@@ -90,13 +92,13 @@ class Schemas(object):
                         modules=k.MODULES,
                         _locals=dct)
             
-            if not hasattr(dct['reader'],'is_attribute_archived'):
-              dct['reader'].is_attribute_archived = lambda *a,**k:True
-            if not hasattr(dct['reader'],'get_attributes'):
-              dct['reader'].get_attributes = lambda *a,**k:[]
-            if not hasattr(dct['reader'],'get_attribute_values'):
+            if not hasattr(rd,'is_attribute_archived'):
+              rd.is_attribute_archived = lambda *a,**k:True
+            if not hasattr(rd,'get_attributes'):
+              rd.get_attributes = lambda *a,**k:[]
+            if not hasattr(rd,'get_attribute_values'):
               if dct['method']:
-                dct['reader'].get_attribute_values = getattr(rd,dct['method'])
+                rd.get_attribute_values = getattr(rd,dct['method'])
 
             if not hasattr(rd,'schema'): rd.schema = dct['schema']
 
