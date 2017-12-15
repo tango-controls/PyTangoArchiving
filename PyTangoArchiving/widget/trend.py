@@ -860,6 +860,11 @@ def getTrendGaps(trend,trend_set,bounds=None):
     import numpy as np
     now,tbounds,xbuffer = time.time()-10,getTrendBounds(trend),getattr(trend_set,'_xBuffer',[]).toArray()
     if bounds is not None and any(bounds): tbounds = bounds[0] or tbounds[0], bounds[1] or tbounds[1]
+    
+    if tbounds[1] < tbounds[0]:
+        print('#'*80)
+        print('System date seems wrong!!!: %s'%fandango.time2str(tbounds[1]))
+    
     bounds = min(tbounds[0],now),min(tbounds[1],now) #Ignoring the "future" part of the scale
     if not bounds[1]-bounds[0]: return bounds[0],bounds[1],ZONES.BEGIN,0.
     if not len(xbuffer): return bounds[0],bounds[1],ZONES.BEGIN,1.
