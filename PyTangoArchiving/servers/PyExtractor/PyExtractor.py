@@ -95,7 +95,13 @@ class PyExtractor(PyTango.Device_4Impl):
         attribute = self.tag2attr(aname)
         print time.ctime()+'In read_dyn_attr(%s)'%aname
 
-        req,atformat,attype,data = self.AttrData[attribute]
+        try:
+            req,atformat,attype,data = self.AttrData[attribute]
+        except Exception,e:
+            print('Unable to read %s: key = %s ; cache = %s' % (attr,attribute,self.AttrData.keys()))
+            traceback.print_exc()
+            raise e
+
         conv = self.bool2float if attype is PyTango.DevBoolean \
           else (float if attype is PyTango.DevDouble
               else str)
@@ -161,6 +167,7 @@ class PyExtractor(PyTango.Device_4Impl):
             MAXDIM = 1024*1024*1024
             #First create the attributes
             epoch,data,aname = [],[],attribute.replace('/','__')
+            values = decimate_values(values)
             [(epoch.append(v[0]),data.append(v[1])) for v in values]
             writable = PyTango.AttrWriteType.READ
 
@@ -193,6 +200,7 @@ class PyExtractor(PyTango.Device_4Impl):
             
             #Then add the data to Cache values, so IsDataReady will return True
             t = fn.now()
+            self.RemoveCachedAttribute(attribute)
             self.AttrData[attribute] = (t,atformat,attype,values)
             print('Done: %s,%s,%s,%s,%d'%(attribute,t,atformat,attype,len(values)))
         except:
@@ -231,9 +239,10 @@ class PyExtractor(PyTango.Device_4Impl):
 #    Always excuted hook method
 #------------------------------------------------------------------
     def always_executed_hook(self):
-        print time.ctime()+"In ", self.get_name(), "::always_executed_hook()"
+        msg = 'Attributes in cache:\n\t%s\n'%','.join(self.AttrData.keys())
+        print(time.ctime()+"In "+ self.get_name()+ "::always_executed_hook()"+'\n'+msg)
         status = 'The device is in %s state\n\n'%self.get_state()
-        status += 'Attributes in cache:\n\t%s\n'%','.join(self.AttrData.keys())
+        status += msg
         self.set_status(status)
         self.GetCurrentQueries()
 
@@ -277,7 +286,7 @@ class PyExtractor(PyTango.Device_4Impl):
         RW = False
         synch = fn.searchCl('yes|true',str(argin[3:4]))
         attrs = [tag,tag+'_r',tag+'_w',tag+'_t'] if RW else [tag,tag+'_r',tag+'_w',tag+'_t']
-        if aname in self.AttrData: self.AttrData.pop(aname)
+        
         self.reader.get_attribute_values(aname,
             (lambda v: self.reader_hook(aname,v)),dates[0],dates[1],decimate=True)
         argout = [fn.shape(attrs),[a for a in attrs]]
@@ -307,7 +316,7 @@ class PyExtractor(PyTango.Device_4Impl):
             data = self.AttrData.pop(argin)
             del data
         else:
-            print '\tAttribute %s not in AttrData!!!!'%argin
+            print('\tAttribute %s not in AttrData!!!!'%argin)
         if False:
             #All this part disabled as it doesn't work well in PyTango 7.2.2
             try:
@@ -332,7 +341,7 @@ class PyExtractor(PyTango.Device_4Impl):
         #    Add your own code here
         remove = [a for a,v in self.AttrData.items() if v[0]<fn.now()-self.ExpireTime]
         for a in self.AttrData.keys()[:]:
-            self.RemoveCacheAttribute(a)
+            self.RemoveCachedAttribute(a)
 
     def IsArchived(self, argin):
         print "In ", self.get_name(), "::IsArchived()"
