@@ -51,25 +51,40 @@ def get_search_model(model):
 
 class HDBpp(ArchivingDB,SingletonMap):
     
-    def __init__(self,db_name='',host='localhost',user='archiver',passwd='archiver',other=None):
-        if other:
-            db_name,host,user,passwd = other.db_name,other.host,other.user,other.passwd
+    def __init__(self,db_name='',host='localhost',user='archiver',
+                 passwd='archiver', manager='',
+                 other=None):
+        assert db_name or manager, 'db_name/manager argument is required!'
         self.tango = get_database()
-        if not db_name:
-          mans = self.get_all_managers()
-          if not mans or len(mans)>1: 
-              print mans
-              raise Exception('db_name argument is required!')
-          else:
-              db_name = get_device_property(mans[0],'DbName')
-              host = get_device_property(mans[0],'DbHost')
-              user = get_device_property(mans[0],'DbUser')
-              passwd = get_device_property(mans[0],'DbPassword')
+        if other:
+            db_name,host,user,passwd = \
+                other.db_name,other.host,other.user,other.passwd
+        elif not manager:
+            self.get_manager(db_name)
+        
+        d,h,u,p = self.get_db_config(manager=manager,db_name=db_name)
+        db_name = db_name or d
+        host = host or h    
+        user = user or u
+        passwd = passwd or p
         ArchivingDB.__init__(self,db_name,host,user,passwd)
-        try:
-            assert self.get_manager(),'HdbConfigurationManager not found!!'
-        except Exception,e:
-            print(e)
+            
+    def get_db_config(self,manager='', db_name=''):
+        if not manager:
+            manager = self.get_manager(db_name).name()
+            
+        prop = get_device_property(manager,'LibConfiguration')
+        if prop:
+            config = dict((map(str.strip,l.split('=',1)) for l in prop))
+            db_name,host,user,passwd = \
+                [config.get(k) for k in 'dbname host user password'.split()]
+        else:
+            db_name = get_device_property(manager,'DbName') or ''
+            host = get_device_property(manager,'DbHost') or ''
+            user = get_device_property(manager,'DbUser') or ''
+            passwd = get_device_property(manager,'DbPassword') or ''
+              
+        return db_name,host,user,passwd
         
     def get_all_managers(self):
         return get_class_devices('HdbConfigurationManager')
@@ -77,15 +92,17 @@ class HDBpp(ArchivingDB,SingletonMap):
     def get_all_archivers(self):
         return get_class_devices('HdbEventSubscriber')
       
-    def get_manager(self):
+    def get_manager(self, db_name='', prop=''):
         if not getattr(self,'manager',None):
+            db_name = db_name or getattr(self,'db_name','')
             self.manager = ''
             managers = self.get_all_managers()
             for m in managers:
-                d = get_device_property(m,'DbName')
-                if not d:
-                    d = str(get_device_property(m,'LibConfiguration'))
-                if self.db_name in d:
+                if db_name:
+                    prop = get_device_property(m,'DbName')
+                    if not prop:
+                        prop = str(get_device_property(m,'LibConfiguration'))
+                if not db_name or db_name in prop:
                     self.manager = m
                     break
                     
@@ -452,11 +469,24 @@ class HDBpp(ArchivingDB,SingletonMap):
             self.getCursor(klass=MySQLdb.cursors.SSCursor)
             return result
         
-    def get_attributes_values(self,tables='',start_date=None,stop_date=None,desc=False,N=-1,
-                              unixtime=True,extra_columns='quality',decimate=0,human=False):
+    def get_attributes_values(self,tables='',start_date=None,stop_date=None,
+                desc=False,N=-1,unixtime=True,extra_columns='quality',
+                decimate=0,human=False):
+        
         if not fn.isSequence(tables):
             tables = self.get_archived_attributes(tables)
+            
         return dict((t,self.get_attribute_values(t,start_date,stop_date,desc,
                 N,unixtime,extra_columns,decimate,human))
                 for t in tables)
 
+    def get_attribute_rows(self,attribute,start_date=0,stop_date=0):
+        aid,tid,table = self.get_attr_id_type_table(attribute)
+        if start_date and stop_date:
+            dates = map(time2str,(start_date,stop_date))
+            where = "and data_time between '%s' and '%s'" % dates
+        else:
+            where = ''
+        r = self.Query('select count(*) from %s where att_conf_id = %s'
+                          % ( table, aid) + where)
+        return r[0][0] if r else 0
