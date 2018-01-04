@@ -1,4 +1,7 @@
+import sys
 import fandango as fd
+
+assert sys.argv[1:], 'Start date required (e.g. 2017-08-01)'
 
 tables = {
 
@@ -21,7 +24,7 @@ tables = {
     
     }
     
-start_date = '2017-08-01'
+start_date = sys.argv[1] # '2017-08-01'
 npartitions = 20
 counter = 0
 
