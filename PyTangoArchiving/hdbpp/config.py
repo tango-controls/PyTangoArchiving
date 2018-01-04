@@ -53,21 +53,29 @@ class HDBpp(ArchivingDB,SingletonMap):
     
     def __init__(self,db_name='',host='localhost',user='archiver',
                  passwd='archiver', manager='',
-                 other=None):
+                 other=None, port = '3306'):
         assert db_name or manager, 'db_name/manager argument is required!'
         self.tango = get_database()
-        if other:
-            db_name,host,user,passwd = \
-                other.db_name,other.host,other.user,other.passwd
-        elif not manager:
-            self.get_manager(db_name)
-        
-        d,h,u,p = self.get_db_config(manager=manager,db_name=db_name)
+
+        if not all((db_name,host,user,passwd)):
+            if other:
+                db_name,host,user,passwd = \
+                    other.db_name,other.host,other.user,other.passwd
+            elif not manager:
+                self.get_manager(db_name)
+            
+            d,h,u,p = self.get_db_config(manager=manager,db_name=db_name)
+
         db_name = db_name or d
         host = host or h    
         user = user or u
         passwd = passwd or p
-        ArchivingDB.__init__(self,db_name,host,user,passwd)
+        self.port = port
+        ArchivingDB.__init__(self,db_name,host,user,passwd,)
+        try:
+            self.get_manager()
+        except:
+            print('Unable to get manager')
             
     def get_db_config(self,manager='', db_name=''):
         if not manager:
@@ -181,7 +189,10 @@ class HDBpp(ArchivingDB,SingletonMap):
         return dev
     
     def add_attributes(self,attributes,*args,**kwargs):
-        """Call add_attribute sequentially with a 1s pause between calls"""
+        """
+        Call add_attribute sequentially with a 1s pause between calls
+        See add_attribute? for more help on arguments
+        """
         try:
           for a in attributes:
             self.add_attribute(a,*args,**kwargs)
@@ -193,7 +204,10 @@ class HDBpp(ArchivingDB,SingletonMap):
         return
 
     def add_attribute(self,attribute,archiver,period=0,
-                      rel_event=None,per_event=300000,abs_event=None):
+                      rel_event=None,per_event=300000,abs_event=None,code_event=False):
+        """
+        set _event arguments to -1 to ignore them and do not modify the database
+        """
         import fandango  as fn
         attribute = get_full_name(str(attribute).lower())
         self.info('add_attribute(%s)'%attribute)
@@ -206,21 +220,26 @@ class HDBpp(ArchivingDB,SingletonMap):
         try:
           d = self.get_manager()
           d.lock()
+          print('SetAttributeName: %s'%attribute)
           d.write_attribute('SetAttributeName',attribute)
           time.sleep(0.2)
           if period>0:
             d.write_attribute('SetPollingPeriod',period)
-          d.write_attribute('SetPeriodEvent',per_event)
+          if per_event not in (None,-1):
+            d.write_attribute('SetPeriodEvent',per_event)
 
           if not any((abs_event,rel_event)):
             if re.search("short|long",data_type.lower()):
               abs_event = 1
             elif not re.search("bool|string",data_type.lower()):
               rel_event = 1e-2
-          if abs_event is not None:
+          if abs_event not in (None,-1):
+            print('SetAbsoluteEvent: %s'%abs_event)
             d.write_attribute('SetAbsoluteEvent',abs_event)
-          if rel_event is not None:
+          if rel_event not in (None,-1):
             d.write_attribute('SetRelativeEvent',rel_event)
+            
+          d.write_attribute('SetCodePushedEvent',code_event)
 
           d.write_attribute('SetArchiver',archiver)
           time.sleep(.2)
@@ -237,14 +256,28 @@ class HDBpp(ArchivingDB,SingletonMap):
           d.unlock()
         print('%s added'%attribute)
         
+    def get_fqdn_attribute_name(self,attribute):
+        attribute = attribute.lower()
+        if ':'in attribute:
+            model = fandango.tango.parse_tango_model(attribute)
+            if '.' not in model['host']:
+                import socket
+                fqdn = socket.getfqdn(model['host'])
+                attribute = fqdn+':'+model['port']+'/'+model['devicename']
+                if model['attribute']:
+                    attribute+='/'+model['attribute']
+        return attribute
+        
     def is_attribute_archived(self,attribute,active=None):
         # @TODO active argument not implemented
         d = self.get_manager()
-        attribute = d.AttributeSearch(attribute.lower())
-        if len(attribute)>1: 
+        attribute = self.get_fqdn_attribute_name(attribute)
+        attributes = d.AttributeSearch(attribute)
+        a = [a for a in attributes if a.lower().endswith(attribute.lower())]
+        if len(attributes)>1: 
           raise Exception('MultipleAttributesMatched!')
-        if len(attribute)==1:
-          return attribute[0]
+        if len(attributes)==1:
+          return attributes[0]
         else:
           return False
           
