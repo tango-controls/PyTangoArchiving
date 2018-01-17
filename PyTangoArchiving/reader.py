@@ -308,7 +308,7 @@ def getArchivingReader(attr_list=None,start_date=0,stop_date=0,
     if logger is True: 
         log,logger = fandango.printf,None
     else: 
-        log = logger and logger.info or (lambda *args:None)
+        log = logger and logger.debug or (lambda *args:None)
 
     log('getArchivingReader(%s): %s'%(attr_list,schemas.keys()))
     a,failed = '',fandango.defaultdict(int)
@@ -453,7 +453,7 @@ class Reader(Object,SingletonMap):
         else: 
             self.log = logger
         
-        self.log.info('In PyTangoArchiving.Reader.__init__(%s)' % (schema or db or '...'))
+        self.log.debug('In PyTangoArchiving.Reader.__init__(%s)' % (schema or db or '...'))
         self.configs = {}
         if schema is not None and db=='*': db = schema
         if any(s in ('*','all') for s in (db,schema)): db,schema = '*','*'
@@ -489,15 +489,15 @@ class Reader(Object,SingletonMap):
                     self.is_hdbpp = True
                     c = sorted(self.configs.items())[-1][-1]
                     self.db_name = c.split('/')[-1] if '/' in c else db_name
-                    self.log.info("Created HDB++ reader")
+                    self.log.debug("Created HDB++ reader")
                 else:
-                    self.log.info("Created '%s' reader"%self.db_name)
+                    self.log.debug("Created '%s' reader"%self.db_name)
                 #print self.configs
             except:
                 #self.log.error(traceback.format_exc())
                 self.log.warning('Unable to connect to MySQL, using Java %sExtractor devices'%self.schema.upper())
         else:
-            self.log.info("Creating 'universal' reader")
+            self.log.debug("Creating 'universal' reader")
             rd = getArchivingReader()
             #Hdb++ classes will be scanned when searching for HDB
             tclasses = map(str.lower,fandango.get_database().get_class_list('*'))
@@ -511,7 +511,7 @@ class Reader(Object,SingletonMap):
                   if sch: 
                       self.configs[sch.get('schema')] = sch.get('reader')
 
-            self.log.info("... created")
+            self.log.debug("... created")
         
         if self.schema.lower() == 'tdb': 
             #RetentionPeriod must be updated for all generic readers
@@ -550,7 +550,7 @@ class Reader(Object,SingletonMap):
             del o
         
     def reset(self):
-        self.log.info('Reader.reset()')
+        self.log.debug('Reader.reset()')
         self.last_dates = defaultdict(lambda:(1e10,0))
         if hasattr(self,'state'):
             [db.renewMySQLconnection() for db in self.dbs.values()]
@@ -563,7 +563,8 @@ class Reader(Object,SingletonMap):
             self.state = PyTango.DevState.INIT
         else:
             self.state = PyTango.DevState.FAULT
-            self.log.info('No available extractors found, PyTangoArchiving.Reader disabled')
+            self.log.info('No available extractors found, '
+                'PyTangoArchiving.Reader disabled')
                 
     def get_database(self,epoch=-1):
         try:
@@ -591,7 +592,7 @@ class Reader(Object,SingletonMap):
                 
             if '%s@%s'%(db_name,host) != self._last_db:
                 self._last_db = '%s@%s'%(db_name,host)
-                self.log.info('In get_database(%s): %s'%(epoch,self._last_db))
+                self.log.debug('In get_database(%s): %s'%(epoch,self._last_db))
             return self.dbs[(host,db_name)]
         except:
             self.log.warning('Unable to access MySQL using config = %s:...@%s/%s\n%s' % (user,host,db_name,traceback.format_exc()))
@@ -748,7 +749,7 @@ class Reader(Object,SingletonMap):
                             and c.is_attribute_archived(attribute,active):
                             sch.append(a)
                     except: 
-                        self.log.info('%s archiving not available'%a)
+                        self.log.warning('%s archiving not available'%a)
                         #traceback.print_exc()
                 return tuple(sch) 
                 #return tuple(a for a in self.configs if self.configs.get(a) \
@@ -796,7 +797,9 @@ class Reader(Object,SingletonMap):
             if stop_time<0: stop_time = time.time()+stop_time
             GET_LAST = False
         start_date,stop_date = epoch2str(start_time),epoch2str(stop_time)
-        if not start_time<stop_time: raise Exception('StartDateMustBeLowerThanStopDate(%s,%s)'%(start_date,stop_date))
+        if not start_time<stop_time: 
+            raise Exception('StartDateMustBeLowerThanStopDate(%s,%s)'
+                            %(start_date,stop_date))
         return start_date,start_time,stop_date,stop_time
         
         
@@ -805,21 +808,26 @@ class Reader(Object,SingletonMap):
             cache=True,fallback=True):
         '''         
         This method reads values for an attribute between specified dates.
-        This method may use MySQL queries or an H/TdbExtractor DeviceServer to get the values from the database.
+        This method may use MySQL queries or an H/TdbExtractor DeviceServer to 
+        get the values from the database.
         The format of values returned is [(epoch,value),]
-        The flag 'asHistoryBuffer' forces to return the rawHistBuffer returned by the DS.
+        The flag 'asHistoryBuffer' forces to return the rawHistBuffer 
+        returned by the DS.
                 
         :param attributes: list of attributes
         :param start_date: timestamp of the first value
         :param stop_date: timestamp of the last value
-        :param asHistoryBuffer: return a history buffer object instead of a list (for trends)
+        :param asHistoryBuffer: return a history buffer object instead 
+                of a list (for trends)
         :param N: if N>0, only the last N values will be returned
-        :param decimate: remove repeated values, False by default but True when called from trends
+        :param decimate: remove repeated values, False by default but True 
+                when called from trends
         
         :return: a list with values (History or tuple values depending of args)
         '''
         if not self.check_state(): 
-            self.log.info('In PyTangoArchiving.Reader.get_attribute_values: Archiving not available!')
+            self.log.info('In PyTangoArchiving.Reader.get_attribute_values:'
+                ' Archiving not available!')
             return []
 
         start_date,start_time,stop_date,stop_time = \
@@ -831,14 +839,20 @@ class Reader(Object,SingletonMap):
         # Evaluating Taurus Formulas : it overrides the whole get_attribute process
         
         if expandEvalAttribute(attribute):
+            
             getId = lambda s: s.strip('{}').replace('/','_').replace('-','_')
             attribute = attribute.replace('eval://','')
             attributes = expandEvalAttribute(attribute)
             for a in attributes:
                 attribute = attribute.replace('{%s}'%a,' %s '%getId(a))
+
             resolution = max((1,(stop_time-start_time)/MAX_RESOLUTION))
-            vals = dict((k,fandango.arrays.filter_array(v,window=resolution)) for k,v in self.get_attributes_values(attributes,start_date,stop_date).items())
-            cvals = self.correlate_values(vals,resolution=resolution,rule=choose_last_value)#(lambda t1,t2,tt:t2))
+            vals = dict((k,fandango.arrays.filter_array(v,window=resolution)) 
+                            for k,v in self.get_attributes_values(
+                                attributes,start_date,stop_date).items())
+            cvals = self.correlate_values(vals,resolution=resolution,
+                                rule=choose_last_value)#(lambda t1,t2,tt:t2))
+
             nvals,error = [],False
             for i,t in enumerate(cvals.values()[0]):
                 v = None
@@ -904,8 +918,10 @@ class Reader(Object,SingletonMap):
         # HDB/TDB Specific Code
         
         alias = self.get_attribute_alias(attribute).lower()
-        attribute,alias = alias,attribute #Needed to record last read values for both alias and real name
-        self.log.debug('In PyTangoArchiving.Reader.get_attribute_values(%s,%s,%s)'%(attribute,start_date,stop_date))
+        #Needed to record last read values for both alias and real name
+        attribute,alias = alias,attribute 
+        self.log.debug('In PyTangoArchiving.Reader.get_attribute_values'
+                                '(%s,%s,%s)'%(attribute,start_date,stop_date))
         
         #Checks if the attribute is a member of an array 
         array_index = re.search('\[([0-9]+)\]',attribute) 
@@ -934,7 +950,7 @@ class Reader(Object,SingletonMap):
             self.log.info('Reusing Cached values for (%s)' % (str(ckey)))
             values = self.cache[ckey]
         else:
-            #######################################################################
+            ###################################################################
             # QUERYING NEW HDB/TDB VALUES
             if any(len(v)>1e5 for v in self.cache.values()) or get_memory()>2e6:
                 self.log.debug('... Reader.cache clear()')
@@ -942,17 +958,24 @@ class Reader(Object,SingletonMap):
                 
             if not db:
                 ##USING JAVA EXTRACTORS
-                values = self.get_extractor_values(attribute, start_date, stop_date, decimate, asHistoryBuffer)
+                values = self.get_extractor_values(attribute, start_date, 
+                                        stop_date, decimate, asHistoryBuffer)
             else:
                 # CHOOSING DATABASE METHODS
                 if not self.is_hdbpp:
                     try:
-                        full_name,ID,data_type,data_format,writable = db.get_attribute_descriptions(attribute)[0]
+                        full_name,ID,data_type,data_format,writable = \
+                            db.get_attribute_descriptions(attribute)[0]
                     except Exception,e: 
-                        raise Exception('%s_AttributeNotArchived: %s'%(attribute,e))
-                    data_type,data_format = utils.cast_tango_type(PyTango.CmdArgType.values[data_type]),PyTango.AttrDataFormat.values[data_format]
+                        raise Exception('%s_AttributeNotArchived: %s'
+                                        %(attribute,e))
+
+                    data_type,data_format = (utils.cast_tango_type(
+                        PyTango.CmdArgType.values[data_type]),
+                        PyTango.AttrDataFormat.values[data_format])
                     
-                    self.log.debug('%s, ID=%s, data_type=%s, data_format=%s'%(attribute,ID,data_type,data_format))
+                    self.log.debug('%s, ID=%s, data_type=%s, data_format=%s'
+                                   %(attribute,ID,data_type,data_format))
                     table = utils.get_table_name(ID)
                     method = db.get_attribute_values
                 else:
@@ -961,7 +984,7 @@ class Reader(Object,SingletonMap):
                     data_type = float
                     data_format = PyTango.AttrDataFormat.SCALAR
 
-                #######################################################################
+                ###############################################################
                 # QUERYING THE DATABASE 
                 #@TODO: This retrying should be moved down to ArchivingDB class instead
                 retries,t0,s0,s1 = 0,time.time(),start_date,stop_date
