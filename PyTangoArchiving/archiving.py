@@ -141,10 +141,17 @@ class ArchivingAPI(CommonAPI):
     EXPORT_PERIOD = 10*60 # Time, in seconds, that TDB data will be buffered before inserting in MySQL
     SCHEMAS = ('hdb','tdb')
     
-    def __init__(self,schema,host=None,user='browser',passwd='browser',classes=[],LogLevel='info',load=False,values=False,logger=None):
+    def __init__(self,schema,host=None,user='browser',passwd='browser',
+                 classes=[],LogLevel='info',load=False,values=False,
+                 tango_host='',logger=None):
+
         self.schema = schema.lower()
         assert self.schema in self.SCHEMAS, 'UnknownSchema_%s'%schema
-        CommonAPI.__init__(self,self.schema,host,user,passwd,classes=self.get_archiving_classes(),LogLevel=LogLevel,load=load,logger=logger)
+        CommonAPI.__init__(self,self.schema,host,user,passwd,
+                classes=self.get_archiving_classes(),LogLevel=LogLevel,
+                load=load,logger=logger)
+        
+        self.tango_host = tango_host or fandango.get_tango_host()
         self.db = ArchivingDB(self.schema,self.host,self.user,self.passwd)
         self.load_all(values=values,dedicated=load,servers=load)
         
@@ -212,6 +219,7 @@ class ArchivingAPI(CommonAPI):
         return [a for a in attrs if a in self and self[a].archiver]
     
     def is_attribute_archived(self,attribute):
+        attribute = '/'.join(attribute.split('/')[-4:])
         return (attribute.lower() in [a.lower() for a in self.get_archived_attributes()])    
         
     def get_attribute_archivers(self,attribute_list=None,load=False):
@@ -223,6 +231,7 @@ class ArchivingAPI(CommonAPI):
             self.load_attribute_modes()
         if not attribute_list: attribute_list = sorted(self.attributes)
         elif isinstance(attribute_list,str): attribute_list = [attribute_list]
+        attribute_list = ['/'.join(a.split('/')[-4:]) for a in attribute_list]
         return dict((a,self[a].archiver) for a in attribute_list)
 
     def get_archivers_load(self):
@@ -275,6 +284,7 @@ class ArchivingAPI(CommonAPI):
             self.load_attribute_modes()
         if not attribute_list: attribute_list = sorted(self.attributes)
         elif isinstance(attribute_list,str): attribute_list = [attribute_list]
+        attribute_list = ['/'.join(a.split('/')[-4:]) for a in attribute_list]
         return dict((a,self[a].modes) for a in attribute_list)
         
     def get_dedicated_archivers(self,attr_list=None,load=True):
@@ -867,7 +877,9 @@ class ArchivingAPI(CommonAPI):
                     self.log.info('Attribute %s archived by %s has no values in archiving database!'%(str(att),str(self.attributes[att].archiver)))
             #IT SHOULD BE SORTED BY TIME!!!
             return values
-        elif attribute not in self.attributes: 
+        
+        attribute = '/'.join(attribute.split('/')[-4:])
+        if attribute not in self.attributes: 
             self.log.error('The Attribute %s is not being Archived in %s database ...'%(attribute,self.schema))
             return None
         else:
@@ -898,6 +910,7 @@ class ArchivingAPI(CommonAPI):
             return
         if type(start_date) is not str: start_date=time.strftime('%Y-%m-%d %H:%M:%S',time.localtime(start_date))
         if type(stop_date) is not str: stop_date=time.strftime('%Y-%m-%d %H:%M:%S',time.localtime(stop_date))   
+        attribute = '/'.join(attribute.split('/')[-4:])
         lines=self.db.get_attribute_values(self.attributes[attribute].table,start_date,stop_date)
         if lines:
             date=time.mktime(lines[-1][0].timetuple())+1e-6*lines[-1][0].microsecond
