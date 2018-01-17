@@ -208,8 +208,7 @@ class HDBpp(ArchivingDB,SingletonMap):
         """
         set _event arguments to -1 to ignore them and do not modify the database
         """
-        import fandango  as fn
-        attribute = get_full_name(str(attribute).lower())
+        attribute = parse_tango_model(attribute,fqdn=True).fullname
         self.info('add_attribute(%s)'%attribute)
         config = get_attribute_config(attribute)
         #if 'spectrum' in str(config.data_format).lower():
@@ -282,6 +281,9 @@ class HDBpp(ArchivingDB,SingletonMap):
           return False
           
     def start_archiving(self,attribute,*args,**kwargs):
+        """
+        See HDBpp.add_attribute.__doc__ for a full description of arguments
+        """
         try:
             if isSequence(attribute):
                 for attr in attribute:
@@ -316,6 +318,10 @@ class HDBpp(ArchivingDB,SingletonMap):
     def get_attribute_names(self,active=False):
         return [a[0].lower() for a 
                 in self.Query('select att_name from att_conf')]
+    
+    def get_attribute_modes(self,attr):
+        aid,tid,table = self.get_attr_id_type_table(attr)
+        return {'ID':aid, 'MODE_E':True}
       
     def get_table_name(self,attr):
         return get_attr_id_type_table(attr)
@@ -380,6 +386,25 @@ class HDBpp(ArchivingDB,SingletonMap):
 
         #print(tmin,tmax,N,interval,len(values),len(result),method)
         #return result
+        
+    def decimate_table(att_id,table):
+        hours = [t0+i*3600 for i in range(24*30)]
+        days = [t0+i*86400 for i in range(30)]
+        dvalues = {}
+        q = ("select count(*) from %s where att_conf_id = %d "
+            "and data_time between '%s' and '%s'")
+        for d in days:
+            s = fn.time2str(d)
+            q = hdbpp.Query(q%(table,att_id,s,fn.time2str(d+86400))
+                            +" and (data_time %% 5) < 2;")
+        sorted(values.items())
+        3600/5
+        for h in hours:
+            s = fn.time2str(h)
+            q = hdbpp.Query("select count(*) from att_scalar_devdouble_ro "
+                "where att_conf_id = 1 and data_time between '%s' and '%s' "
+                "and (data_time %% 5) < 2;"%(s,fn.time2str(h+3600)))
+
       
     def get_last_attribute_values(self,table,n=1,check_table=False):
         #if N==1:
@@ -424,7 +449,7 @@ class HDBpp(ArchivingDB,SingletonMap):
                 N = N if N > 0 else 1080
             
         self.setLogLevel('INFO')
-        self.info('HDBpp.get_attribute_values(%s,%s,%s,%s,decimate=%s,%s)'
+        self.debug('HDBpp.get_attribute_values(%s,%s,%s,%s,decimate=%s,%s)'
               %(table,start_date,stop_date,N,decimate,kwargs))
         aid,tid,table = self.get_attr_id_type_table(table)
             
@@ -453,7 +478,7 @@ class HDBpp(ArchivingDB,SingletonMap):
         self.debug(query)
 
         result = self.Query(query)
-        self.info('read [%d]'%len(result))
+        self.debug('read [%d]'%len(result))
         if not result or not result[0]: return []
         #if len(result[0]) == 2: ## Just data_time and value_r
           #result = [(float(t[0]),t) for t in result]
