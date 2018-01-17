@@ -39,7 +39,7 @@ from fandango.functional import clmatch, time2str as epoch2str
 from fandango.functional import ctime2time, mysql2time
 from fandango.dicts import CaselessDict
 from fandango.linos import check_process,get_memory
-from fandango.tango import get_tango_host
+from fandango.tango import get_tango_host,parse_tango_model
 
 from PyTangoArchiving.utils import PyTango
 import PyTangoArchiving.utils as utils
@@ -445,7 +445,9 @@ class Reader(Object,SingletonMap):
             key = SingletonMap.parse_instance_key(cls,*p,**k)
         return key
             
-    def __init__(self,db='*',config='',servers = None, schema = None,timeout=300000,log='INFO',logger=None,tango_host=None,alias_file=''):
+    def __init__(self,db='*',config='',servers = None, schema = None,
+                 timeout=300000,log='INFO',logger=None,tango_host=None,
+                 multihost=False,alias_file=''):
         '''@param config must be an string like user:passwd@host'''
         if not logger:
             self.log = Logger('%s.Reader'%schema,format='%(levelname)-8s %(asctime)s %(name)s: %(message)s')
@@ -464,6 +466,7 @@ class Reader(Object,SingletonMap):
         self.schema = schema if schema is not None else (
             [s for s in self.DefaultSchemas if s in db.lower()] or ['*'])[0]
         self.tango_host = tango_host or get_tango_host()
+        self.multihost = multihost
         self.tango = PyTango.Database(*self.tango_host.split(':'))
         self.timeout = timeout
         self.modes = {}
@@ -665,26 +668,44 @@ class Reader(Object,SingletonMap):
         if self.db_name=='*':
             attrs = []
             for x in self.configs.values():
-              try:
-                attrs.extend(x.get_attributes(active=active))
-              except:
-                self.log.debug(traceback.format_exc())
+                try:
+                    for a in x.get_attributes(active=active):
+                        m = parse_tango_model(a)
+                        attrs.append((m.simplename,m.model)[self.multihost])
+                except:
+                    self.log.debug(traceback.format_exc())
             return sorted(set(attrs))
         
-        if self.available_attributes and self.current_attributes and time.time()<(self.updated+self.CacheTime):
+        if self.available_attributes and self.current_attributes \
+                and time.time()<(self.updated+self.CacheTime):
             return self.available_attributes
 
-        self.log.debug('%s: In Reader(%s).get_attributes(): last update was at %s'%(time.ctime(),self.schema,self.updated))
+        self.log.debug('%s: In Reader(%s).get_attributes(): '
+            'last update was at %s'%(time.ctime(),self.schema,self.updated))
+
         if self.get_database(): #Using a database Query
-            self.available_attributes = self.get_database().get_attribute_names(active=False)
-            self.current_attributes = self.get_database().get_attribute_names(active=True)
+            self.available_attributes = \
+                self.get_database().get_attribute_names(active=False)
+            self.current_attributes = \
+                self.get_database().get_attribute_names(active=True)
+
         elif self.extractors: #Using extractors
-            self.current_attributes = self.available_attributes = [a.lower() 
-                for a in self.__extractorCommand(self.get_extractor(),'GetCurrentArchivedAtt')]
+            self.current_attributes = self.available_attributes = \
+                self.__extractorCommand(self.get_extractor(), 
+                                        'GetCurrentArchivedAtt')
             
+        self.available_attributes = [(m.simplename,m.model)[self.multihost]
+            for m in (parse_tango_model(a) for a in self.available_attributes)]
+        self.current_attributes = [(m.simplename,m.model)[self.multihost]
+            for m in (parse_tango_model(a) for a in self.current_attributes)]
+        
         self.updated = time.time()
-        self.log.debug('In Reader(%s).get_attributes(): %s attributes available in the database'%(self.schema,len(self.available_attributes)))
-        return self.available_attributes if not active else self.current_attributes
+        
+        self.log.debug('In Reader(%s).get_attributes(): '
+                    '%s attributes available in the database'
+                        % (self.schema,len(self.available_attributes)))
+        
+        return (self.available_attributes,self.current_attributes)[active]
         
     def get_attribute_alias(self,model):
         try:
@@ -731,10 +752,14 @@ class Reader(Object,SingletonMap):
         if self.is_hdbpp: # NEVER CALLED IF setting reader=HDBpp(...)
             self.log.warning('HDBpp.is_attribute_archived() OVERRIDE!!')
             return True
+        
         if expandEvalAttribute(attribute):
-            return all(self.is_attribute_archived(a,active) for a in expandEvalAttribute(attribute))
+            return all(self.is_attribute_archived(a,active) 
+                       for a in expandEvalAttribute(attribute))
 
-        self.get_attributes()
+        self.get_attributes() #Updated cached lists
+        model = parse_tango_model(attribute)
+        
         if self.db_name=='*':
             # Universal reader
             pref = self.get_preferred_schema(attribute)
@@ -757,23 +782,33 @@ class Reader(Object,SingletonMap):
                 #and self.configs[a].is_attribute_archived(attribute,active))
         else:
             # Schema reader
-            attribute = re.sub('\[([0-9]+)\]','',attribute.lower())
-            if attribute in (self.current_attributes if active 
-                    else self.available_attributes):
-                return attribute
+            # first remove array indexes
+            attr = (model.simplename,model.model)[self.multihost]
+            if (attr in (self.current_attributes if active 
+                    else self.available_attributes)):
+                return attr
+            
             else: #Reloading attribute lists
-                alias = self.get_attribute_alias(attribute)
-                alias = re.sub('\[([0-9]+)\]','',alias.lower())
-                cache = (self.current_attributes if active 
-                    else self.available_attributes) #Lists have been updated
-                return alias if alias in cache else False
+                alias = self.get_attribute_alias(attr)
+                alias = parse_tango_model(alias)
+                if alias.tango_host == self.tango_host:
+                    cache = (self.current_attributes if active 
+                        else self.available_attributes)
+                    return alias if alias in cache else False
+                else:
+                    raise Exception('multihost aliases not implemented!')
         
     def get_last_attribute_dates(self,attribute):
-        """ This method returns the last start/stop dates returned for an attribute. """
+        """ 
+        This method returns the last start/stop dates 
+        returned for an attribute.
+        """
         if expandEvalAttribute(attribute):
-            return sorted(self.get_last_attribute_dates(a) for a in expandEvalAttribute(attribute))[-1]
+            return sorted(self.get_last_attribute_dates(a) 
+                          for a in expandEvalAttribute(attribute))[-1]
         elif self.db_name=='*':
-            return sorted(self.configs[s].last_dates.get(attribute,(0,0)) for s in ('tdb','hdb'))[-1]
+            return sorted(self.configs[s].last_dates.get(attribute,(0,0)) 
+                          for s in ('tdb','hdb'))[-1]
         else:
             return self.last_dates[attribute]
           
