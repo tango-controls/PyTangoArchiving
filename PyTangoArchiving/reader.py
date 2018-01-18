@@ -941,29 +941,17 @@ class Reader(Object,SingletonMap):
                     asHistoryBuffer=asHistoryBuffer,decimate=decimate,
                     notNone=notNone,N=N)
             
-            if fallback:
-
-                if not len(vals) and rd.schema.lower()=='tdb' \
-                  and 'hdb' in self.configs \
-                  and self.configs['hdb'].is_attribute_archived(attribute):
-                    
-                    self.log.info('In get_attribute_values(%s,%s,%s)(%s): '
-                      'fallback to HDB as TDB returned no data'%(
-                        attribute,start_date,stop_date,rd.schema))
-                    vals = self.configs['hdb'].get_attribute_values(
-                      attribute,start_date,stop_date,
-                      asHistoryBuffer=asHistoryBuffer,decimate=decimate,N=N)
-                    
-                elif not len(vals) and rd.schema.lower()=='hdb' \
-                  and 'tdb' in self.configs \
-                  and self.configs['tdb'].is_attribute_archived(attribute):
-                    
-                    self.log.info('In get_attribute_values(%s,%s,%s)(%s): '
-                      'fallback to TDB as HDB returned no data'%(
-                        attribute,start_date,stop_date,rd.schema))
-                    vals = self.configs['tdb'].get_attribute_values(
-                      attribute,start_date,stop_date,
-                      asHistoryBuffer=asHistoryBuffer,decimate=decimate,N=N)
+            if fallback: # If no data, it just tries the next database
+                sch = self.is_attribute_archived(attribute)[1:]
+                while not len(vals) and len(sch):
+                    self.log.warning('In get_attribute_values(%s,%s,%s)(%s): '
+                      'fallback to %s as %s returned no data'%(
+                        attribute,start_date,stop_date,rd.schema,
+                        sch[0], rd.schema))
+                    vals = self.configs[sch[0]].get_attribute_values(
+                        attribute,start_date,stop_date,
+                        asHistoryBuffer=asHistoryBuffer,decimate=decimate,N=N)
+                    sch = sch[1:]
                 
             return vals
           
