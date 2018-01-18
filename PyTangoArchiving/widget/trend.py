@@ -39,17 +39,18 @@ from PyTangoArchiving.reader import Reader,ReaderProcess
 #from taurus.qt.qtgui.plot import TaurusTrend
 
 from history import show_history
-from fandango.qt import Qt,QTextBuffer,setDialogCloser,QWidgetWithLayout
+from fandango.objects import BoundDecorator, Cached
+from fandango.debug import Timed
 from fandango.dicts import defaultdict
 from fandango import SingletonMap,str2time
 
-from fandango.qt import Qt, Qwt5
+from fandango.qt import Qt,Qwt5,QTextBuffer,setDialogCloser,QWidgetWithLayout
 
 from taurus.qt.qtgui.plot import TaurusTrend
 from taurus.qt.qtgui.base import TaurusBaseWidget
 from taurus.qt.qtgui.container import TaurusWidget,TaurusGroupBox
 
-from fandango.objects import BoundDecorator
+
 
 USE_MULTIPROCESS=False
 try:
@@ -565,6 +566,7 @@ class ArchivedTrendLogger(SingletonMap):
           filters=['*','!DEBUG'],force_period=10000):
         #trend widget,attribute,start_date,stop_date,use_db,db_config,tango_host,logger_obj,multiprocess,schema=''):
         print('>'*80)
+        
         from PyTangoArchiving.reader import Reader,ReaderProcess
         self.tango_host = tango_host
         self.trend = trend
@@ -575,6 +577,7 @@ class ArchivedTrendLogger(SingletonMap):
         self.last_args = {}
         self.last_msg = ''
         self.loglevel = 'INFO'
+        
         self.schema = schema or (use_db and '*') or 'hdb'
         print('In ArchivedTrendLogger.setup(%s,%s)'%(trend,self.schema))
         self.filters = filters
@@ -728,7 +731,9 @@ class ArchivedTrendLogger(SingletonMap):
             if self.logger:
                 try:
                     if severity not in self.log_objs: self.log_objs[severity] = \
-                        getattr(self.logger,severity,lambda m,s=severity:'%s:%s: %s'%(s.upper(),fandango.time2str(),m))
+                        getattr(self.logger,severity.lower(),
+                                lambda m,s=severity:'%s:%s: %s'%
+                                (s.upper(),fandango.time2str(),m))
                     self.log_objs[severity](msg)
                 except: pass
         if self.dialog():
@@ -739,6 +744,7 @@ class ArchivedTrendLogger(SingletonMap):
             if msg:
                 if len(self.instances())>1: msg = self.tango_host+':'+msg
                 self.dialog().append(msg)
+                
     def setLogLevel(self,level): self.loglevel = level
     def getLogLevel(self): return self.loglevel
     def trace(self,msg): self.log('trace',msg)
@@ -1051,18 +1057,25 @@ def getArchivedTrendValues(trend_set,model,start_date=0,stop_date=None,
     """
     import functools
     logger_obj = trend_set
+    t00 = time.time()
+    #trend_set.warning('In getArchivedTrendValues() ...')
     try:
         tango_host,attribute,model = parseTrendModel(model)
         parent = getTrendObject(trend_set)
-        logger_obj = ArchivedTrendLogger(parent,tango_host=tango_host,multiprocess=multiprocess)
+        logger_obj = ArchivedTrendLogger(parent,tango_host=tango_host,
+                                         multiprocess=multiprocess)
         #logger_obj.info('< %s'%str((model,start_date,stop_date,use_db,decimate,multiprocess)))
         lasts = logger_obj.last_args.get(model,None)
+
         MARGIN = 60
         def hasChanged(prev,curr=None):
             v = all(curr) and (not prev or not any(prev[:2]) or any(abs(x-y)>MARGIN for x,y in zip(curr,prev)))
             return v #print(prev,curr,all(curr) and all(prev[:2]) and [abs(x-y) for x,y in zip(curr,prev)],v)
-        logger,reader = logger_obj.info,logger_obj.reader
+
+        logger = trend_set.warning #logger_obj.info
+        reader = logger_obj.reader
         logger_obj.debug('using reader: %s(%s)' %(type(reader),reader.schema))
+        
         if not multiprocess and time.time() < STARTUP+STARTUP_DELAY:
             logger_obj.warning('PyTangoArchiving.Reader waiting until %s'%fandango.time2str(STARTUP+STARTUP_DELAY))
             return []
@@ -1078,10 +1091,13 @@ def getArchivedTrendValues(trend_set,model,start_date=0,stop_date=None,
             if model not in logger_obj.last_args: logger('%s: attribute %s is not archived'%(time.ctime(),attribute))
             logger_obj.setLastArgs(model)
             return []
+        
     except:
         logger_obj.error('Model parsing failed: %s'%traceback.format_exc())
         return []
-    # Dates parsing ##########################################################################
+    
+    ###########################################################################
+    #trend_set.warning('Dates parsing at + %f' % (time.time()-t00))
     try:
         checkTrendBuffers(trend_set)
         if insert: logger_obj.debug('Current buffer size: %s'%len(trend_set._xBuffer))
@@ -1091,22 +1107,33 @@ def getArchivedTrendValues(trend_set,model,start_date=0,stop_date=None,
                 logger('PyTangoArchiving.Reader: Last %s query was %d (<10) seconds ago'%(model,time.time()-lasts[3]))
                 logger_obj.last_check = bounds
             return []
-        logger_obj.setLastArgs(model,*(lasts and lasts[:3] or [])) #<<<<<<<<<<< Overwrite lasts to store current timestamp
+        
+        # Overwrite lasts to store current timestamp
+        logger_obj.setLastArgs(model,*(lasts and lasts[:3] or [])) 
         lasts = logger_obj.last_args[model] #<<< obtain default values corrected
+        
         if all((start_date,stop_date)): #Forcing overriding between 2 dates
             start_date,stop_date,zone,area = start_date,stop_date,ZONES.MIDDLE,1.
         else:
             start_date,stop_date,zone,area = getTrendGaps(parent,trend_set)
-        args = 60*int(start_date/60),60*(1+int(stop_date/60)) #To simplify comparisons
+            
+        #To simplify comparisons
+        args = 60*int(start_date/60),60*(1+int(stop_date/60)) 
+        
         if stop_date-start_date<MARGIN or area<(.11,.05)[zone==ZONES.MIDDLE]:
-            if hasChanged(lasts[:2],args): logger_obj.info('In getArchivedTrendValues(%s,%s,%s,%s): Interval too small, Nothing to read'%(model,start_date,stop_date,use_db))
+            if hasChanged(lasts[:2],args): 
+                logger('In getArchivedTrendValues(%s,%s,%s,%s): '
+                       'Interval too small, Nothing to read'
+                       %(model,start_date,stop_date,use_db))
             logger_obj.setLastArgs(model,args[0],args[1])
             try: logger_obj.trend.doReplot()
             except: traceback.print_exc()
             return []
+        
         if lasts and not hasChanged(lasts[:2],args) and lasts[2]: #Data was already retrieved:
-            logger('In getArchivedTrendValues(%s,%s,%s) already retrieved data ([%d] at %s) is newer than requested'%(
-                attribute,args[0],args[1],len(trend_set._xBuffer),lasts))
+            logger('In getArchivedTrendValues(%s,%s,%s) already retrieved data'
+                    '([%d] at %s) is newer than requested'%(
+                    attribute,args[0],args[1],len(trend_set._xBuffer),lasts))
             #logger_obj.setLastArgs(model,args[0],args[1],max(lasts[2],-1))#Reader keeps last_dates of query; here just keep last arguments
             try: logger_obj.trend.doReplot()
             except: traceback.print_exc()
@@ -1114,7 +1141,9 @@ def getArchivedTrendValues(trend_set,model,start_date=0,stop_date=None,
     except:
         logger_obj.error('Date parsing failed: %s'%traceback.format_exc())
         return []
-    # Data Retrieval ##########################################################
+    
+    ###########################################################################
+    #trend_set.warning('Data retrieval at + %f' % (time.time()-t00))
     try:
         logger_obj.info('<3')
         logger_obj.info('In getArchivedTrendValues(%s, %s = %s, %s = %s)(%s): '
@@ -1137,7 +1166,8 @@ def getArchivedTrendValues(trend_set,model,start_date=0,stop_date=None,
             history = reader.get_attribute_values(attribute,start_date,stop_date,
                 asHistoryBuffer=False,decimate=decimation) or []
 
-            (logger_obj.info if len(history) else logger_obj.debug)(
+            #(logger_obj.info if len(history) else logger_obj.debug)(
+            logger_obj.info( #@debug
                 '>>> getArchivedTrendValues(%s,%s,%s): %d %s readings: %s ...' 
                 % (attribute,start_date,stop_date,len(history),reader.schema,
                     ','.join([str(s) for s in history[:3]]) ))
@@ -1146,11 +1176,16 @@ def getArchivedTrendValues(trend_set,model,start_date=0,stop_date=None,
             if insert: 
             
                 updateTrendBuffers(trend_set,history,logger=logger_obj) #<<< it emits historyChanged event
-                trend_set.emit(Qt.SIGNAL("dataChanged(const QString &)"), Qt.QString(trend_set.getModel()))
-                logger_obj.info('Inserted %d values into %s trend buffer [%d]'%(len(history),attribute,len(trend_set._xBuffer)))
+                trend_set.emit(Qt.SIGNAL("dataChanged(const QString &)"), 
+                               Qt.QString(trend_set.getModel()))
+                logger_obj.warning('Inserted %d values into %s trend buffer [%d]' #@debug
+                        %(len(history),attribute,len(trend_set._xBuffer)))
                 
             logger_obj.setLastArgs(model,args[0],args[1],len(history))
-            logger_obj.info('last_args = %s\n'%(logger_obj.last_args))
+            logger_obj.info('last_args = %s\n'%(logger_obj.last_args)) #@debug
+            
+            logger('Return history[%d] at + %f' 
+                                            % (len(history), time.time()-t00))
             return history #<<<<<<<<<<<<<<<<<<<<<<<<<<<<< Success!
             ###################################################################
 
@@ -1178,10 +1213,12 @@ def getArchivedTrendValues(trend_set,model,start_date=0,stop_date=None,
                         asHistoryBuffer=False,decimate=decimation)
 
             logger_obj.setLastArgs(model,args[0],args[1],-1) #Dont use tuples here
+            logger('Return multiprocess at + %f' % (time.time()-t00))            
             return []
     except:
         logger_obj.error('Exception in Reader.getArchivedTrendValues(%s): %s' % (model,traceback.format_exc()))
-    #Default return if attribute is not archived or values were already returned
+
+    ##Default return if attribute is not archived or values were already returned
     return []
 
 
