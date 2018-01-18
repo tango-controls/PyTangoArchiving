@@ -23,13 +23,40 @@ then, if decimate differs from data_has_changed, an additional reader.decimation
 specified by 2 arguments:
 
 - decimate, callable to be passed to fandango.filter_array
-- window, string 
-
-if it's valid, for any decimation method it will be filtered any None,NaN value appearing in the data
+- window, string representing a time value ( 1s, 30m , 1m , 0.2 )
 
 Note that SPECTRUM data will NOT be decimated by reader.decimation
 
+For any scalar, if decimation is wanted it will also filter any None,NaN value appearing in the data.
+
+- The default window will be (stop-start)/1080.
+- The minimum window will be 1. or (stop-start)/108000.
+- Decimation will be applied only if len(history) > (stop-start)/window
+
+WINDOWS SMALLER THAN 1. ARE NOT ALLOWED
+
 The values returned are stored in Reader.cache dictionary and returned to the client
+
+Decimation in TaurusTrends
+--------------------------
+
+The default method for decimation in taurus trends is fandango.arrays.maxdiff ; it is passed to 
+the Reader object as argument.
+
+Then, an additional decimation is done when the loaded buffer overlaps with existing data.
+
+Decimation in updateTrendBuffers (numpy)
+........................................
+
+Once the loaded data is merged with the existing trend buffer, several methods are called:
+
+- PyTangoArchiving.utils.sort_array : sorts a numpy array ensuring that timestamps are unique ordered
+
+- PyTangoArchiving.utils.get_array_steps : obtains the difference between consecutive positions in 
+a numpy Array column; the minimum step is set to (tlast-tfirst)/1080.
+
+- numpy.compress : used to remove all entries with timestamp steps equal to 0
+
 
 Decimation in archiving2csv
 ---------------------------
