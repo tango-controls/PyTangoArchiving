@@ -96,7 +96,14 @@ def data_has_changed(value,previous,next=None,t=300):
     """
     return value[1]!=previous[1] or (next is not None and next[1]!=previous[1]) or value[0]>(t+previous[0])
 
-def decimation(history,decimation,window='0',logger_obj=None, N=10*1080):
+def decimation(history,decimation,window='0',logger_obj=None, N=1080):
+    """
+    history: array of data
+    decimation: method or callable
+    window: string for time
+    logger_obj: ArchivedTrendLogger or similar
+    N: max array size to return
+    """
     l0 = len(history)
     if not l0: return history
     trace = getattr(logger_obj,'info',fandango.printf)
@@ -106,6 +113,7 @@ def decimation(history,decimation,window='0',logger_obj=None, N=10*1080):
         #str(logger_obj._windowedit.text()).strip() or '0')
     except: 
         window = 0
+        
     start_date,stop_date = float(history[0][0]),float(history[-1][0])
     
     if (decimation is not None and len(history) 
@@ -113,11 +121,13 @@ def decimation(history,decimation,window='0',logger_obj=None, N=10*1080):
         history = [v for v in history if v[1] is not None and not isNaN(v[1])]
         trace('Removed %d values in (None,NaN)'%(l0-len(history)))  
         
-    if decimation and len(history) and type(history[0][-1]) in (int,float,type(None)):
-        #history = fandango.arrays.decimate_array(data=history,fixed_size=2*trend_set._xBuffer.maxSize())
+    if (decimation and len(history) and type(history[0][-1]) 
+            in (int,float,type(None))):
+        #history = fandango.arrays.decimate_array(
+        #   data=history,fixed_size=2*trend_set._xBuffer.maxSize())
         #DATA FROM EVAL IS ALREADY FILTERED; SHOULD NOT PASS THROUGH HERE
-        wmin = max(1.,(stop_date-start_date)/(100*1080.))
-        wauto = max(1.,(stop_date-start_date)/(N))
+        wmin = max(0.001,(stop_date-start_date)/(10*1080.))
+        wauto = max(0.1,(stop_date-start_date)/(N))
         trace('WMIN,WUSER,WAUTO = %s,%s,%s'%(wmin,window,wauto))
         window = wauto if not window else max((wmin,window))
         
@@ -831,10 +841,12 @@ class Reader(Object,SingletonMap):
         else:
             if stop_time<0: stop_time = time.time()+stop_time
             GET_LAST = False
+
         start_date,stop_date = epoch2str(start_time),epoch2str(stop_time)
         if not start_time<stop_time: 
             raise Exception('StartDateMustBeLowerThanStopDate(%s,%s)'
                             %(start_date,stop_date))
+        
         return start_date,start_time,stop_date,stop_time
         
         
@@ -955,8 +967,8 @@ class Reader(Object,SingletonMap):
         alias = self.get_attribute_alias(attribute).lower()
         #Needed to record last read values for both alias and real name
         attribute,alias = alias,attribute 
-        self.log.debug('In PyTangoArchiving.Reader.get_attribute_values'
-                                '(%s,%s,%s)'%(attribute,start_date,stop_date))
+        self.log.info('In PyTangoArchiving.Reader.get_attribute_values'
+                '(%s,%s,%s,%s)'%(self.db_name,attribute,start_date,stop_date))
         
         #Checks if the attribute is a member of an array 
         array_index = re.search('\[([0-9]+)\]',attribute) 
@@ -996,121 +1008,9 @@ class Reader(Object,SingletonMap):
                 values = self.get_extractor_values(attribute, start_date, 
                                         stop_date, decimate, asHistoryBuffer)
             else:
-                # CHOOSING DATABASE METHODS
-                if not self.is_hdbpp:
-                    try:
-                        full_name,ID,data_type,data_format,writable = \
-                            db.get_attribute_descriptions(attribute)[0]
-                    except Exception,e: 
-                        raise Exception('%s_AttributeNotArchived: %s'
-                                        %(attribute,e))
-
-                    data_type,data_format = (utils.cast_tango_type(
-                        PyTango.CmdArgType.values[data_type]),
-                        PyTango.AttrDataFormat.values[data_format])
-                    
-                    self.log.debug('%s, ID=%s, data_type=%s, data_format=%s'
-                                   %(attribute,ID,data_type,data_format))
-                    table = utils.get_table_name(ID)
-                    method = db.get_attribute_values
-                else:
-                    table = attribute
-                    method = db.get_attribute_values
-                    data_type = float
-                    data_format = PyTango.AttrDataFormat.SCALAR
-
-                ###############################################################
-                # QUERYING THE DATABASE 
-                #@TODO: This retrying should be moved down to ArchivingDB class instead
-                retries,t0,s0,s1 = 0,time.time(),start_date,stop_date
-                while retries<2 and t0>(time.time()-10):
-                    if retries: 
-                        #(reshape/retry to avoid empty query bug in python-mysql)
-                        self.log.warning('\tQuery (%s,%s,%s) returned 0 values, retrying ...'%(attribute,s0,s1))
-                        s0,s1 = epoch2str(str2epoch(s0)-30),epoch2str(str2epoch(s1)+30) 
-                    result = method(table,s0,s1 if not GET_LAST else None,N=N,unixtime=True)
-                    if len(result): 
-                        if retries:
-                            result = [r for r in result if start_date<=r[0]<=stop_date]
-                        break
-                    retries+=1
-
-                if not result: 
-                    self.log.warning('Empty query after %d retries? (%s) = [0] in %s s'%(retries,str((table,start_date,stop_date,GET_LAST,N,0)),time.time()-t0))
-                    return []
-                l0 = len(result)
-                t1 = time.time()
-                self.log.debug('\tExtracted (%s,%s,%s,%s,%s) = [%d] in %s s'%(table,start_date,stop_date,GET_LAST,N,l0,t1-t0))
-                #self.last_reads = result and (mysql2time(result[0][0]),mysql2time(result[-1][0])) or (1e10,1e10)
-                self.last_reads = result and (result[0][0],result[-1][0]) or (1e10,1e10)
-                
-                #######################################################################
-                # CASTING DATATYPES AND DECIMATION
-                #Returning a list of (epoch,value) tuples
-                try:
-                    values = []
-                    ##raise Exception('TODO: CHECK THAT PLOTTING OF BOOLs, ARRAYs of BOOLs, ARRAYs of INTs, FLOATS ... ALL SHOULD BE RETRIEVED PROPERLY!!!')
-
-                    ## The following queries are optimized for performance
-                    ix = 1 if len(result[0])<4 else 2 #getting read_value index (w/out dimension)
-                    #if data_type == bool: cast_type = lambda x:bool(int(x)) if x in ('1','0') else (int(float(x)) if x in ('1.0','0.0') else bool(x))
-                    #THIS CAST METHODS ARE USED WHEN PARSING DATA FROM SPECTRUMS
-                    if data_type is bool: cast_type = mysql2bool
-                    elif data_type is int: cast_type = lambda x:int(float(x)) #Because int cannot parse '4.0'
-                    else: cast_type = data_type
-                    self.log.debug(str(data_type)+' '+str(notNone))
-                    if data_format==PyTango.AttrDataFormat.SPECTRUM:
-                        dt,df = (cast_type,0.0) if data_type in (int,bool) else (data_type,None)
-                        if notNone: 
-                            values = [(w[0],mysql2array(w[ix],dt,df)) for w in result if w[ix] is not None]
-                        else:
-                            values = [(w[0],mysql2array(w[ix],dt,df) if w[ix] else None) for w in result]
-                    elif data_type in (bool,) and notNone:
-                        values = [(w[0],cast_type(w[ix])) for w in result if w is not None]
-                    elif data_type in (bool,):
-                        values = [(w[0],cast_type(w[ix])) for w in result]
-                    elif notNone:
-                        values = [(w[0],w[ix]) for w in result if w[ix] is not None]
-                    else:
-                        values = [(w[0],w[ix]) for w in result]
-
-                    self.log.debug('\tParsed [%d] in %s s'%(len(values),time.time()-t1))
-                    t1 = time.time()
-                    #DECIMATION IS DONE HERE ##########################################################################
-                    if len(values)>128 and decimate:
-                        decimate,window = decimate if isSequence(decimate) else (decimate,'0')
-                        if isString(decimate):
-                            try: decimate = eval(decimate)
-                            except: self.log.warning('Decimation? %s'%traceback.format_exc())
-                        i,l0,nv = 1,len(values),[values[0]]
-                        for i,v in enumerate(values[1:]):
-                            if i==l0-3: break
-                            try:
-                                if not data_has_changed(nv[-1],v,values[i+2]): 
-                                    continue
-                            except: pass
-                            nv.append(v)
-                        nv.append(values[-1])
-                        del values
-                        #Extended decimation
-                        if callable(decimate) and decimate is not data_has_changed:
-                            values = decimation(nv,decimate,window=window,logger_obj=self.log)
-                        else:
-                            values = nv
-                            
-                        self.log.debug('\tDecimated [%d] in %s s'%(len(values),time.time()-t1))
-                        t1 = time.time()
-                except Exception,e:
-                    self.log.info(traceback.format_exc())
-                    raise Exception('Reader.UnableToConvertData(%s,format=%s)'%(attribute,data_format),str(e))
-                    values = [] 
-                            
-                #Simulating DeviceAttributeHistory structs
-                if asHistoryBuffer:
-                    values = [FakeAttributeHistory(*v) for v in values]
-                if decimate:
-                    self.log.debug('\tIn get_attribute_values(%s,...).raw: decimated repeated results ... %s -> %s'%(attribute,l0,len(values)))
-                    
+                values = self.get_attribute_values_from_db(attribute, db,
+                            start_date, stop_date, decimate, 
+                            asHistoryBuffer, N, notNone, GET_LAST)
                     
             #######################################################################
             # SAVE THE CACHE
@@ -1119,6 +1019,161 @@ class Reader(Object,SingletonMap):
         #Array index is an string or None
         if array_index: return self.extract_array_index(values,array_index,decimate,asHistoryBuffer)
         else: return values
+    
+    def get_attribute_values_from_db(self, attribute, db, 
+            start_date, stop_date, decimate, asHistoryBuffer, 
+            N, notNone, GET_LAST):
+        """
+        Query MySQL HDB/TDB databases to extract the attribute data
+        """
+        # CHOOSING DATABASE METHODS
+        if not self.is_hdbpp:
+            try:
+                full_name,ID,data_type,data_format,writable = \
+                    db.get_attribute_descriptions(attribute)[0]
+            except Exception,e: 
+                raise Exception('%s_AttributeNotArchived: %s'
+                                %(attribute,e))
+
+            data_type,data_format = (utils.cast_tango_type(
+                PyTango.CmdArgType.values[data_type]),
+                PyTango.AttrDataFormat.values[data_format])
+            
+            self.log.debug('%s, ID=%s, data_type=%s, data_format=%s'
+                            %(attribute,ID,data_type,data_format))
+            table = utils.get_table_name(ID)
+            method = db.get_attribute_values
+        else:
+            table = attribute
+            method = db.get_attribute_values
+            data_type = float
+            data_format = PyTango.AttrDataFormat.SCALAR
+
+        ###############################################################
+        # QUERYING THE DATABASE 
+        #@TODO: This retrying should be moved down to ArchivingDB class instead
+        retries,t0,s0,s1 = 0,time.time(),start_date,stop_date
+        while retries<2 and t0>(time.time()-10):
+            if retries: 
+                #(reshape/retry to avoid empty query bug in python-mysql)
+                self.log.warning('\tQuery (%s,%s,%s) returned 0 values, '
+                                 'retrying ...' % (attribute,s0,s1))
+                s0,s1 = epoch2str(str2epoch(s0)-30),epoch2str(str2epoch(s1)+30) 
+            result = method(table,s0,s1 if not GET_LAST else None,
+                            N=N,unixtime=True)
+            if len(result): 
+                if retries:
+                    result = [r for r in result if start_date<=r[0]<=stop_date]
+                break
+            retries+=1
+
+        if not result: 
+            self.log.warning('Empty query after %d retries? (%s) = [0] in %ss'
+                % (retries,str((table,start_date,stop_date,GET_LAST,N,0)),
+                   time.time()-t0))
+            return []
+        
+        l0 = len(result)
+        t1 = time.time()
+        self.log.debug('\tExtracted (%s,%s,%s,%s,%s) = [%d] in %s s'
+                       %(table,start_date,stop_date,GET_LAST,N,l0,t1-t0))       
+        self.last_reads = result and (result[0][0],result[-1][0]) or (1e10,1e10)
+        
+        try:
+            values = self.extract_mysql_data(result,
+                            data_type,data_format,notNone)
+        except Exception,e:
+            self.log.info(traceback.format_exc())
+            raise Exception('Reader.UnableToConvertData(%s,format=%s)'
+                            % (attribute,data_format),str(e))
+        
+        #######################################################################
+        #DECIMATION IS DONE HERE ##########################################
+        t1 = time.time()
+        if len(values)>128 and decimate:
+            
+            decimate,window = decimate if isSequence(decimate) \
+                                        else (decimate,'0')
+            if isString(decimate):
+                try: 
+                    decimate = eval(decimate)
+                except: 
+                    self.log.warning('Decimation? %s'%traceback.format_exc())
+                    
+            i,l0,nv = 1,len(values),[values[0]]
+            for i,v in enumerate(values[1:]):
+                if i==l0-3: break
+                try:
+                    if not data_has_changed(nv[-1],v,values[i+2]): 
+                        continue
+                except: 
+                    pass
+                nv.append(v)
+            nv.append(values[-1])
+            del values
+            
+            #Extended decimation
+            if callable(decimate) and decimate is not data_has_changed:
+                values = decimation(nv, decimate, window=window, 
+                                    logger_obj=self.log)
+            else:
+                values = nv
+                
+            self.log.debug('\tDecimated %s[%d > %d] in %s s' 
+                % (attribute,len(values),l0,time.time()-t1))
+            t1 = time.time()
+                    
+        #Simulating DeviceAttributeHistory structs
+        if asHistoryBuffer:
+            values = [FakeAttributeHistory(*v) for v in values]
+            
+        return values
+    
+    def extract_mysql_data(self, result, data_type, data_format, notNone):
+        # CASTING DATATYPES AND DECIMATION
+        #Returning a list of (epoch,value) tuples
+        values = []
+        t1 = time.time()
+        ## The following queries are optimized for performance
+        #getting read_value index (w/out dimension)
+        ix = 1 if len(result[0])<4 else 2 
+
+        #THIS CAST METHODS ARE USED WHEN PARSING DATA FROM SPECTRUMS
+        if data_type is bool: 
+            cast_type = mysql2bool
+        elif data_type is int: 
+            #Because int cannot parse '4.0'
+            cast_type = lambda x:int(float(x)) 
+        else: 
+            cast_type = data_type
+        
+        self.log.debug(str(data_type)+' '+str(notNone))
+        
+        if data_format==PyTango.AttrDataFormat.SPECTRUM:
+            
+            dt,df = (cast_type,0.0) if data_type in (int,bool) \
+                                        else (data_type,None)
+            if notNone: 
+                values = [(w[0],mysql2array(w[ix],dt,df)) 
+                            for w in result if w[ix] is not None]
+            else:
+                values = [(w[0],mysql2array(w[ix],dt,df) 
+                            if w[ix] else None) for w in result]
+
+        #SCALAR values, queries are optimized for performance
+        elif data_type in (bool,) and notNone:
+            values = [(w[0],cast_type(w[ix])) 
+                        for w in result if w is not None]
+        elif data_type in (bool,):
+            values = [(w[0],cast_type(w[ix])) for w in result]
+        elif notNone:
+            values = [(w[0],w[ix]) for w in result if w[ix] is not None]
+        else:
+            values = [(w[0],w[ix]) for w in result]
+
+        self.log.debug('\tParsed [%d] in %s s'%(len(values),time.time()-t1))
+
+        return values    
         
     def extract_array_index(self,values,array_index,decimate=False,asHistoryBuffer=False):
         # Applying array_index to the obtained results, it has to be applied after attribute loading to allow reusing cache in array-indexed attributes
