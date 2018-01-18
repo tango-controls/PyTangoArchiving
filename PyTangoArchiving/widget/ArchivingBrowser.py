@@ -89,8 +89,8 @@ class AttributesPanel(PARENT_KLASS):
     _fes = [f for f in get_distinct_domains(fandango.get_database().get_device_exported('fe*')) if fun.matchCl('fe[0-9]',f)]
     
     def __init__(self,parent=None,devices=None):
-        print '~'*80
-        print 'In AttributesPanel()'
+        #print '~'*80
+        #print 'In AttributesPanel()'
         PARENT_KLASS.__init__(self,parent)
         self.setSizePolicy(Qt.QSizePolicy(Qt.QSizePolicy.Ignored,Qt.QSizePolicy.Ignored))
         self.worker = SingletonWorker(parent=self,cursor=True,sleep=50.,start=True)
@@ -167,7 +167,7 @@ class AttributesPanel(PARENT_KLASS):
     
     def setValues(self,values,filters=None):
         """ filters will be a tuple containing several regular expressions to match """
-        print 'In AttributesPanel.setValues([%s])'%len(values or [])
+        #print('In AttributesPanel.setValues([%s])'%len(values or []))
         if values is None:
            self.generateTable([])
         elif True: #filters is None:
@@ -182,9 +182,9 @@ class AttributesPanel(PARENT_KLASS):
         self.vheaders = []
         self.offset = 0
         self.widgetbuffer = []
+        
         for i,tc in enumerate(sorted(values)):
-            #name,device,label,rule,mambo = tc
-            print 'setTableRow(%s,%s)'%(i,tc)
+            #print 'setTableRow(%s,%s)'%(i,tc)
             model,device,attribute,alias,archived,ok = tc
             model,device,attribute,alias = map(str.upper,(model,device,attribute,alias))
             self.vheaders.append(model)
@@ -237,30 +237,36 @@ class AttributesPanel(PARENT_KLASS):
                         #print 'worker,put,%s'%str(model)
                     else:
                         tv.setModel(model)
-                except: print traceback.format_exc()
+                except: 
+                    print traceback.format_exc()
                 self.models.append(tv)
                 #print('...')
             #self.widgetbuffer.extend([qf,self.itemAt(i+self.offset,1),self.itemAt(i+self.offset,2),self.itemAt(i+self.offset,3),self.itemAt(i+self.offset,4)])
             fandango.threads.Event().wait(.02)
+            
         if len(values):
             def setup(o=self):
                 [o.setRowHeight(i,20) for i in range(o.rowCount())]
                 o.setColumnWidth(0,350)
                 o.update()
                 o.repaint()
-                print o.rowCount()
+                #print o.rowCount()
                 o.show()
+                
             setup(self)
+            
         if self.worker:
-            print 'worker.next()'
+            print( '%s.next()' % (self.worker) )
             self.worker.next()
+            
         #threading.Event().wait(10.)
-        print 'Out of generateTable()'
+        #print 'Out of generateTable()'
             
     def clear(self):
         try:
-            print 'In AttributesPanel.clear()'
-            for m in self.models: m.setModel(None)
+            #print('In AttributesPanel.clear()')
+            for m in self.models: 
+                m.setModel(None)
             self.models = []
             self.setValues(None)
             #QGridTable.clear(self)
@@ -286,7 +292,6 @@ class ArchivingBrowser(Qt.QWidget):
     MAX_ATTRIBUTES = 1500
     
     def __init__(self,parent=None,domains=None,regexp='*pnv-*',USE_SCROLL=True,USE_TREND=False):
-        print 'In DomainChooser(), loading thermocouples from Tango'
         Qt.QWidget.__init__(self,parent)
         self.setupUi(USE_SCROLL=USE_SCROLL,USE_TREND=USE_TREND)
         self.load_all_devices()
@@ -308,31 +313,39 @@ class ArchivingBrowser(Qt.QWidget):
     def load_all_devices(self,filters='*'):
         import fandango
         self.tango = fandango.get_database()
-        self.alias_devs = fandango.defaultdict_fromkey(lambda k,s=self: str(s.tango.get_device_alias(k)))
+        self.alias_devs = fandango.defaultdict_fromkey(
+                lambda k,s=self: str(s.tango.get_device_alias(k)))
         self.archattrs = []
         self.archdevs = []
-        print('In load_all_devices(%s)...'%str(filters))
+        #print('In load_all_devices(%s)...'%str(filters))
         devs = fandango.tango.get_all_devices()
         if filters!='*': 
-            devs = [d for d in devs if fandango.matchCl(filters.replace(' ','*'),d,extend=True)]
+            devs = [d for d in devs if fandango.matchCl(
+                        filters.replace(' ','*'),d,extend=True)]
         self.all_devices = devs
         self.all_domains = sorted(set(a.split('/')[0] for a in devs))
         self.all_families = sorted(set(a.split('/')[1] for a in devs))
+
         members = []
         for a in devs:
             try:
                 members.append(a.split('/')[2])
             except:
-                print '%s is an invalid name!'%a
+                # Wrong names in DB? yes, they are
+                pass #print '%s is an invalid name!'%a
         members = sorted(set(members))
-        self.all_members = sorted(set(e for m in members for e in re.split('[-_0-9]',m) if not fandango.matchCl('^[0-9]+([ABCDE][0-9]+)?$',e)))
-        print 'Loading alias list ...'
+        
+        self.all_members = sorted(set(e for m in members 
+                for e in re.split('[-_0-9]',m) 
+                if not fandango.matchCl('^[0-9]+([ABCDE][0-9]+)?$',e)))
+
+        #print 'Loading alias list ...'
         self.all_alias = self.tango.get_device_alias_list('*')
         #self.alias_devs =  dict((str(self.tango.get_device_alias(a)).lower(),a) for a in self.all_alias)
-        print 'Loading (%s) finished.'%(filters)
+        #print('Loading (%s) finished.'%(filters))
         
     def load_attributes(self,servfilter,devfilter,attrfilter,warn=True,exclude = ('dserver','tango*admin','sys*database','tmp','archiving')):
-        print 'In load_attributes(%s,%s,%s)'%(servfilter,devfilter,attrfilter)
+        #print 'In load_attributes(%s,%s,%s)'%(servfilter,devfilter,attrfilter)
         servfilter,devfilter,attrfilter = servfilter.replace(' ','*').strip(),devfilter.replace(' ','*'),attrfilter.replace(' ','*')
         attrfilter = attrfilter or 'state'
         devfilter = devfilter or attrfilter
@@ -342,7 +355,9 @@ class ArchivingBrowser(Qt.QWidget):
         if servfilter.strip('.*'):
             sdevs = map(str.lower,fandango.Astor(servfilter).get_all_devices())
             all_devs = [d for d in all_devs if d in sdevs]
-        print('In load_attributes(%s,%s,%s): Searching through %d %s names'%(servfilter,devfilter,attrfilter,len(all_devs),'server' if servfilter else 'device'))
+        #print('In load_attributes(%s,%s,%s): Searching through %d %s names'
+              #%(servfilter,devfilter,attrfilter,len(all_devs),
+                #'server' if servfilter else 'device'))
         if devfilter.strip().strip('.*'):
             devs = [d for d in all_devs if (fandango.searchCl(devfilter,d,extend=True))]
             print('\tFound %d devs, Checking alias ...'%(len(devs)))
@@ -372,6 +387,7 @@ class ArchivingBrowser(Qt.QWidget):
             #Option disabled, was mostly useless
             self.archivecheck.setChecked(True)
             return self.load_attributes(servfilter,devfilter,attrfilter,warn=False)
+        
         if len(devs)>self.MAX_DEVICES and warn:
             Qt.QMessageBox.warning(self, "Warning" , "Your search (%s,%s) matches too many devices!!! (%d); please refine your search\n\n%s\n..."%(devfilter,attrfilter,len(devs),'\n'.join(devs[:30])))
             return {}
@@ -423,7 +439,7 @@ class ArchivingBrowser(Qt.QWidget):
                 Qt.QMessageBox.warning(self, "Warning" , 
                     "%d devices were not running:\n"%len(failed_devs) +'\n'.join(failed_devs[:10]+(['...'] if len(failed_devs)>10 else []) ))
         
-        print('\t%d attributes found'%len(self.matching_attributes))
+        #print('\t%d attributes found'%len(self.matching_attributes))
         return self.matching_attributes
         
     def setupUi(self,USE_SCROLL=False,SHOW_OPTIONS=True,USE_TREND=False):
@@ -542,7 +558,7 @@ class ArchivingBrowser(Qt.QWidget):
         #type(self)._persistent_ = None
         
     def comboIndexChanged(self,text=None):
-        print 'In comboIndexChanged(...)'
+        #print 'In comboIndexChanged(...)'
         pass
         
     def splitFilters(self,filters):
@@ -561,7 +577,7 @@ class ArchivingBrowser(Qt.QWidget):
     def updateSearch(self,*filters):
         #Text argument applies only to device/attribute filter; not servers
         try:
-            print('In updateSearch(%s[%d])'%(filters,len(filters)))
+            #print('In updateSearch(%s[%d])'%(filters,len(filters)))
             if len(filters)>2:
                 filters = [' '.join(filters[:-1]),filters[-1]]
             if len(filters)==1: 
@@ -630,7 +646,6 @@ ModelSearchWidget = ArchivingBrowser
 
 def main(args=None):
     import sys
-    print 'In main(%s)'%args
     #from taurus.qt.qtgui.container import TaurusMainWindow
     tmw = Qt.QMainWindow() #TaurusMainWindow()
     tmw.setWindowTitle('Tango Attribute Search (%s)'%(os.getenv('TANGO_HOST')))
@@ -652,8 +667,13 @@ def main(args=None):
             ])
         toolbar.add_to_main_window(tmw,where=Qt.Qt.BottomToolBarArea)
     tmw.show()
+    opts = dict(a.split('=',1) for a in args if a.startswith('-'))
+    args = [a for a in args if not a.startswith('-')]
     if args: 
         table.updateSearch(*args)
+    if '--range' in opts:
+        print('Setting trend range to %s' % opts['--range'])
+        table.trend.applyNewDates(opts['--range'].split(','))
     return tmw
     
 if __name__ == "__main__":
