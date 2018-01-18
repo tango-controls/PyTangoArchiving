@@ -122,7 +122,7 @@ def get_col(array,col):
     else:
         return array[:,col]
             
-def sort_array(arg0,arg1=None,decimate=True,as_index=False):
+def sort_array(arg0,arg1=None,decimate=True,as_index=False,minstep=1e-3):
     """
     Args can be an (N,2) array or a tuple with 2 (times,values) arrays
     Takes two arrays of times and values of the same length and sorts the (time,value) 
@@ -136,17 +136,23 @@ def sort_array(arg0,arg1=None,decimate=True,as_index=False):
     if len(data)==2:
         times,values = data
         data = np.array((times,values)).T #Build a new array for sorting
+        
     #Sort the array by row index (much faster than numpy.sort(order))
     time_index = get_col(np.argsort(data,0),0)
     if as_index:
-        if not decimate:
-            return index
+        if decimate:
+            return np.compress(
+                get_array_steps(get_col(data,0).take(time_index), minstep),
+                    time_index,0)
         else:
-            return np.compress(get_array_steps(get_col(data,0).take(time_index)),time_index,0)
+            return index
+            
     else:
         sdata = data.take(time_index,0)
         if decimate:
-            sdata = np.compress(get_array_steps(get_col(sdata,0)),sdata,0)
+            sdata = np.compress(
+                get_array_steps(get_col(sdata,0), minstep), sdata,0)
+            
         print time.time()-t0
         return sdata
     
