@@ -133,8 +133,9 @@ class HDBpp(ArchivingDB,SingletonMap):
             timeout = fn.now()-timeout
             attrs = self.get_attributes(True)
             attrs = fn.filtersmart(attrs,regexp)
-            vals = self.load_last_values()
-            print('get_attributes_failed([%d])' % 
+            print('get_attributes_failed([%d])' % len(attrs))
+            print(attrs)
+            vals = self.load_last_values(attrs)
             return sorted(t for t in vals if not t[1] or
                          t[1][0] < timeout)
         else:
@@ -203,15 +204,15 @@ class HDBpp(ArchivingDB,SingletonMap):
     def add_event_subscriber(self,srv,dev,libpath=''):
         if '/' not in srv: srv = 'hdb++es-srv/'+srv
         add_new_device(srv,'HdbEventSubscriber',dev)
-        manager = self.manager
+        manager,dp = self.manager,self.get_manager()
         props = Struct(get_matching_device_properties(manager,'*'))
         prev = get_device_property(dev,'AttributeList') or []
         put_device_property(dev,'AttributeList',prev)
-        put_device_property(dev,'DbHost',self.host)
-        put_device_property(dev,'DbName',self.db_name)
-        put_device_property(dev,'DbUser',self.user)
-        put_device_property(dev,'DbPassword',self.passwd)
-        put_device_property(dev,'DbPort','3306')
+        #put_device_property(dev,'DbHost',self.host)
+        #put_device_property(dev,'DbName',self.db_name)
+        #put_device_property(dev,'DbUser',self.user)
+        #put_device_property(dev,'DbPassword',self.passwd)
+        #put_device_property(dev,'DbPort','3306')
         #put_device_property(dev,'DbStartArchivingAtStartup','true')
         
         libpath = (libpath or \
@@ -222,14 +223,17 @@ class HDBpp(ArchivingDB,SingletonMap):
           'port='+getattr(self,'port','3306'),
           'host='+self.host,
           'dbname='+self.db_name,
-          'libname='+libpath])
+          'libname='+libpath,
+          'ligthschema=1',
+          ])
         if 'ArchiverList' not in props:
             props.ArchiverList = []
             
-        dev = parse_tango_model(dev,fqdn=True).devicemodel
+        dev = parse_tango_model(dev,fqdn=True).fullname
         #put_device_property(manager,'ArchiverList',
                             #list(set(list(props.ArchiverList)+[dev])))
-        manager.ArchiverAdd(parse_tango_model(dev))
+        print(dev)
+        dp.ArchiverAdd(dev)
         return dev
     
     def add_attributes(self,attributes,*args,**kwargs):
