@@ -120,6 +120,7 @@ class DatesWidget(Qt.QWidget): #Qt.QDialog): #QGroupBox):
       #parent = parent or trend.legend()
       Qt.QWidget.__init__(self,parent or trend)
       #trend.showLegend(True)
+      self._trend = trend
       self.setLayout(layout())
       self.DEFAULT_START = 'YYYY/MM/DD hh:mm:ss'
       self.setTitle("Show Archiving since ...")
@@ -148,7 +149,7 @@ class DatesWidget(Qt.QWidget): #Qt.QDialog): #QGroupBox):
       self.layout().addWidget(QWidgetWithLayout(self,child=[self.xLabelStart,self.xEditStart]))
       self.layout().addWidget(QWidgetWithLayout(self,child=[self.xLabelRange,self.xRangeCB]))
       self.layout().addWidget(QWidgetWithLayout(self,child=[self.xApply]))
-      trend.connect(self.xApply,Qt.SIGNAL("clicked()"),trend._applyNewDates)
+      trend.connect(self.xApply,Qt.SIGNAL("clicked()"),trend.applyNewDates)
       
       #if parent is trend.legend():
 
@@ -317,13 +318,26 @@ class ArchivingTrend(TaurusTrend):
       except:
         ms = Qt.QMessageBox.warning(self,"Error!",traceback.format_exc())
         
-    def _applyNewDates(self):
+    def applyNewDates(self,dates=None):
+      """
+      Dates could be a tuple (start,end) or just (end,)
+      """
       try:
         #self.setForcedReadingPeriod(3000)
         #self.setPaused(True)
         ui = self._datesWidget
-        start = str(ui.xEditStart.text())
-        end = str(ui.xRangeCB.currentText())
+        if dates is not None:
+            ui.xRangeCB.setEditText(dates[-1])
+            end = dates[-1]
+        else:
+            end = str(ui.xRangeCB.currentText())
+
+        if dates is not None and len(dates)>1:
+            ui.xEditStart.setText(dates[0])
+            start = dates[0]
+        else:
+            start = str(ui.xEditStart.text())
+        
         print('applyNewDates(%s,%s)'%(start,end))
         try: t0 = str2time(start)
         except: t0 = None
@@ -895,8 +909,10 @@ def resetTrendBuffer(b,newsize,newdata=None):
 
 def updateTrendBuffers(self,data,logger=None):
     """
-    This method implements decimation of archived and actual values when filling trend buffers
-    It should also allow to patch non correlative inserts of archived data (inserting instead of extendLeft)
+    This method implements decimation of archived and actual values 
+    when filling trend buffers
+    It should also allow to patch non correlative inserts of archived data 
+    (inserting instead of extendLeft)
     """
     try:
         #self.curves_lock.acquire()
@@ -907,16 +923,17 @@ def updateTrendBuffers(self,data,logger=None):
         trend_set = self
         parent = logger.trend
         fromHistoryBuffer = data is not None and len(data) and hasattr(data[0],'time')
-        ###Adding archiving values
-        logger.info('In updateTrendBuffers(%d,fromHistoryBuffer=%s)'%(len(data or []),fromHistoryBuffer))
+        
         if data is not None and len(data): 
+            ###Adding archiving values
             try:
+                #It may clean existing buffers!
                 ntrends = self._checkDataDimensions(data[0].value 
-                                        if fromHistoryBuffer 
-                                        else data[0][1]) #It may clean existing buffers!
+                                if fromHistoryBuffer else data[0][1]) 
             except:
-                print(data[0])
+                logmsg(str(data[0]))
                 raise
+            
             newsize = checkTrendBuffers(self,data,logger)
             logger.debug('reader.updateTrendBuffers(): filling Buffer')
             try:
@@ -928,27 +945,44 @@ def updateTrendBuffers(self,data,logger=None):
                 else:
                     #CONVERT ALWAYS THE TWO ARRAYS SEPARATELY, np.array(data) is MUCH SLOWER
                     t = numpy.array([v[0] for v in data])
-                    y = numpy.zeros((len(data), ntrends), dtype=float)
-                    for i,v in enumerate(data):
-                        try:
-                            y[i] = v[1]
-                        except Exception,e:
-                            logmsg(e)
-                    #y[:] = [v[1] for v in data]
-                if (len(t) and numpy.max(t) or 0)>(len(self._xBuffer) and numpy.min(self._xBuffer) or fandango.END_OF_TIME): 
+                    if 0: #ntrends == 1:
+                        y = numpy.array([v[1] for v in data], dtype=float)
+                    else:
+                        y = numpy.zeros((len(data), ntrends), dtype=float)
+                        for i,v in enumerate(data):
+                            # Iterating will avoid getting stuck in errors
+                            try:
+                                y[i] = v[1]
+                            except Exception,e:
+                                logmsg(e)
+                                
+                minstep = abs(t[-1] - t[0]) / 1081.
+                logger.info('In updateTrendBuffers(%d,fromHistoryBuffer=%s,'
+                    'minstep=%s)' %(len(data or []),fromHistoryBuffer,minstep))
+                
+                if (    (len(t) and numpy.max(t) or 0) > 
+                        (len(self._xBuffer) and numpy.min(self._xBuffer) 
+                            or fandango.END_OF_TIME )
+                    ): 
                     #History and current buffer overlap!; resorting data
                     t0 = time.time()
-                    logmsg('updateBuffers(): Reorganizing the contents of the Trend Buffers!')
+                    logmsg('updateBuffers(): Reorganizing the Trend Buffers!')
                     t = numpy.concatenate((t,self._xBuffer.toArray()))
                     y = numpy.concatenate((y,self._yBuffer.toArray()))
-                    t_index = utils.sort_array(t,decimate=True,as_index=True)
+                    
+                    t_index = utils.sort_array(t,decimate=True,as_index=True,
+                                               minstep=minstep)
                     t,y = t.take(t_index,0),y.take(t_index,0)
-                    newsize = int(max((parent.DEFAULT_MAX_BUFFER_SIZE,1.5*len(t))))
+                    newsize = int(max((parent.DEFAULT_MAX_BUFFER_SIZE,
+                                       1.5*len(t))))
                     resetTrendBuffer(self._xBuffer,newsize,t)
                     resetTrendBuffer(self._yBuffer,newsize,y)
                     logmsg('done in %f seconds, replotting'%(time.time()-t0))
                 else: 
                     #No backtracking, normal insertion
+                    t_index = utils.sort_array(t,decimate=True,as_index=True,
+                                               minstep=minstep)
+                    t,y = t.take(t_index,0),y.take(t_index,0)                    
                     self._xBuffer.extendLeft(t)
                     self._yBuffer.extendLeft(y)
             except Exception,e:
@@ -959,7 +993,9 @@ def updateTrendBuffers(self,data,logger=None):
             pending = getattr(getattr(logger,'reader',None),'callbacks',None)
             if not pending:
                 Qt.QApplication.instance().restoreOverrideCursor()
+                
             emitHistoryChanged(self) #self.parent().replot() #To be done always, although it doesn't seem to be enough
+            
     except Exception,e:
         import traceback
         logger.warning('updateBuffer failed: %s'%(traceback.format_exc()))
@@ -984,20 +1020,27 @@ def replaceQtConnection(qobj,signal,callback):
 def getArchivedTrendValues(trend_set,model,start_date=0,stop_date=None,
             log='INFO',use_db=True,db_config='',decimate=True,
             multiprocess=USE_MULTIPROCESS,insert=False):
-    """This method allows to extract the values from the archiving system either using HdbExtractor device servers or MySQL access (requires permissions).
+    """
+    This method allows to extract the values from the archiving system 
+    either using HdbExtractor device servers or MySQL access 
+    (requires permissions).
     
     This method can be tested with the following code:
     def debug(s): print s
     trend = type('fake',(object,),{})()
-    trend._history,type(trend).debug,trend._parent = [],(lambda c,s:debug(s)),type('',(object,),{'xIsTime':True} )()
-    PyTangoArchiving.reader.getArchivedTrendValues(trend,'BO02/VC/SPBX-03/I1',time.time()-24*3600,time.time(),'DEBUG')
+    trend._history,type(trend).debug,trend._parent = [], \
+        (lambda c,s:debug(s)),type('',(object,),{'xIsTime':True} )()
+    PyTangoArchiving.reader.getArchivedTrendValues(trend,'BO02/VC/SPBX-03/I1',
+        time.time()-24*3600,time.time(),'DEBUG')
     
-    From TaurusTrendSet is called just like: getArchivedTrendValues(self,model,insert=True)
+    From TaurusTrendSet is called just like: 
+        getArchivedTrendValues(self,model,insert=True)
     
     Arguments:
         trend_set ; a TaurusTrendSet object
         model
-        start_date/stop_date = epoch or strings; start_date defaults to X axxis, stop_date defaults to now()
+        start_date/stop_date = epoch or strings; 
+            start_date defaults to X axxis, stop_date defaults to now()
         log='INFO'
         use_db=True
         db_config=''
@@ -1071,34 +1114,46 @@ def getArchivedTrendValues(trend_set,model,start_date=0,stop_date=None,
     except:
         logger_obj.error('Date parsing failed: %s'%traceback.format_exc())
         return []
-    # Data Retrieval ##########################################################################
+    # Data Retrieval ##########################################################
     try:
         logger_obj.info('<3')
-        logger_obj.info('In getArchivedTrendValues(%s, %s = %s, %s = %s)(%s): lasts=%s, getting new data (previous[%s]:%s at %s)'%(
-            attribute,start_date,fandango.time2str(start_date),stop_date,fandango.time2str(stop_date),reader.schema,lasts and lasts[0],model,lasts,lasts[-1]))
+        logger_obj.info('In getArchivedTrendValues(%s, %s = %s, %s = %s)(%s): '
+            'lasts=%s, getting new data (previous[%s]:%s at %s)'%(
+            attribute,start_date,fandango.time2str(start_date),stop_date,
+            fandango.time2str(stop_date),reader.schema,lasts and lasts[0],
+            model,lasts,lasts[-1]))
         logger_obj.debug('prev %s != curr %s' % (lasts,args))
+        
         Qt.QApplication.instance().restoreOverrideCursor()
         decimation = logger_obj.getDecimation()
         if not decimation:
-            if logger_obj._nonescheck.isChecked(): decimation = fandango.arrays.notnone
-            elif decimate: decimation = PyTangoArchiving.reader.data_has_changed
+            if logger_obj._nonescheck.isChecked(): 
+                decimation = fandango.arrays.notnone
+            elif decimate: 
+                decimation = PyTangoArchiving.reader.data_has_changed
             
         if not multiprocess or not isinstance(reader,ReaderProcess):
-            ###################################################################################
+            ###################################################################
             history = reader.get_attribute_values(attribute,start_date,stop_date,
                 asHistoryBuffer=False,decimate=decimation) or []
-            (logger_obj.info if len(history) else logger_obj.debug)('getArchivedTrendValues(%s,%s,%s): %d %s readings: %s ...' % (
-                attribute,start_date,stop_date,len(history),reader.schema,','.join([str(s) for s in history[:3]]) ))
+
+            (logger_obj.info if len(history) else logger_obj.debug)(
+                '>>> getArchivedTrendValues(%s,%s,%s): %d %s readings: %s ...' 
+                % (attribute,start_date,stop_date,len(history),reader.schema,
+                    ','.join([str(s) for s in history[:3]]) ))
                 
             #DATA INSERTION INTO TRENDS IS DONE HERE!
             if insert: 
+            
                 updateTrendBuffers(trend_set,history,logger=logger_obj) #<<< it emits historyChanged event
                 trend_set.emit(Qt.SIGNAL("dataChanged(const QString &)"), Qt.QString(trend_set.getModel()))
                 logger_obj.info('Inserted %d values into %s trend buffer [%d]'%(len(history),attribute,len(trend_set._xBuffer)))
+                
             logger_obj.setLastArgs(model,args[0],args[1],len(history))
             logger_obj.info('last_args = %s\n'%(logger_obj.last_args))
             return history #<<<<<<<<<<<<<<<<<<<<<<<<<<<<< Success!
-            ###################################################################################
+            ###################################################################
+
         else: # If Multiprocess
             trend,tt = logger_obj.trend,(id(trend_set),attribute,start_date,stop_date)
             signal = "archivedDataIsReady"
