@@ -27,21 +27,12 @@ from PyTangoArchiving.common import CommonAPI
 from PyTangoArchiving.reader import Reader
 from PyTangoArchiving.utils import CatchedAndLogged
 import fandango as fn
-from fandango.objects import SingletonMap
+from fandango.objects import SingletonMap, Cached
 from fandango.tango import *
 import MySQLdb,traceback,re
 from PyTango import AttrQuality
 
 __test__ = {}
-
-def get_full_name(model):
-    """ Returns full schema name as needed by HDB++ api
-    """
-    if ':' not in model:
-      model = get_tango_host()+'/'+model
-    if not model.startswith('tango://'):
-      model = 'tango://'+model
-    return model
 
 def get_search_model(model):
     if model.count(':')<2:
@@ -71,6 +62,9 @@ class HDBpp(ArchivingDB,SingletonMap):
         user = user or u
         passwd = passwd or p
         self.port = port
+        self.archivers = []
+        self.attributes = []
+        self.dedicated = {}
         ArchivingDB.__init__(self,db_name,host,user,passwd,)
         try:
             self.get_manager()
@@ -116,11 +110,17 @@ class HDBpp(ArchivingDB,SingletonMap):
                     
         return get_device(self.manager) if self.manager else None
       
+    @Cached(depth=10,expire=60.)
     def get_archived_attributes(self,search=''):
         # DB API
-        return sorted(str(a).lower().replace('tango://','') 
+        #r = sorted(str(a).lower().replace('tango://','') 
+        r = sorted(parse_tango_model(a,fqdn=True).normalname
                       for a in self.get_manager().AttributeSearch(search))
+        if search == '': 
+            self.attributes = r
+        return r
     
+    @Cached(depth=2,expire=60.)
     def get_attributes(self,active=None):
         """
         Alias for Reader API
@@ -128,12 +128,48 @@ class HDBpp(ArchivingDB,SingletonMap):
         """
         return self.get_archived_attributes()
     
+    def get_attributes_failed(self,regexp='*',timeout=3600,from_db=True):
+        if from_db:
+            timeout = fn.now()-timeout
+            attrs = self.get_attributes(True)
+            attrs = fn.filtersmart(attrs,regexp)
+            vals = self.load_last_values()
+            print('get_attributes_failed([%d])' % 
+            return sorted(t for t in vals if not t[1] or
+                         t[1][0] < timeout)
+        else:
+            # Should inspect the Subscribers Error Lists
+            raise Exception('NotImplemented')
+    
+    @Cached(expire=60.)
     def get_archivers(self):
         #return list(self.tango.get_device_property(self.manager,'ArchiverList')['ArchiverList'])
         if self.manager and check_device(self.manager):
           return self.get_manager().ArchiverList
         else:
           raise Exception('%s Manager not running'%self.manager)
+      
+    @Cached(expire=60.)
+    def get_archivers_attributes(self,from_db=True):
+        if from_db:
+            for a in self.get_archivers():
+                self.dedicated[a] = [str(l) for l in 
+                    fn.tango.get_device_property(a,'AttributeList')]
+        else:
+            raise Exception('NotImplemented!')
+        return self.dedicated
+    
+    @Cached(depth=1000,expire=60.)
+    def get_attribute_archiver(self,attribute):
+        if not self.dedicated:
+            self.get_archivers_attributes()
+
+        m = parse_tango_model(attribute,fqdn=True)
+        for k,v in self.dedicated.items():
+            for l in v:
+                if m.fullname in l.split(';'):
+                    return k
+        return None
     
     def start_servers(self,host=''):
         import fandango.servers
@@ -164,7 +200,7 @@ class HDBpp(ArchivingDB,SingletonMap):
         self.get_manager()
         return dev
 
-    def add_event_subscriber(self,srv,dev):
+    def add_event_subscriber(self,srv,dev,libpath=''):
         if '/' not in srv: srv = 'hdb++es-srv/'+srv
         add_new_device(srv,'HdbEventSubscriber',dev)
         manager = self.manager
@@ -176,16 +212,24 @@ class HDBpp(ArchivingDB,SingletonMap):
         put_device_property(dev,'DbUser',self.user)
         put_device_property(dev,'DbPassword',self.passwd)
         put_device_property(dev,'DbPort','3306')
-        put_device_property(dev,'DbStartArchivingAtStartup','true')
+        #put_device_property(dev,'DbStartArchivingAtStartup','true')
+        
+        libpath = (libpath or \
+                '/homelocal/sicilia/src/hdbpp.git/lib/libhdb++mysql.so')
         put_device_property(dev,'LibConfiguration',[
           'user='+self.user,
           'password='+self.passwd,
           'port='+getattr(self,'port','3306'),
           'host='+self.host,
-          'dbname='+self.db_name,])
+          'dbname='+self.db_name,
+          'libname='+libpath])
         if 'ArchiverList' not in props:
             props.ArchiverList = []
-        put_device_property(manager,'ArchiverList',list(set(list(props.ArchiverList)+[dev])))
+            
+        dev = parse_tango_model(dev,fqdn=True).devicemodel
+        #put_device_property(manager,'ArchiverList',
+                            #list(set(list(props.ArchiverList)+[dev])))
+        manager.ArchiverAdd(parse_tango_model(dev))
         return dev
     
     def add_attributes(self,attributes,*args,**kwargs):
@@ -196,7 +240,7 @@ class HDBpp(ArchivingDB,SingletonMap):
         try:
           for a in attributes:
             self.add_attribute(a,*args,**kwargs)
-          time.sleep(10.)
+          time.sleep(3.)
           for a in attributes:
             self.start_archiving(a)
         except Exception,e:
@@ -204,9 +248,12 @@ class HDBpp(ArchivingDB,SingletonMap):
         return
 
     def add_attribute(self,attribute,archiver,period=0,
-                      rel_event=None,per_event=300000,abs_event=None,code_event=False):
+                      rel_event=None,per_event=300000,abs_event=None,
+                      code_event=False):
         """
-        set _event arguments to -1 to ignore them and do not modify the database
+        set _event arguments to -1 to ignore them and not modify the database
+        
+        
         """
         attribute = parse_tango_model(attribute,fqdn=True).fullname
         self.info('add_attribute(%s)'%attribute)
@@ -216,6 +263,7 @@ class HDBpp(ArchivingDB,SingletonMap):
         data_type = str(PyTango.CmdArgType.values[config.data_type])
         if not self.manager: 
           return False
+      
         try:
           d = self.get_manager()
           d.lock()
@@ -255,30 +303,23 @@ class HDBpp(ArchivingDB,SingletonMap):
           d.unlock()
         print('%s added'%attribute)
         
-    def get_fqdn_attribute_name(self,attribute):
-        attribute = attribute.lower()
-        if ':'in attribute:
-            model = fandango.tango.parse_tango_model(attribute)
-            if '.' not in model['host']:
-                import socket
-                fqdn = socket.getfqdn(model['host'])
-                attribute = fqdn+':'+model['port']+'/'+model['devicename']
-                if model['attribute']:
-                    attribute+='/'+model['attribute']
-        return attribute
-        
-    def is_attribute_archived(self,attribute,active=None):
+    def is_attribute_archived(self,attribute,active=None,cached=True):
         # @TODO active argument not implemented
-        d = self.get_manager()
-        attribute = self.get_fqdn_attribute_name(attribute)
-        attributes = d.AttributeSearch(attribute)
-        a = [a for a in attributes if a.lower().endswith(attribute.lower())]
-        if len(attributes)>1: 
-          raise Exception('MultipleAttributesMatched!')
-        if len(attributes)==1:
-          return attributes[0]
+        model = parse_tango_model(attribute,fqdn=True)
+        if cached:
+            self.get_archived_attributes()
+            r = model.normalname if model.normalname in self.attributes else False
+            return r
         else:
-          return False
+            d = self.get_manager()
+            attributes = d.AttributeSearch(model.fullname)
+            a = [a for a in attributes if a.lower().endswith(attribute.lower())]
+            if len(attributes)>1: 
+                raise Exception('MultipleAttributesMatched!')
+            if len(attributes)==1:
+                return attributes[0]
+            else:
+                return False
           
     def start_archiving(self,attribute,*args,**kwargs):
         """
@@ -288,14 +329,15 @@ class HDBpp(ArchivingDB,SingletonMap):
             if isSequence(attribute):
                 for attr in attribute:
                     self.start_archiving(attr,*args,**kwargs)
+                    time.sleep(1.)
             else:
                 self.info('start_archiving(%s)'%attribute)
                 d = self.get_manager()
-                fullname = self.is_attribute_archived(attribute)
-                if not fullname:
-                    self.add_attribute(attribute,*args,**kwargs)
-                    time.sleep(10.)
-                    fullname = self.is_attribute_archived(attribute)
+                fullname = parse_tango_model(attribute,fqdn=True).fullname
+                if not self.is_attribute_archived(attribute):
+                    self.add_attribute(fullname,*args,**kwargs)
+                    time.sleep(5.)
+                    fullname = self.is_attribute_archived(attribute,cached=0)
                 d.AttributeStart(fullname)
                 return True
         except Exception,e:
@@ -411,7 +453,7 @@ class HDBpp(ArchivingDB,SingletonMap):
       
     def get_last_attribute_values(self,table,n=1,check_table=False):
         vals = self.get_attribute_values(table,N=n,human=True,desc=True)
-        if abs(n)==1: return vals[0]
+        if len(vals) and abs(n)==1: return vals[0]
         else: return vals
     
     def load_last_values(self,attributes,n=1):
@@ -479,6 +521,7 @@ class HDBpp(ArchivingDB,SingletonMap):
         self.debug(query)
 
         result = self.Query(query)
+        ######################################################################
         self.debug('read [%d]'%len(result))
         if not result or not result[0]: return []
         #if len(result[0]) == 2: ## Just data_time and value_r
@@ -505,21 +548,24 @@ class HDBpp(ArchivingDB,SingletonMap):
           #result = self.decimate_values(result,N=decimate)
           #self.info('decimated: [%d]'%len(result))
           
-        if decimate:
-          result = PyTangoArchiving.reader.decimation(result,decimate,window=0,N=N)
-          
-        if human: 
-          result = [list(t)+[fn.time2str(t[0])] for t in result]
-        else:
-          #Converting the timestamp from Decimal to float
-          if len(result[0]) == 2: 
+        # Converting the timestamp from Decimal to float
+        # Weird results may appear in comparison if not done
+        if len(result[0]) == 2: 
             result = [(float(t[0]),t[1]) for t in result]
-          elif len(result[0]) == 3: 
+        elif len(result[0]) == 3: 
             result = [(float(t[0]),t[1],t[2]) for t in result]
-          elif len(result[0]) == 4: 
+        elif len(result[0]) == 4: 
             result = [(float(t[0]),t[1],t[2],t[3]) for t in result]
-          else:
+        else:
             result = [[float(t[0])]+t[1:] for t in result]
+            
+        if decimate:
+            result = PyTangoArchiving.reader.decimation(
+                    result,decimate,window=0,N=N)
+            
+        if human: 
+            result = [list(t)+[fn.time2str(t[0])] for t in result]
+            
 
         if not desc and not stop_date and N>0:
             #THIS WILL BE APPLIED ONLY WHEN LAST N VALUES ARE ASKED
