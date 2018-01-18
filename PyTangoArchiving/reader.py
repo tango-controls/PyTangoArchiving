@@ -31,13 +31,13 @@ from random import randrange
 from collections import defaultdict
 
 import fandango
-from fandango.objects import Object,SingletonMap
+from fandango.objects import Object,SingletonMap,Cached
 from fandango.log import Logger
 import fandango.functional as fun
 from fandango.functional import isString,isSequence,isCallable,str2time as str2epoch
 from fandango.functional import clmatch, time2str as epoch2str
 from fandango.functional import ctime2time, mysql2time
-from fandango.dicts import CaselessDict
+from fandango.dicts import CaselessDict, SortedDict
 from fandango.linos import check_process,get_memory
 from fandango.tango import get_tango_host,parse_tango_model
 
@@ -466,7 +466,7 @@ class Reader(Object,SingletonMap):
             self.log = logger
         
         self.log.debug('In PyTangoArchiving.Reader.__init__(%s)' % (schema or db or '...'))
-        self.configs = {}
+        self.configs = SortedDict()
         if schema is not None and db=='*': db = schema
         if any(s in ('*','all') for s in (db,schema)): db,schema = '*','*'
         self.db_name = db
@@ -509,6 +509,7 @@ class Reader(Object,SingletonMap):
             except:
                 #self.log.error(traceback.format_exc())
                 self.log.warning('Unable to connect to MySQL, using Java %sExtractor devices'%self.schema.upper())
+
         else:
             self.log.debug("Creating 'universal' reader")
             rd = getArchivingReader()
@@ -672,6 +673,7 @@ class Reader(Object,SingletonMap):
         self.state = PyTango.DevState.ON if extractor else PyTango.DevState.FAULT
         return extractor    
         
+    @Cached(depth=10,expire=15.)
     def get_attributes(self,active=False):
         """ Queries the database for the current list of archived attributes."""
         #Try Unified Reader
@@ -716,7 +718,8 @@ class Reader(Object,SingletonMap):
                         % (self.schema,len(self.available_attributes)))
         
         return (self.available_attributes,self.current_attributes)[active]
-        
+
+    @Cached(depth=10000,expire=60.)        
     def get_attribute_alias(self,model):
         try:
             attribute = str(model)
@@ -743,6 +746,7 @@ class Reader(Object,SingletonMap):
              print('Unable to find alias for %s: %s'%(model,str(e)[:40]))
         return attribute
                 
+    @Cached(depth=10000,expire=60.)
     def get_attribute_modes(self,attribute,force=False):
         """ Returns mode configuration, accepts wildcards """
         attribute = self.get_attribute_alias(attribute)
@@ -756,8 +760,12 @@ class Reader(Object,SingletonMap):
                 self.modes[attribute] = dict((a,self.configs[a].get_attribute_modes(attribute,force)) for a in ('hdb','tdb') if a in self.configs)
         return self.modes[attribute]
     
+    @Cached(depth=10000,expire=60.)
     def is_attribute_archived(self,attribute,active=False,preferent=True):
-        """ This method uses two list caches to avoid redundant device proxy calls, launch .reset() to clean those lists. """
+        """ 
+        This method uses two list caches to avoid redundant device 
+        proxy calls, launch .reset() to clean those lists. 
+        """
 
         if self.is_hdbpp: # NEVER CALLED IF setting reader=HDBpp(...)
             self.log.warning('HDBpp.is_attribute_archived() OVERRIDE!!')
@@ -779,13 +787,14 @@ class Reader(Object,SingletonMap):
                 sch = []
                 for a,c in self.configs.items():
                     try:
-                        if c and (a not in Schemas.keys() or
-                                Schemas.checkSchema(a,attribute)) \
-                            and c.is_attribute_archived(attribute,active):
+                        if (c and (a not in Schemas.keys() or
+                                Schemas.checkSchema(a,attribute)) 
+                            and c.is_attribute_archived(attribute,active)):
                             sch.append(a)
                     except: 
                         self.log.warning('%s archiving not available'%a)
                         #traceback.print_exc()
+                        
                 return tuple(sch) 
                 #return tuple(a for a in self.configs if self.configs.get(a) \
                 #and (a not in Schemas.keys() or Schemas.checkSchema(a,attribute))
@@ -1075,7 +1084,8 @@ class Reader(Object,SingletonMap):
         
         l0 = len(result)
         t1 = time.time()
-        self.log.debug('\tExtracted (%s,%s,%s,%s,%s) = [%d] in %s s'
+        #@debug
+        self.log.info('\tQuery(%s,%s,%s,%s,%s) = [%d] in %s s'
                        %(table,start_date,stop_date,GET_LAST,N,l0,t1-t0))       
         self.last_reads = result and (result[0][0],result[-1][0]) or (1e10,1e10)
         
@@ -1119,8 +1129,9 @@ class Reader(Object,SingletonMap):
             else:
                 values = nv
                 
-            self.log.debug('\tDecimated %s[%d > %d] in %s s' 
-                % (attribute,len(values),l0,time.time()-t1))
+            #@debug
+            self.log.info('\tDecimated %s[%d > %d] in %s s' 
+                    % (attribute,len(values),l0,time.time()-t1))
             t1 = time.time()
                     
         #Simulating DeviceAttributeHistory structs
@@ -1171,7 +1182,8 @@ class Reader(Object,SingletonMap):
         else:
             values = [(w[0],w[ix]) for w in result]
 
-        self.log.debug('\tParsed [%d] in %s s'%(len(values),time.time()-t1))
+        #@debug
+        self.log.info('\tParsed [%d] in %s s'%(len(values),time.time()-t1))
 
         return values    
         
