@@ -388,6 +388,9 @@ class HDBpp(ArchivingDB,SingletonMap):
         #return result
         
     def decimate_table(att_id,table):
+        """
+        @TODO
+        """
         hours = [t0+i*3600 for i in range(24*30)]
         days = [t0+i*86400 for i in range(30)]
         dvalues = {}
@@ -407,9 +410,7 @@ class HDBpp(ArchivingDB,SingletonMap):
 
       
     def get_last_attribute_values(self,table,n=1,check_table=False):
-        #if N==1:
-            #return result and result[0 if 'desc' in query else -1] or []
-        vals = self.get_attribute_values(table,N=n,human=True)
+        vals = self.get_attribute_values(table,N=n,human=True,desc=True)
         if abs(n)==1: return vals[0]
         else: return vals
     
