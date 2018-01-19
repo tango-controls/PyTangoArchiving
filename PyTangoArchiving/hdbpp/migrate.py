@@ -5,8 +5,6 @@ import fandango.tango as ft
 from fandango.functional import *
 
 import PyTangoArchiving as pta
-import PyTangoArchiving.hdbpp as ptah
-  
 ##############################################################################    
 
 def get_archivers_filters(archiver='archiving/es/*'):
@@ -20,7 +18,7 @@ def get_current_attributes(schema='*'):
     alls = rd.get_attributes(active=True)
     return alls
 
-def get_archivers_for_attributes(alls=[]):
+def match_archivers_with_attributes(alls=[]):
     """
     This method returns matching archivers for a list of attributes
     in simplename format (no tango host).
@@ -28,7 +26,7 @@ def get_archivers_for_attributes(alls=[]):
     It applies AttributeFilters as defined in Tango DB (sorted)
     """
     alls = alls or get_current_attributes()
-    if not fn.iSequence(alls): alls = [alls]
+    if not fn.isSequence(alls): alls = [alls]
     devattrs = fn.dicts.defaultdict(set)
     [devattrs[a.rsplit('/',1)[0]].add(a) for a in alls];    
 
