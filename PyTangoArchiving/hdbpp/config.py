@@ -488,19 +488,14 @@ class HDBpp(ArchivingDB,SingletonMap):
             
         start_date and stop_date must be in a format valid for SQL
         """
-        if decimate:
-            # When called from thrends, decimate may be the decimation method
-            try:
-                N = int(decimate)
-            except:
-                N = N if N > 0 else 1080
-            
+        t0 = time.time()
         self.setLogLevel('INFO')
-        self.debug('HDBpp.get_attribute_values(%s,%s,%s,%s,decimate=%s,%s)'
+        self.warning('HDBpp.get_attribute_values(%s,%s,%s,%s,decimate=%s,%s)'
               %(table,start_date,stop_date,N,decimate,kwargs))
         aid,tid,table = self.get_attr_id_type_table(table)
             
         what = 'UNIX_TIMESTAMP(data_time)' if unixtime else 'data_time'
+        what = 'CAST(%s as DOUBLE)' % what
         if 'array' in table: what+=",idx"
         what += ',value_r' if 'value_r' in self.getTableCols(table) \
                                 else ',value'
@@ -522,16 +517,16 @@ class HDBpp(ArchivingDB,SingletonMap):
                         % (what,table,interval)
         if desc: query+=" desc" # or (not stop_date and N>0):
         if N>0: query+=' limit %s'%N
-        self.debug(query)
-
-        result = self.Query(query)
+        
         ######################################################################
-        self.debug('read [%d]'%len(result))
+        # QUERY
+        self.warning(query)
+        result = self.Query(query)
+        self.warning('read [%d] in %f s'%(len(result),time.time()-t0))
+        t0 = time.time()
         if not result or not result[0]: return []
-        #if len(result[0]) == 2: ## Just data_time and value_r
-          #result = [(float(t[0]),t) for t in result]
-          
-        #result = [t for t in self.Query(query)]
+        ######################################################################
+
         if 'array' in table:
             data = fandango.dicts.defaultdict(list)
             for t in result:
@@ -546,37 +541,58 @@ class HDBpp(ArchivingDB,SingletonMap):
                         break
                     l[t[0]] = t[1] #Ignoring extra columns (e.g. quality)
                 result.append((k,l))
-            self.debug('arranged [%d]'%len(result))
-            
-        #if N>1 and decimate!=0: 
-          #result = self.decimate_values(result,N=decimate)
-          #self.info('decimated: [%d]'%len(result))
+            self.warning('array arranged [%d] in %f s'
+                         % (len(result),time.time()-t0))
+            t0 = time.time()
           
         # Converting the timestamp from Decimal to float
-        # Weird results may appear in comparison if not done
-        if len(result[0]) == 2: 
-            result = [(float(t[0]),t[1]) for t in result]
-        elif len(result[0]) == 3: 
-            result = [(float(t[0]),t[1],t[2]) for t in result]
-        elif len(result[0]) == 4: 
-            result = [(float(t[0]),t[1],t[2],t[3]) for t in result]
-        else:
-            result = [[float(t[0])]+t[1:] for t in result]
+        # Weird results may appear in filter_array comparison if not done
+        # Although it is INCREDIBLY SLOW!!!
+        #result = []
+        #nr = []
+        #if len(result[0]) == 2: 
+            #for i,t in enumerate(result):
+                #result[i] = (float(t[0]),t[1])
+        #elif len(result[0]) == 3: 
+            #for i,t in enumerate(result):
+                #result[i] = (float(t[0]),t[1],t[2])
+        #elif len(result[0]) == 4: 
+           #for i,t in enumerate(result):
+                #result[i] = ((float(t[0]),t[1],t[2],t[3]))
+        #else:
+            #for i,t in enumerate(result):
+                #result[i] = ([float(t[0])]+t[1:])
+        
+        self.warning('timestamp arranged [%d] in %f s'
+                     % (len(result),time.time()-t0))
+        t0 = time.time()
             
-        if decimate:
-            result = PyTangoArchiving.reader.decimation(
-                    result,decimate,window=0,N=N)
-            
+        # Decimation to be done in Reader object
+        #if decimate:
+            ## When called from trends, decimate may be the decimation method
+            ## or the maximum sample number
+            #try:
+                #N = int(decimate)
+                ##decimate = data_has_changed
+                #decimate = 
+                #result = PyTangoArchiving.reader.decimation(
+                                        #result,decimate,window=0,N=N)                
+            #except:
+                ##N = 1080
+                #result = PyTangoArchiving.reader.decimation(result,decimate) 
+        
         if human: 
             result = [list(t)+[fn.time2str(t[0])] for t in result]
-            
 
         if not desc and not stop_date and N>0:
             #THIS WILL BE APPLIED ONLY WHEN LAST N VALUES ARE ASKED
-            return list(reversed(result))
+            result = list(reversed(result))
         else:
+            # why?
             self.getCursor(klass=MySQLdb.cursors.SSCursor)
-            return result
+
+        self.warning('result arranged [%d]'%len(result))            
+        return result
         
     def get_attributes_values(self,tables='',start_date=None,stop_date=None,
                 desc=False,N=-1,unixtime=True,extra_columns='quality',
