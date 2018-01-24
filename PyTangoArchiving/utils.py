@@ -125,7 +125,7 @@ def get_col(array,col):
 def sort_array(arg0,arg1=None,decimate=True,as_index=False,minstep=1e-3):
     """
     Args can be an (N,2) array or a tuple with 2 (times,values) arrays
-    Takes two arrays of times and values of the same length and sorts the (time,value) 
+    Takes two arrays of times and values of the same length and sorts them
     The decimate argument just removes repeated timestamps, not values
     """
     import numpy as np
@@ -142,26 +142,48 @@ def sort_array(arg0,arg1=None,decimate=True,as_index=False,minstep=1e-3):
     if as_index:
         if decimate:
             return np.compress(
-                get_array_steps(get_col(data,0).take(time_index), minstep),
-                    time_index,0)
+                get_array_steps(get_col(data,0).take(time_index), 
+                                minstep = minstep, as_index = as_index),
+                                time_index,0)
         else:
-            return index
+            return time_index
             
     else:
         sdata = data.take(time_index,0)
         if decimate:
             sdata = np.compress(
-                get_array_steps(get_col(sdata,0), minstep), sdata,0)
+                get_array_steps(get_col(sdata,0), 
+                                minstep = minstep, as_index = as_index),
+                                sdata,0)
             
         print time.time()-t0
         return sdata
     
 def get_array_steps(array,minstep=0.001,as_index=False):
-    #It calcullates steps and adds True at the beginning
+    # Gets an integer with all differences > minstep
+    # It calcullates steps and adds True at the beginning
+    as_index = False
+    print('get_array_steps(%s,%s,%s)'%(len(array),minstep,as_index))
+    if not len(array): return array
     import numpy as np
-    diff = np.insert(np.abs(array[1:]-array[:-1])>minstep,0,True)
-    if not as_index: return diff
-    else: return diff.nonzero()[0]
+    last,diff = array[0], np.zeros((len(array),), dtype = np.bool)
+    #print('diff[%d]' % len(diff))
+    diff[0] = True
+    for i,a in enumerate(array[1:]):
+        d = (a - last) > minstep
+        last = d and a or last
+        diff[i+1] = d
+    #print('diff[%d]' % len(diff))
+    
+    ### THIS METHOD WAS NUMB!!! IT MATCHES HOLES, NOT DATA
+    #   diff = np.abs(array[1:]-array[:-1])>minstep
+    #   print('diff[%d]' % len(diff))
+    #   diff = np.insert(diff,0,True)
+    #   print('diff[%d]' % len(diff))
+    
+    diff = diff.nonzero()[0] if as_index else diff
+    #print('diff[%d]' % len(diff))
+    return diff
     
 def get_bigger_step(array,minstep=0.001,as_index=False):
     import numpy as np
@@ -215,14 +237,20 @@ def interpolate_array(array,mint=None,maxt=None,step=None,nsteps=None):
     #return array
         
 def patch_booleans(history,trace=TRACE):
-    if trace: print 'In patch_booleans(%d,%s)'%(len(history),history and history[0] or '')
-    fromHistoryBuffer = history is not None and len(history) and hasattr(history[0],'time')
+    if trace: 
+        print('In patch_booleans(%d,%s)'%(len(history),(history or ('',))[0]))
+    fromHistoryBuffer = len(history) and hasattr(history[0],'time')
     patch = 0
+
     for h in history: 
         v = h[1] if not fromHistoryBuffer else h.value
-        if v is None: continue
-        if isinstance(v,int) or isinstance(v,float): break
-        if isinstance(v,basestring) and (not isNumber(v) and v.lower() not in ('true','false','none')): break
+        if v is None: 
+            continue
+        if isinstance(v,int) or isinstance(v,float): 
+            break
+        if isinstance(v,basestring) and \
+            (not isNumber(v) and v.lower() not in ('true','false','none')): 
+            break
         if isinstance(v,basestring):
             if isNumber(v) and v in ('1','0','1.0','0.0'): patch=1
             if v.lower() in ('true','false','none'): patch=2
@@ -230,13 +258,17 @@ def patch_booleans(history,trace=TRACE):
         if isinstance(v,bool):
             patch = 1
             break
+
     if patch:
-        #print '\tpatching ...'
         for i,h in enumerate(history):
             v = h.value if fromHistoryBuffer else h[1]
-            if patch==2: v = v.lower().strip() in ('true','1')
-            if fromHistoryBuffer: h.value = int(v)
-            else: history[i] = (h[0],int(v))
+            if patch==2: 
+                v = v.lower().strip() in ('true','1')
+            if fromHistoryBuffer: 
+                h.value = int(v)
+            else: 
+                history[i] = (h[0],int(v))
+
     return history
 
 ###############################################################################
