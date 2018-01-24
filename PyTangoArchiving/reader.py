@@ -34,14 +34,14 @@ import fandango
 from fandango.objects import Object,SingletonMap,Cached
 from fandango.log import Logger
 import fandango.functional as fun
-from fandango.functional import isString,isSequence,isCallable,str2time as str2epoch
-from fandango.functional import clmatch, time2str as epoch2str
-from fandango.functional import ctime2time, mysql2time
+from fandango.functional import ( isString,isSequence,isCallable,
+    str2time, str2epoch, clmatch, time2str, epoch2str, 
+    ctime2time, mysql2time, NaN )
 from fandango.dicts import CaselessDict, SortedDict
 from fandango.linos import check_process,get_memory
 from fandango.tango import get_tango_host,parse_tango_model
 
-from PyTangoArchiving.utils import PyTango
+from PyTangoArchiving.utils import PyTango, patch_booleans
 import PyTangoArchiving.utils as utils
 from PyTangoArchiving.dbs import ArchivingDB
 from PyTangoArchiving.schemas import Schemas
@@ -88,54 +88,86 @@ def get_failed(values):
         i+=1
     return [[time.ctime(d) for d in j] for j in failed]
         
-def data_has_changed(value,previous,next=None,t=300):
+def data_has_changed(val,prv,nxt=None,t=300):
     """ 
     Method to calculate if decimation is needed, 
     any value that preceeds a change is considered a change
     any time increment above 300 seconds is considered a change
     """
-    return value[1]!=previous[1] or (next is not None and next[1]!=previous[1]) or value[0]>(t+previous[0])
+    return (val[1]!=prv[1] 
+                    or (nxt is not None and nxt[1]!=prv[1]) 
+                    or val[0]>(prv[0]+t))
 
-def decimation(history,decimation,window='0',logger_obj=None, N=1080):
+def decimation(history,method,window='0',logger_obj=None, N=1080):
     """
+    Nones and NaNs are always removed if this method is called
+    
     history: array of data
-    decimation: method or callable
+    method: method or callable
     window: string for time
     logger_obj: ArchivedTrendLogger or similar
     N: max array size to return
     """
+    t0 = time.time()
     l0 = len(history)
-    if not l0: return history
-    trace = getattr(logger_obj,'info',fandango.printf)
-    utils.patch_booleans(history)
+    if not l0:
+        return history
+    
+    trace = getattr(logger_obj,'warning',fandango.printf)
     try: 
-        window = fandango.str2time(window or '0') 
-        #str(logger_obj._windowedit.text()).strip() or '0')
+        window = str2time(window or '0') 
     except: 
         window = 0
         
     start_date,stop_date = float(history[0][0]),float(history[-1][0])
-    
-    if (decimation is not None and len(history) 
-            and not fandango.isSequence(history[0][1])):
-        history = [v for v in history if v[1] is not None and not isNaN(v[1])]
-        trace('Removed %d values in (None,NaN)'%(l0-len(history)))  
+
+    ## Decimation by data_has_changed is ALWAYS done
+    if len(history): #method is not None
+        nv = []
+        #sq = isSequence(history[0][1])
+        for i,v in enumerate(history):
+            if (v[1] not in (None,NaN)# is not None and (sq or not isNaN(v[1]))
+                    #and (i in (0,l0-1,l0-2) or 
+                        #data_has_changed(history[i-1],v,history[i+1]))
+                    ):
+                nv.append(v)
+        t1 = time.time()
+        trace('Removed %d (None,NaN, Rep) values in %fs'
+              %(l0-len(nv),t1-t0))
+
+        t0,i,c,lh = t1,0,0,len(history)
+        while i<len(history):
+            if history[c] in (None,NaN):
+                history.pop(c)
+            else:
+                c+=1
+            i+=1
+        t1 = time.time()
+        trace('Removed %d (None,NaN, Rep) values in %fs'
+              %(l0-len(history),t1-t0))
+        history = nv   
         
-    if (decimation and len(history) and type(history[0][-1]) 
-            in (int,float,type(None))):
-        #history = fandango.arrays.decimate_array(
-        #   data=history,fixed_size=2*trend_set._xBuffer.maxSize())
-        #DATA FROM EVAL IS ALREADY FILTERED; SHOULD NOT PASS THROUGH HERE
-        wmin = max(0.001,(stop_date-start_date)/(10*1080.))
-        wauto = max(0.1,(stop_date-start_date)/(N))
+    if (method and isCallable(method) and method!=data_has_changed 
+        and len(history) and type(history[0][-1]) in (int,float,bool)): #type(None)):
+        # Data is filtered applying an averaging at every "window" interval.
+        # As range() only accept integers the minimum window is 1 second.
+        # It means that filtering 3 hours will implicitly prune millis data.        
+        #DATA FROM EVAL IS ALREADY FILTERED; SHOULD NOT PASS THROUGH HERE        
+        
+        wmin = max(1.,(stop_date-start_date)/(10*1080.))
+        wauto = max(1.,(stop_date-start_date)/(10*N))
         trace('WMIN,WUSER,WAUTO = %s,%s,%s'%(wmin,window,wauto))
         window = wauto if not window else max((wmin,window))
         
         if len(history) > (stop_date-start_date)/window:
             history = fandango.arrays.filter_array(
-                data=history,window=window,method=decimation)
-            trace('Decimated %d values to %d using %s every %s seconds'
-                  %(l0,len(history),decimation,window))
+                data=history,window=window,method=method)
+            t2 = time.time()
+            trace('Decimated %d values to %d in %f seconds '
+                  '(%s,%s)'
+                  %(l0,len(history),t2-t1,method,window))
+    else:
+        trace('Decimation is not callable')
             
     return history
 
@@ -495,7 +527,7 @@ class Reader(Object,SingletonMap):
                     try: config = '\n'.join(self.tango.get_class_property('%sextractor'%self.schema,['DbConfig'])['DbConfig'] or [''])
                     except: config = ''
                     if not config and self.default: config = '\n'.join(self.default)
-                self.configs.update( (0 if '<' not in c else fandango.str2epoch(c.split('<')[0]),c.split('<')[-1]) for c in config.split() )
+                self.configs.update( (0 if '<' not in c else str2epoch(c.split('<')[0]),c.split('<')[-1]) for c in config.split() )
 
                 #print(self.db_name,schema,config)
                 if any(a.lower() in s for s in map(str,(self.db_name,schema,config)) for a in ('hdbpp','hdb++','hdblite')):
@@ -891,6 +923,47 @@ class Reader(Object,SingletonMap):
           
         GET_LAST = 0 < (time.time()-stop_time) < 3
         
+        l1,l2 = start_time,stop_time
+        self.last_dates[attribute] = l1,l2
+
+        # WHY NOT TO CHECK FOR ALIAS HERE!? ... alias should be per schema?
+        # Checks if the attribute is a member of an array 
+        # This part will be duplicated wherever alias is checked
+        array_index = re.search('\[([0-9]+)\]',attribute) 
+        if array_index: 
+            attr = attribute.replace(array_index.group(),'')
+            array_index = array_index.groups()[0]
+        else:
+            attr = attribute        
+        
+        ###################################################################
+        # CACHE MANAGEMENT
+        
+        cache = self.cache if cache else {}
+        if cache:
+            self.log.debug('Checking Keys in Cache: %s'%self.cache.keys())
+                
+            margin = max((60.,.01*abs(l2-l1)))
+            nearest = [(a,s1,s2,h,d) for a,s1,s2,h,d in self.cache 
+                if a==attr and h==asHistoryBuffer and d==bool(decimate) 
+                and (s1-margin<=l1 and l2<=s2+margin)]
+            if nearest: 
+                attr,l1,l2,asHistoryBuffer,decimate = nearest[0]
+                
+            ckey = (attr,l1,l2,asHistoryBuffer,bool(decimate))
+            values = cache.get(ckey,False)
+            
+            if any(len(v)>1e5 for v in self.cache.values()) or get_memory()>2e6:
+                self.log.debug('... Reader.cache clear()')
+                self.cache.clear()
+            
+            if values:
+                self.log.info('Reusing Cached values for (%s)' % (str(ckey)))
+                if array_index: #Array index is an string or None
+                    values = self.extract_array_index(
+                                values,array_index,decimate,asHistoryBuffer)                
+                return values     
+        
         ######################################################################    
         # Evaluating Taurus Formulas : it overrides the whole get_attribute process
         
@@ -909,22 +982,21 @@ class Reader(Object,SingletonMap):
             cvals = self.correlate_values(vals,resolution=resolution,
                                 rule=choose_last_value)#(lambda t1,t2,tt:t2))
 
-            nvals,error = [],False
+            values,error = [],False
             for i,t in enumerate(cvals.values()[0]):
                 v = None
                 try:
-                    vars = dict((getId(k),v[i][1]) for k,v in cvals.items())
-                    if None not in vars.values(): v = eval(attribute,vars)
+                    pars = dict((getId(k),v[i][1]) for k,v in cvals.items())
+                    if None not in pars.values(): v = eval(attribute,pars)
                 except:
                     if not error: traceback.print_exc()
                     error = True
-                nvals.append((t[0],v))
-            return nvals
+                values.append((t[0],v))
             
         #######################################################################
         # Generic Reader, using PyTangoArchiving.Schemas properties
         
-        if self.db_name=='*':
+        elif self.db_name=='*':
           
             rd = getArchivingReader(attribute,start_time,stop_time,
                   self.configs.get('hdb',None),self.configs.get('tdb',None),
@@ -933,73 +1005,53 @@ class Reader(Object,SingletonMap):
                 self.log.warning('In get_attribute_values(%s): '
                   'No valid schema at %s'%(attribute,start_date))
                 return []
-            self.log.info('In get_attribute_values(%s): '
+            #@debug
+            self.log.warning('In get_attribute_values(%s): '
               'Using %s schema at %s'%(attribute,rd.schema,start_date))
 
             #@TODO, implemented classes should have polimorphic methods
-            vals = rd.get_attribute_values(attribute,start_date,stop_date,
+            values = rd.get_attribute_values(attribute,start_date,stop_date,
                     asHistoryBuffer=asHistoryBuffer,decimate=decimate,
                     notNone=notNone,N=N)
             
             if fallback: # If no data, it just tries the next database
                 sch = self.is_attribute_archived(attribute)[1:]
-                while not len(vals) and len(sch):
+                while not len(values) and len(sch):
                     self.log.warning('In get_attribute_values(%s,%s,%s)(%s): '
                       'fallback to %s as %s returned no data'%(
                         attribute,start_date,stop_date,rd.schema,
                         sch[0], rd.schema))
-                    vals = self.configs[sch[0]].get_attribute_values(
+                    values = self.configs[sch[0]].get_attribute_values(
                         attribute,start_date,stop_date,
                         asHistoryBuffer=asHistoryBuffer,decimate=decimate,N=N)
                     sch = sch[1:]
-                
-            return vals
           
         # END OF GENERIC CODE
         #######################################################################
           
         #######################################################################
         # HDB/TDB Specific Code
-        
-        alias = self.get_attribute_alias(attribute).lower()
-        #Needed to record last read values for both alias and real name
-        attribute,alias = alias,attribute 
-        self.log.info('In PyTangoArchiving.Reader.get_attribute_values'
-                '(%s,%s,%s,%s)'%(self.db_name,attribute,start_date,stop_date))
-        
-        #Checks if the attribute is a member of an array 
-        array_index = re.search('\[([0-9]+)\]',attribute) 
-        if array_index: 
-            attribute = attribute.replace(array_index.group(),'')
-            array_index = array_index.groups()[0] #Gets the index as an string
-        
-        l1,l2 = start_time,stop_time
-        self.last_dates[attribute] = l1,l2
-        self.last_dates[alias] = l1,l2
-        db = self.get_database(l1)
-        
-        #######################################################################
-        # CACHE MANAGEMENT
-        cache = self.cache if cache else {}
-        if cache:
-            self.log.debug('Checking Keys in Cache: %s'%self.cache.keys())
-            margin = max((60.,.01*abs(l2-l1)))
-            nearest = [(a,s1,s2,h,d) for a,s1,s2,h,d in self.cache 
-                if a==attribute and h==asHistoryBuffer and d==bool(decimate) 
-                and (s1-margin<=l1 and l2<=s2+margin)]
-            if nearest: 
-                attribute,l1,l2,asHistoryBuffer,decimate = nearest[0]
-        ckey = (attribute,l1,l2,asHistoryBuffer,bool(decimate))
-        if cache.get(ckey,False):
-            self.log.info('Reusing Cached values for (%s)' % (str(ckey)))
-            values = self.cache[ckey]
         else:
+            
+            alias = self.get_attribute_alias(attribute).lower()
+            #Needed to record last read values for both alias and real name
+            attribute,alias = alias,attribute 
+            #@debug
+            self.log.warning('In PyTangoArchiving.Reader.get_attribute_values'
+                '(%s,%s,%s,%s)'%(self.db_name,attribute,start_date,stop_date))
+            
+            #Checks if the attribute is a member of an array 
+            array_index = re.search('\[([0-9]+)\]',attribute) 
+            if array_index: 
+                attribute = attribute.replace(array_index.group(),'')
+                #Gets the index as an string
+                array_index = array_index.groups()[0] 
+            
+            self.last_dates[alias] = l1,l2
+            db = self.get_database(l1)
+            
             ###################################################################
             # QUERYING NEW HDB/TDB VALUES
-            if any(len(v)>1e5 for v in self.cache.values()) or get_memory()>2e6:
-                self.log.debug('... Reader.cache clear()')
-                self.cache.clear()
-                
             if not db:
                 ##USING JAVA EXTRACTORS
                 values = self.get_extractor_values(attribute, start_date, 
@@ -1008,14 +1060,46 @@ class Reader(Object,SingletonMap):
                 values = self.get_attribute_values_from_db(attribute, db,
                             start_date, stop_date, decimate, 
                             asHistoryBuffer, N, notNone, GET_LAST)
-                    
-            #######################################################################
-            # SAVE THE CACHE
-            self.cache[(attribute,l1,l2,asHistoryBuffer,bool(decimate))] = values[:]
+                
+        #######################################################################
+        #DECIMATION IS DONE HERE
         
+        l0,t1 = len(values),time.time()
+        if l0 > 128 and decimate:
+            decimate,window = decimate if isSequence(decimate) \
+                                        else (decimate,'0')
+            if isString(decimate):
+                try: 
+                    decimate = eval(decimate)
+                except:
+                    self.log.warning('Decimation(%s)?: %s'
+                        % (decimate, traceback.format_exc()))
+                        
+            ## Decimation by data_has_changed is done always
+            values = decimation(values, decimate, window=window, 
+                                logger_obj=self.log)
+                
+            #@debug
+            self.log.warning('\tDecimated %s[%d > %d] in %s s' 
+                    % (attribute,l0,len(values),time.time()-t1))
+            t1 = time.time()
+                    
+        #Simulating DeviceAttributeHistory structs
+        if asHistoryBuffer:
+            values = [FakeAttributeHistory(*v) for v in values]                
+                    
         #Array index is an string or None
-        if array_index: return self.extract_array_index(values,array_index,decimate,asHistoryBuffer)
-        else: return values
+        if array_index: 
+            values = self.extract_array_index(values,array_index,
+                                                decimate,asHistoryBuffer)
+                
+        #######################################################################
+        # SAVE THE CACHE
+        if cache:
+            self.cache[(attribute,l1,l2,asHistoryBuffer,bool(decimate))
+                    ] = values[:]                
+
+        return values
     
     def get_attribute_values_from_db(self, attribute, db, 
             start_date, stop_date, decimate, asHistoryBuffer, 
@@ -1080,52 +1164,12 @@ class Reader(Object,SingletonMap):
         try:
             values = self.extract_mysql_data(result,
                             data_type,data_format,notNone)
+            values = patch_booleans(values)
         except Exception,e:
             self.log.info(traceback.format_exc())
             raise Exception('Reader.UnableToConvertData(%s,format=%s)'
                             % (attribute,data_format),str(e))
         
-        #######################################################################
-        #DECIMATION IS DONE HERE ##########################################
-        t1 = time.time()
-        if len(values)>128 and decimate:
-            
-            decimate,window = decimate if isSequence(decimate) \
-                                        else (decimate,'0')
-            if isString(decimate):
-                try: 
-                    decimate = eval(decimate)
-                except: 
-                    self.log.warning('Decimation? %s'%traceback.format_exc())
-                    
-            i,l0,nv = 1,len(values),[values[0]]
-            for i,v in enumerate(values[1:]):
-                if i==l0-3: break
-                try:
-                    if not data_has_changed(nv[-1],v,values[i+2]): 
-                        continue
-                except: 
-                    pass
-                nv.append(v)
-            nv.append(values[-1])
-            del values
-            
-            #Extended decimation
-            if callable(decimate) and decimate is not data_has_changed:
-                values = decimation(nv, decimate, window=window, 
-                                    logger_obj=self.log)
-            else:
-                values = nv
-                
-            #@debug
-            self.log.info('\tDecimated %s[%d > %d] in %s s' 
-                    % (attribute,len(values),l0,time.time()-t1))
-            t1 = time.time()
-                    
-        #Simulating DeviceAttributeHistory structs
-        if asHistoryBuffer:
-            values = [FakeAttributeHistory(*v) for v in values]
-            
         return values
     
     def extract_mysql_data(self, result, data_type, data_format, notNone):
@@ -1222,7 +1266,7 @@ class Reader(Object,SingletonMap):
         self.log.debug('Query finished in %d milliseconds'%(1000*(time.time()-start)))
         if correlate or text:
             if len(attributes)>1:
-                table = self.correlate_values(values,fun.str2time(stop_date),resolution=(correlate if correlate is not True and fun.isNumber(correlate)  else None))
+                table = self.correlate_values(values,str2time(stop_date),resolution=(correlate if correlate is not True and fun.isNumber(correlate)  else None))
             else:
                 table = values
             if trace or text: 
@@ -1259,7 +1303,7 @@ class Reader(Object,SingletonMap):
         def value_to_text(s):
           v = (str(s) if not fandango.isSequence(s) else arrsep.join(map(str,s))).replace('None','')
           return v
-        time_to_text = lambda t: fandango.time2str(t,cad='%Y-%m-%d_%H:%M:%S')+('%0.3f'%(t%1)).lstrip('0') #taurustrend timestamp format
+        time_to_text = lambda t: time2str(t,cad='%Y-%m-%d_%H:%M:%S')+('%0.3f'%(t%1)).lstrip('0') #taurustrend timestamp format
         for i in range(len(table.values()[0])):
             csv+=sep.join([time_to_text(table.values()[0][i][0]),str(table.values()[0][i][0])]+[value_to_text(table[k][i][1]) for k in keys])
             csv+=linesep
