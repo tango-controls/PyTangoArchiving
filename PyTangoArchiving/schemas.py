@@ -34,7 +34,7 @@ from fandango import clmatch
 import sys
 EXPERT_MODE = any(a in str(sys.argv) for a in 
         ('ArchivingBrowser.py','ctarchiving','taurustrend',
-         'taurusfinder','ctsearch','ipython',
+         'taurusfinder','ctsearch','ipython', 'test',
          'archiving2csv','archiving2plot','matlab'))
 
 class Schemas(object):
