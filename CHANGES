@@ -6,6 +6,12 @@
 @TODO Rename     widgetArchivingBrowser.ModelSearchWidget to widget.browser.ArchivingBrowser
 @TODO: rename ArchivingBrowser to browser
 
+7.8 Multi-db, Decimation, HDB++ tuning
+
+Requires fandango 13.5.2
+Decimation improved to deal with HDB++ data
+First API methods for multiple Tango hosts and/or HDB++ databases
+Many improvements on HDB++ setup scripts
 
 7.7 Bugfixes, ctarchiving, pyextractor
 
