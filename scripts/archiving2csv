@@ -90,7 +90,7 @@ else:
     import codecs
     for a in args:
         if a.startswith('--resolution='):
-            correlate = int(a.replace('--resolution=',''))
+            correlate = float(a.replace('--resolution=',''))
             print 'Correlation step set to %3.2f s'%correlate
         if a.startswith('--arrsep='):
             arrsep = a.split('=',1)[-1]
