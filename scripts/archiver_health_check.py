@@ -3,6 +3,7 @@
 import time,os,sys,traceback
 sys.path.append('/homelocal/sicilia/lib/python/site-packages/')
 import fandango as fun
+from collections import defaultdict
 import PyTangoArchiving as pta
 
 V = fun.Struct({'torestart':[]})
@@ -10,6 +11,13 @@ WAIT_TIME = 150
 MAX_ERROR = 7200
 STOP_WAIT = 30.
 last_restart = 0
+
+TANGO_HOST = fun.tango.get_tango_host()
+BL_FOLDER = '/beamlines/%s/controls/archiving'%(TANGO_HOST[1:5])
+MACH_FOLDER = '/data/Archiving/Config'
+LOG_FOLDER = '/homelocal/sicilia/var/' 
+
+#'/intranet01mounts/controls/intranet/archiving'
 
 def trace(msg):
   print('%s: %s' % (time.ctime(),msg))
@@ -26,23 +34,31 @@ def restart_server(ss,api='hdb',wait=WAIT_TIME):
     time.sleep(wait)
   return ss
     
-def get_attributes_servers(attr_list,api='hdb'):
-  if fun.isString(api): api = pta.api(api)
-  api.load_dedicated_archivers(check=False);
-  from collections import defaultdict
+def get_attributes_servers(attr_list,api='hdb',dedicated=False):
+  if fun.isString(api): 
+      api = pta.api(api)
+  if dedicated:
+    api.load_dedicated_archivers(check=False);
+  
   devices = defaultdict(set)
   servers = defaultdict(set)
-  [devices[x].add(l) for l in attr_list for x in (api[l].archiver,api[l].dedicated) if x]
-  #assigned = set(x for l in attr_list for x in (api[l].archiver,api[l].dedicated) if x)
-  [servers[api.servers.get_device_server(d).lower()].update(devices[d]) for d in devices]
-  #servers = sorted(set(api.servers.get_device_server(a) for a in set(x for l in attr_list for x in (api[l].archiver,api[l].dedicated) if x)))
+  
+  [devices[x].add(l) for l in attr_list 
+        for x in (api[l].archiver,api[l].dedicated) if x]
+  #assigned = set(x for l in attr_list 
+  #     for x in (api[l].archiver,api[l].dedicated) if x)
+  [servers[api.servers.get_device_server(d).lower()].update(devices[d]) 
+        for d in devices]
+  #servers = sorted(set(api.servers.get_device_server(a) 
+  #      for a in set(x for l in attr_list 
+  #             for x in (api[l].archiver,api[l].dedicated) if x)))
   return servers
 
 from PyTangoArchiving.utils import get_table_updates
 
 def get_assigned_attributes(api='hdb',dedicated=False):
   if fun.isString(api): api = pta.api(api)
-  api.load_dedicated_archivers(check=False);
+  if dedicated: api.load_dedicated_archivers(check=False);
   return sorted(set(a for a in api if api[a].archiver or dedicated and api[a].dedicated))
 
 def get_deactivated_attributes(api='hdb',updates=None,period=6*30*24*3600):
@@ -64,10 +80,6 @@ def get_idle_servers(api='hdb'):
   trace('\t%d servers have idle devices'%len(idle))  
   return idle
  
-TANGO_HOST = fun.tango.get_tango_host()
-BL_FOLDER = '/beamlines/%s/controls/archiving'%(TANGO_HOST[1:5])
-MACH_FOLDER = '/data/Archiving/Config'
-
 def get_csv_folder(tango_host=None):
   tango_host = tango_host or TANGO_HOST
   if 'bl' in tango_host:
@@ -95,9 +107,9 @@ def get_all_config_attrs(schema,csvfolder=""):
       traceback.print_exc()
   return csv_ats
     
-def check_config_files(schema,restart=False,save='',email=''):
+def check_config_files(schema,restart=False,save='',email='',csvfolder=""):
     api = pta.api(schema)
-    csv_ats = get_all_config_attrs(schema)
+    csv_ats = get_all_config_attrs(schema,csvfolder)
 
     active = api.get_archived_attributes()
     missing = [a for a in csv_ats if a not in active]
@@ -283,23 +295,53 @@ def check_schema_with_queries(schema):
   ##@todo...
   
   return done    
-    
+
+__doc__  = """
+Usage:
+
+  archiver_health_check.py [--options] [schemas] [--email=dadada@cells.es]
+  
+Options:
+
+    --email=...
+    --folder=...
+    --configs[=...]
+    --restart
+  
+"""
+
 def main():
-  print 'Usage: archiver_health_check.py hdb tdb restart email=dadada@cells.es'
+  print(__doc__)
+  
+  args = map(str.lower,sys.argv[1:])
+  schemas = pta.Schemas.load()
+  schemas = [a for a in args if a in schemas]
+  
+  options = dict((k.strip('-'),v) for k,v in 
+                 ((a.split('=',1) if '=' in a else (a,""))
+                    for a in args if a not in schemas))
+                    #for a in args if a.startswith('--')))
+   
   import platform
   host = platform.node()
-  folder = '/intranet01mounts/controls/intranet/archiving'
-  args = map(str.lower,sys.argv[1:])# or ('hdb','tdb'))
-  restart = any('restart' in s and 'false' not in s.lower() for s in args)
-  email = ([s.split('=')[-1] for s in args if 'email=' in s] or [''])[0]
-  schemas = [s for s in args if 'restart' not in s and '=' not in s]
+
+  folder = options.get('folder',LOG_FOLDER)
+  configs = options.get('config',None)
+  restart = str(options.get('restart',False)).lower() not in ('false','no')
+  email = options.get('email',False)
+  if configs is not None: 
+      configs = configs or get_csv_folder()
+  
   for schema in schemas:
     date = fun.time2str(time.time(),'%Y%m%d_%H%M%S')
-    if 'bl' not in host:
+    if 'bl' not in host and configs:
       try:
-        done = check_config_files(schema,restart=False,save='%s/missing_%s_%s_%s.pck'%(folder,host,schema,''),email=email)
+        done = check_config_files(schema,restart=False,
+                save='%s/missing_%s_%s_%s.pck'%(folder,host,schema,''),
+                    email=email,csvfolder=configs)
       except:
         traceback.print_exc()
+        
     done = check_schema_information(schema,restart=restart,email=email,
       save='%s/lost_%s_%s_%s.pck'%(folder,host,schema,''))
 
