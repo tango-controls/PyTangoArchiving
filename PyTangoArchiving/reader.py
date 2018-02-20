@@ -527,7 +527,11 @@ class Reader(Object,SingletonMap):
                     try: config = '\n'.join(self.tango.get_class_property('%sextractor'%self.schema,['DbConfig'])['DbConfig'] or [''])
                     except: config = ''
                     if not config and self.default: config = '\n'.join(self.default)
-                self.configs.update( (0 if '<' not in c else str2epoch(c.split('<')[0]),c.split('<')[-1]) for c in config.split() )
+                if config:
+                    self.configs.update( (0 if '<' not in c else str2epoch(c.split('<')[0]),c.split('<')[-1]) for c in config.split() )
+                    
+                if not config and self.db_name in Schemas.keys() and self.schema not in ('hdb','tdb'):
+                    raise 'NotImplemented!, Use generic Reader() instead'
 
                 #print(self.db_name,schema,config)
                 if any(a.lower() in s for s in map(str,(self.db_name,schema,config)) for a in ('hdbpp','hdb++','hdblite')):
@@ -722,7 +726,7 @@ class Reader(Object,SingletonMap):
         
         if self.available_attributes and self.current_attributes \
                 and time.time()<(self.updated+self.CacheTime):
-            return self.available_attributes
+            return (self.available_attributes,self.current_attributes)[active]
 
         self.log.debug('%s: In Reader(%s).get_attributes(): '
             'last update was at %s'%(time.ctime(),self.schema,self.updated))
