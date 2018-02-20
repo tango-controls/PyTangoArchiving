@@ -36,7 +36,7 @@ EXPERT_MODE = any(a in str(sys.argv) for a in
         ('ArchivingBrowser.py','ctarchiving','taurustrend',
          'taurusfinder','ctsearch','ipython', 'test',
          'archiving2csv','archiving2plot','matlab'))
-
+        
 class Schemas(object):
     """ Schemas kept in a singleton object """
     
@@ -45,7 +45,12 @@ class Schemas(object):
     LOCALS = fandango.functional.__dict__.copy()
     
     @classmethod
+    def __contains__(k,o):
+        return o in k.SCHEMAS.keys()
+    
+    @classmethod
     def keys(k):
+        if not k.SCHEMAS: k.load()
         return k.SCHEMAS.keys()
     
     @classmethod
@@ -55,61 +60,70 @@ class Schemas(object):
         if not schemas:
           schemas = ['tdb','hdb']
           tangodb.put_property('PyTangoArchiving',{'Schemas':schemas})
-        [k.getSchema(schema,tango) for schema in schemas]
+        [k.getSchema(schema,tango,write=True) for schema in schemas]
         return k.SCHEMAS
     
     @classmethod
-    def getSchema(k,schema,tango='',prop='',logger=None):
+    def pop(k,key):
+        k.SCHEMAS.pop(key)
+    
+    @classmethod
+    def _load_object(k,obj,dct):
+        rd = obj
+        m = rd.split('(')[0].rsplit('.',1)[0]
+        c = rd[len(m)+1:]
+        if m not in k.MODULES:
+            fandango.evalX('import %s'%m,modules=k.MODULES)
+        #print('getSchema(%s): load %s reader'%(schema,dct.get('reader')))
+        return fandango.evalX(obj, modules=k.MODULES, _locals=dct)
+        
+    
+    @classmethod
+    def getSchema(k,schema,tango='',prop='',logger=None, write=False):
         
         if schema.startswith('#') and EXPERT_MODE:
             schema = schema.strip('#')
             print('%s available only in EXPERT_MODE'%schema)
 
         if schema in k.SCHEMAS:
-          # Failed schemas should be also returned (to avoid unneeded retries)
-          return k.SCHEMAS[schema]
+            # Failed schemas should be also returned (to avoid unneeded retries)
+            return k.SCHEMAS[schema]
         
         dct = {'schema':schema,'dbname':schema,
                'match':clmatch,'clmatch':clmatch} 
 
         try:
-          tango = fandango.tango.get_database(tango)
-          props = prop or tango.get_property('PyTangoArchiving',schema)[schema]
-          if fandango.isSequence(props):
-            props = [map(str.strip,t.split('=',1)) for t in props]
-          dct.update(props)
-          
-          rd = dct.get('reader')
-          if rd:
-            m = rd.split('(')[0].rsplit('.',1)[0]
-            c = rd[len(m)+1:]
-            if m not in k.MODULES:
-              fandango.evalX('import %s'%m,modules=k.MODULES)
-            #print('getSchema(%s): load %s reader'%(schema,dct.get('reader')))
-            dct['logger'] = logger 
-            dct['reader'] = rd = fandango.evalX(
-                        dct.get('reader'),
-                        modules=k.MODULES,
-                        _locals=dct)
+            tango = fandango.tango.get_database(tango)
+            props = prop or tango.get_property('PyTangoArchiving',schema)[schema]
+            assert len(props)
+            if fandango.isSequence(props):
+                props = [map(str.strip,t.split('=',1)) for t in props]
+            dct.update(props)
             
-            if not hasattr(rd,'is_attribute_archived'):
-              rd.is_attribute_archived = lambda *a,**k:True
-            if not hasattr(rd,'get_attributes'):
-              rd.get_attributes = lambda *a,**k:[]
-            if not hasattr(rd,'get_attribute_values'):
-              if dct['method']:
-                rd.get_attribute_values = getattr(rd,dct['method'])
+            rd = dct.get('reader')
+            if rd:
+                dct['logger'] = logger 
+                dct['reader'] = rd = k._load_object(rd,dct)
+                
+                if not hasattr(rd,'is_attribute_archived'):
+                    rd.is_attribute_archived = lambda *a,**k:True
+                if not hasattr(rd,'get_attributes'):
+                    rd.get_attributes = lambda *a,**k:[]
+                if not hasattr(rd,'get_attribute_values'):
+                    if dct['method']:
+                        rd.get_attribute_values = getattr(rd,dct['method'])
 
             if not hasattr(rd,'schema'): rd.schema = dct['schema']
 
         except Exception,e:
             print('Reader.getSchema(%s): failed!'%schema)
             if logger: 
-                try: logger.debug(traceback.format_exc())
-                except: pass
+                try: logger.warning(traceback.format_exc())
+                except: traceback.print_exc()
             dct = None
-          
-        k.SCHEMAS[schema] = dct
+        
+        if write:
+            k.SCHEMAS[schema] = dct
         return dct
     
     @classmethod
@@ -139,5 +153,13 @@ class Schemas(object):
           v =False
       #print('checkSchema(%s): %s'%(schema,v))
       return v
+  
+    @classmethod
+    def getApi(k,schema):
+        schema = k.getSchema(schema)
+        api = schema.get('api','PyTangoArchiving.ArchivingAPI')
+        if fun.isString(api): api = k._load_object(api,schema)
+        return api(schema['schema'])
+        
 
 
