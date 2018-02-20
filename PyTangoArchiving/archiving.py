@@ -143,7 +143,7 @@ class ArchivingAPI(CommonAPI):
     
     def __init__(self,schema,host=None,user='browser',passwd='browser',
                  classes=[],LogLevel='info',load=False,values=False,
-                 tango_host='',logger=None):
+                 dedicated=False, tango_host='',logger=None, ):
 
         self.schema = schema.lower()
         assert self.schema in self.SCHEMAS, 'UnknownSchema_%s'%schema
@@ -153,7 +153,7 @@ class ArchivingAPI(CommonAPI):
         
         self.tango_host = tango_host or fandango.get_tango_host()
         self.db = ArchivingDB(self.schema,self.host,self.user,self.passwd)
-        self.load_all(values=values,dedicated=load,servers=load)
+        self.load_all(values=values,dedicated=load and dedicated,servers=load)
         
     ## The ArchivingAPI is an iterator through archived attributes
     def __getitem__(self,k): return self.attributes.__getitem__(k)

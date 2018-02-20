@@ -128,16 +128,18 @@ class CommonAPI(Object,fandango.SingletonMap):
             pass #print('Unable to delete API object')
             
     def __repr__(self):
-        '''def server_Report(self): The status of Archiving device servers '''
-        report='The status of %s Archiving device servers is:\n'%self.schema
-        for k,v in self.servers.items():
-            report+='%s:\t%s\n'%(k,v.state)
-        if self.WatcherClass:
-            try: report+=self.proxies(
-                self.servers.get_class_devices(self.WatcherClass)[0]
-                ).command_inout('GetReportCurrent')+'\n'
-            except: pass
-        return report         
+        '''The status of Archiving device servers '''
+        return '%s(%s[%s])' % (type(self),self.schema,len(self))
+        #if self.servers:
+            #report='The status of %s Archiving device servers is:\n'%self.schema
+            #for k,v in self.servers.items():
+                #report+='%s:\t%s\n'%(k,v.state)
+            #if self.WatcherClass:
+                #try: report+=self.proxies(
+                    #self.servers.get_class_devices(self.WatcherClass)[0]
+                    #).command_inout('GetReportCurrent')+'\n'
+                #except: pass
+            #return report         
 
     ####################################################################################################
 
