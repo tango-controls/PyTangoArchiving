@@ -29,6 +29,7 @@ import re,sys,os,time,traceback,threading
 import PyTango
 import fandango
 import fandango.functional as fun
+from fandango.log import tracer
 
 import taurus
 from fandango.qt import Qt,Qwt5
@@ -90,7 +91,7 @@ class AttributesPanel(PARENT_KLASS):
     
     def __init__(self,parent=None,devices=None):
         #print '~'*80
-        #print 'In AttributesPanel()'
+        tracer('In AttributesPanel()')
         PARENT_KLASS.__init__(self,parent)
         self.setSizePolicy(Qt.QSizePolicy(Qt.QSizePolicy.Ignored,Qt.QSizePolicy.Ignored))
         self.worker = SingletonWorker(parent=self,cursor=True,sleep=50.,start=True)
@@ -260,7 +261,7 @@ class AttributesPanel(PARENT_KLASS):
             self.worker.next()
             
         #threading.Event().wait(10.)
-        #print 'Out of generateTable()'
+        tracer('Out of generateTable()')
             
     def clear(self):
         try:
@@ -342,10 +343,10 @@ class ArchivingBrowser(Qt.QWidget):
         #print 'Loading alias list ...'
         self.all_alias = self.tango.get_device_alias_list('*')
         #self.alias_devs =  dict((str(self.tango.get_device_alias(a)).lower(),a) for a in self.all_alias)
-        #print('Loading (%s) finished.'%(filters))
+        tracer('Loading (%s) finished.'%(filters))
         
     def load_attributes(self,servfilter,devfilter,attrfilter,warn=True,exclude = ('dserver','tango*admin','sys*database','tmp','archiving')):
-        #print 'In load_attributes(%s,%s,%s)'%(servfilter,devfilter,attrfilter)
+        tracer('In load_attributes(%s,%s,%s)'%(servfilter,devfilter,attrfilter))
         servfilter,devfilter,attrfilter = servfilter.replace(' ','*').strip(),devfilter.replace(' ','*'),attrfilter.replace(' ','*')
         attrfilter = attrfilter or 'state'
         devfilter = devfilter or attrfilter
@@ -439,7 +440,7 @@ class ArchivingBrowser(Qt.QWidget):
                 Qt.QMessageBox.warning(self, "Warning" , 
                     "%d devices were not running:\n"%len(failed_devs) +'\n'.join(failed_devs[:10]+(['...'] if len(failed_devs)>10 else []) ))
         
-        #print('\t%d attributes found'%len(self.matching_attributes))
+        tracer('\t%d attributes found'%len(self.matching_attributes))
         return self.matching_attributes
         
     def setupUi(self,USE_SCROLL=False,SHOW_OPTIONS=True,USE_TREND=False):
@@ -672,7 +673,7 @@ def main(args=None):
     if args: 
         table.updateSearch(*args)
     if '--range' in opts:
-        print('Setting trend range to %s' % opts['--range'])
+        tracer('Setting trend range to %s' % opts['--range'])
         table.trend.applyNewDates(opts['--range'].split(','))
     return tmw
     
