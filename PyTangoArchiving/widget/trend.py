@@ -1195,7 +1195,7 @@ def getArchivedTrendValues(trend_set,model,start_date=0,stop_date=None,
         if lasts and not hasChanged(lasts[:2],args) and lasts[2]: 
             #Data was already retrieved:
             logger('In getArchivedTrendValues(%s,%s,%s) already retrieved data'
-                    '([%d] at %s) is newer than requested'%(
+                    '([%s] at %s) is newer than requested'%(
                     attribute,args[0],args[1],len(trend_set._xBuffer),lasts))
                     
             #Reader keeps last_dates of query; here just keep last arguments                    
@@ -1248,7 +1248,7 @@ def getArchivedTrendValues(trend_set,model,start_date=0,stop_date=None,
                 trend_set.emit(Qt.SIGNAL("dataChanged(const QString &)"), 
                                Qt.QString(trend_set.getModel()))
                  #@debug
-                logger_obj.warning('Inserted %d values into %s trend [%d]'
+                logger_obj.warning('Inserted %s values into %s trend [%s]'
                         %(h,attribute,len(trend_set._xBuffer)))
             else:
                 h = len(history)
