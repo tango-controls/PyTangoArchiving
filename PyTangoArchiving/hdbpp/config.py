@@ -593,7 +593,8 @@ class HDBpp(ArchivingDB,SingletonMap):
         query = 'select %s from %s %s order by data_time' \
                         % (what,table,interval)
         if desc: query+=" desc" # or (not stop_date and N>0):
-        if N>0: query+=' limit %s'%N
+        if N>0: 
+          query+=' limit %s'%(N if 'array' not in table else 1024)
         
         ######################################################################
         # QUERY
@@ -605,13 +606,14 @@ class HDBpp(ArchivingDB,SingletonMap):
         ######################################################################
 
         if 'array' in table:
-            t = result[0][0]
-            interval += " and CAST(UNIX_TIMESTAMP(data_time) as INT) = '%s'" \
-                % round(t)
-            query = 'select %s from %s %s order by data_time' \
-                % (what, table, interval)
-            self.warning(query)
-            result = self.Query(query)
+            #t = result[0][0]
+            #if 0: #N == 1: 
+              #interval += " and CAST(UNIX_TIMESTAMP(data_time) as INT) = '%s'" \
+                  #% round(t)
+            #query = 'select %s from %s %s order by data_time' \
+                #% (what, table, interval)
+            #self.warning(query)
+            #result = self.Query(query)
             data = fandango.dicts.defaultdict(list)
             for t in result:
                 data[float(t[0])].append(t[1:])
@@ -625,6 +627,7 @@ class HDBpp(ArchivingDB,SingletonMap):
                         break
                     l[t[0]] = t[1] #Ignoring extra columns (e.g. quality)
                 result.append((k,l))
+            if N > 0: result = result[-N:]
             self.warning('array arranged [%d] in %f s'
                          % (len(result),time.time()-t0))
             t0 = time.time()
