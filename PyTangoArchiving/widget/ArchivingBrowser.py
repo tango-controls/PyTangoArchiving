@@ -293,12 +293,13 @@ class ArchivingBrowser(Qt.QWidget):
     MAX_ATTRIBUTES = 1500
     
     def __init__(self,parent=None,domains=None,regexp='*pnv-*',USE_SCROLL=True,USE_TREND=False):
+        print('%s: ArchivingBrowser()' % fun.time2str())
         Qt.QWidget.__init__(self,parent)
         self.setupUi(USE_SCROLL=USE_SCROLL,USE_TREND=USE_TREND)
         self.load_all_devices()
         try:
             import PyTangoArchiving
-            self.reader = PyTangoArchiving.Reader()
+            self.reader = PyTangoArchiving.Reader('*') 
             #self.hreader = PyTangoArchiving.Reader('hdb')
             #self.treader = PyTangoArchiving.Reader('tdb')
             #self.archattrs = sorted(set(map(str.lower,(a for l in (self.hreader.get_attributes(),self.hreader.alias.keys(),self.treader.get_attributes(active=True)) for a in l))))
@@ -310,6 +311,7 @@ class ArchivingBrowser(Qt.QWidget):
         self.domains = domains if domains else ['MAX','ANY','LI/LT','BO/BT']+['SR%02d'%i for i in range(1,17)]+['FE%02d'%i for i in (1,2,4,9,11,13,22,24,29,34)]
         self.combo.addItems((['Choose...']+self.domains) if len(self.domains)>1 else self.domains)
         self.connectSignals()
+        print('%s: ArchivingBrowser(): done' % fun.time2str())
         
     def load_all_devices(self,filters='*'):
         import fandango
