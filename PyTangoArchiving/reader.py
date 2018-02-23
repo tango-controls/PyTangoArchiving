@@ -35,7 +35,7 @@ from fandango.objects import Object,SingletonMap,Cached
 from fandango.log import Logger
 import fandango.functional as fun
 from fandango.functional import ( isString,isSequence,isCallable,
-    str2time, str2epoch, clmatch, time2str, epoch2str, 
+    str2time, str2epoch, clmatch, time2str, epoch2str, now,
     ctime2time, mysql2time, NaN )
 from fandango.dicts import CaselessDict, SortedDict
 from fandango.linos import check_process,get_memory
@@ -712,14 +712,17 @@ class Reader(Object,SingletonMap):
     @Cached(depth=10,expire=15.)
     def get_attributes(self,active=False):
         """ Queries the database for the current list of archived attributes."""
+        self.log.debug('get_attributes(%s)'%active)
+        t0 = now()
         #Try Unified Reader
         if self.db_name=='*':
             attrs = []
-            for x in self.configs.values():
+            for c,x in self.configs.items():
                 try:
-                    for a in x.get_attributes(active=active):
+                    for i,a in enumerate(x.get_attributes(active=active)):
                         m = parse_tango_model(a)
                         attrs.append((m.simplename,m.model)[self.multihost])
+                    self.log.info('\t%s: %s'%(c,i+1))
                 except:
                     self.log.debug(traceback.format_exc())
             return sorted(set(attrs))
@@ -732,6 +735,7 @@ class Reader(Object,SingletonMap):
             'last update was at %s'%(time.ctime(),self.schema,self.updated))
 
         if self.get_database(): #Using a database Query
+            t1 = now()
             self.available_attributes = \
                 self.get_database().get_attribute_names(active=False)
             self.current_attributes = \
@@ -742,16 +746,18 @@ class Reader(Object,SingletonMap):
                 self.__extractorCommand(self.get_extractor(), 
                                         'GetCurrentArchivedAtt')
             
+        t1 = now()
         self.available_attributes = [(m.simplename,m.model)[self.multihost]
             for m in (parse_tango_model(a) for a in self.available_attributes)]
         self.current_attributes = [(m.simplename,m.model)[self.multihost]
             for m in (parse_tango_model(a) for a in self.current_attributes)]
+        self.log.info('parse models: + %d s' % (now()-t1))
         
-        self.updated = time.time()
+        self.updated = now()
         
         self.log.debug('In Reader(%s).get_attributes(): '
-                    '%s attributes available in the database'
-                        % (self.schema,len(self.available_attributes)))
+                    '%s attributes available in the database (+%ds)'
+                    % (self.schema,len(self.available_attributes),self.updated-t0))
         
         return (self.available_attributes,self.current_attributes)[active]
 
