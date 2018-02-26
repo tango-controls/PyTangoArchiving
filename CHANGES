@@ -6,6 +6,14 @@
 @TODO Rename     widgetArchivingBrowser.ModelSearchWidget to widget.browser.ArchivingBrowser
 @TODO: rename ArchivingBrowser to browser
 
+7.8.1 HDB++ decimation with ms resolution
+
+Add float resolution to decimation methods
+Solve bugs/slowness on getting current attributes
+Add getApi() methods do Schemas
+Solve bugs in multi-db apis
+Add DB creation scripts
+
 7.8 Multi-db, Decimation, HDB++ tuning
 
 Requires fandango 13.5.2
