@@ -547,6 +547,7 @@ class HDBpp(ArchivingDB,SingletonMap):
     def get_attribute_values(self,table,start_date=None,stop_date=None,
                              desc=False,N=-1,unixtime=True,
                              extra_columns='quality',decimate=0,human=False,
+                             as_double=True,
                              **kwargs):
         """
         This method returns values between dates from a given table.
@@ -568,11 +569,15 @@ class HDBpp(ArchivingDB,SingletonMap):
         self.setLogLevel('INFO')
         self.warning('HDBpp.get_attribute_values(%s,%s,%s,%s,decimate=%s,%s)'
               %(table,start_date,stop_date,N,decimate,kwargs))
-        aid,tid,table = self.get_attr_id_type_table(table)
+        if fn.isSequence(table):
+            aid,tid,table = table
+        else:
+            aid,tid,table = self.get_attr_id_type_table(table)
         human = kwargs.get('asHistoryBuffer',human)
             
         what = 'UNIX_TIMESTAMP(data_time)' if unixtime else 'data_time'
-        what = 'CAST(%s as DOUBLE)' % what
+        if as_double:
+            what = 'CAST(%s as DOUBLE)' % what
         if 'array' in table: what+=",idx"
         what += ',value_r' if 'value_r' in self.getTableCols(table) \
                                 else ',value'
@@ -584,7 +589,8 @@ class HDBpp(ArchivingDB,SingletonMap):
           start_date,start_time,stop_date,stop_time = \
               Reader.get_time_interval(start_date,stop_date)
           if start_date and stop_date:
-            interval += " and data_time between '%s' and '%s'"%(start_date,stop_date)
+            interval += (" and data_time between '%s' and '%s'"
+                            %(start_date,stop_date))
           elif start_date and fandango.str2epoch(start_date):
             interval += " and data_time > '%s'"%start_date
         if N == 1:
@@ -599,7 +605,14 @@ class HDBpp(ArchivingDB,SingletonMap):
         ######################################################################
         # QUERY
         self.debug(query)
-        result = self.Query(query)
+        try:
+            result = self.Query(query)
+        except MySQLdb.ProgrammingError as e:
+            if 'DOUBLE' in str(e) and "as DOUBLE" in query:
+                return self.get_attribute_values((aid,tid,table),start_date,
+                    stop_date,desc,N,unixtime,extra_columns,decimate,human,
+                    as_double=False,**kwargs)
+            
         self.debug('read [%d] in %f s'%(len(result),time.time()-t0))
         t0 = time.time()
         if not result or not result[0]: return []
