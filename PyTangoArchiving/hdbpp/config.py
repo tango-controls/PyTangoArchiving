@@ -280,21 +280,31 @@ class HDBpp(ArchivingDB,SingletonMap):
     def add_attributes(self,attributes,*args,**kwargs):
         """
         Call add_attribute sequentially with a 1s pause between calls
+        :param start: True by default, will force Start() in related archivers
         See add_attribute? for more help on arguments
         """
         try:
+          start = kwargs.get('start',True)
           for a in attributes:
+            kwargs['start'] = False #Avoid recursive start
             self.add_attribute(a,*args,**kwargs)
           time.sleep(3.)
           for a in attributes:
             self.start_archiving(a)
+            
+          if start:
+            archs = set(map(self.get_attribute_archiver,attributes))
+            for h in archs:
+                self.info('%s.Start()' % h)
+                fn.get_device(h).Start()
+                
         except Exception,e:
             print('add_attribute(%s) failed!: %s'%(a,traceback.print_exc()))
         return
 
     def add_attribute(self,attribute,archiver,period=0,
                       rel_event=None,per_event=300000,abs_event=None,
-                      code_event=False, ttl=None):
+                      code_event=False, ttl=None, start=False):
         """
         set _event arguments to -1 to ignore them and not modify the database
         
@@ -337,14 +347,21 @@ class HDBpp(ArchivingDB,SingletonMap):
 
           d.write_attribute('SetArchiver',archiver)
           time.sleep(.2)
-          #d.AttributeAdd()
           d.AttributeAdd()
+          
+          if start:
+              arch = self.get_attribute_archiver(attribute)
+              self.info('%s.Start()' % arch)
+              fn.get_device(arch).Start()
+              
         except Exception,e:
           if 'already archived' not in str(e).lower():
             self.error('add_attribute(%s,%s,%s): %s'
                        %(attribute,archiver,period,
                          traceback.format_exc().replace('\n','')))
-            return False
+          else:
+            self.warning('%s already archived!' % attribute)
+          return False
         finally:
           #self.warning('unlocking %s ..'%self.manager)
           d.unlock()
