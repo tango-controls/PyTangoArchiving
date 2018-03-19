@@ -159,6 +159,21 @@ def merge_csv_attrs(exported = True, currents = True, check_dups = True):
 
 #csvattrs = merge_csv_attrs(False,True,False)
 
+def check_attribute_in_all_dbs(attr_regexp,reader = None,
+                               start = None, stop = None):
+    reader = reader or PyTangoArchiving.Reader()
+    attrs = [a for a in reader.get_attributes() if clmatch(attr_regexp,a)]
+    schemas = kmap(reader.is_attribute_archived,attrs)
+    result = []
+    for a,ss in schemas:
+        for s in ss:
+            try:
+                v = reader.configs[s].get_attribute_values(a,start,stop)
+            except:
+                v = None
+            result.append((a,s,v and len(v)))
+    return result
+
 def get_class_archiving(target):
     """ 
     target: device or class
@@ -341,6 +356,14 @@ def start_attributes_for_archivers(target,attr_regexp='',event_conf={},
                     elif isinstance(events.get(ep,(int,float))):
                         mode['polling'] = min((ep,mode.get('polling',10000)))
                         mode['polling'] = max((mode['polling'],min_polling))
+                        
+                    if not events.get(ft.EventType.CHANGE_EVENT,False):
+                        if mode.get('archive_abs_change',0):
+                            mode['abs_event'] = mode['archive_abs_change']
+                        if mode.get('archive_rel_change',0):
+                            mode['rel_event'] = mode['archive_rel_change']    
+                        if mode.get('arch_per_event',0):
+                            mode['per_event'] = mode['archive_per_event']                               
                         
                     print('%s.start_archiving(%s,%s,%s): %s' % (db,d,m.fullname,mode,load))
                     if load:
