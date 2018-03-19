@@ -35,7 +35,7 @@ import sys
 EXPERT_MODE = any(a in str(sys.argv) for a in 
         ('ArchivingBrowser.py','ctarchiving','taurustrend',
          'taurusfinder','ctsearch','ipython', 'test','python -c',
-         'archiving2csv','archiving2plot','matlab'))
+         'archiving2csv','archiving2plot','matlab','PyExtractor'))
         
 class Schemas(object):
     """ Schemas kept in a singleton object """
