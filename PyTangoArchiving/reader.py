@@ -1791,14 +1791,22 @@ class ReaderProcess(Logger,SingletonMap): #,Object,SingletonMap):
         return self._remote_command('reset',[])
     def get_last_attribute_dates(self,attribute):
         return self.last_dates[attribute]
-    def get_attribute_values(self,attribute,callback,start_date,stop_date=None,asHistoryBuffer=False,decimate=False,N=-1):
+
+    def get_attribute_values(self,attribute,callback,start_date,stop_date=None,
+            asHistoryBuffer=False,decimate=False,notNone=False,N=-1,
+            cache=True,fallback=True):
         """
-        Works like Reader.get_attribute_values, but 2nd argument must be a callable to be executed with the values received as argument
+        Works like Reader.get_attribute_values, but 2nd argument must be a 
+        callable to be executed with the values received as argument
         """
         assert self.alive()
         decimate,window = decimate if isSequence(decimate) else (decimate,'0')
-        if callable(decimate): decimate = decimate.__module__+'.'+decimate.__name__
-        query = {'attribute':attribute,'start_date':start_date,'stop_date':stop_date,'asHistoryBuffer':asHistoryBuffer,'decimate':(decimate,window),'N':N}
+        if callable(decimate): 
+            decimate = decimate.__module__+'.'+decimate.__name__
+        query = {'attribute':attribute,'start_date':start_date,
+                 'stop_date':stop_date,'asHistoryBuffer':asHistoryBuffer,
+                 'decimate':(decimate,window),'notNone':notNone,'N':N,
+                 'cache':cache,'fallback':fallback}
         assert hasattr(callback,'__call__'),'2nd argument must be callable'
         self.asked_attributes.append(attribute.lower())
         key = self.get_key(query)
@@ -1806,13 +1814,18 @@ class ReaderProcess(Logger,SingletonMap): #,Object,SingletonMap):
         self._send_query(key,query,callback)
         
     def get_attributes_values(self,attributes,callback,start_date,stop_date=None,
-            correlate=False,asHistoryBuffer=False,trace = False, text = False, N=-1
+            correlate=False,asHistoryBuffer=False,trace = False, text = False,
+            N=-1
             ):
         """
-        Works like Reader.get_attributes_values, but 2nd argument must be a callable to be executed with the values received as argument
+        Works like Reader.get_attributes_values, but 2nd argument must be a 
+        callable to be executed with the values received as argument
         """
         assert self.alive()
-        query = {'attributes':attributes,'start_date':start_date,'stop_date':stop_date,'correlate':correlate,'asHistoryBuffer':asHistoryBuffer,'trace':trace,'text':text,'N':N}
+        query = {'attributes':attributes,'start_date':start_date,
+                 'stop_date':stop_date,'correlate':correlate,
+                 'asHistoryBuffer':asHistoryBuffer,'trace':trace,
+                 'text':text,'N':N}
         assert hasattr(callback,'__call__'),'2nd argument must be callable'
         [self.asked_attributes.append(a.lower()) for a in attributes]
         self._send_query(self.get_key(query),query,callback)
