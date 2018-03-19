@@ -431,7 +431,7 @@ class HDBpp(ArchivingDB,SingletonMap):
                 if do_init:
                     dp.init()
                 if force or dp.attributenumber != dp.attributestartednumber:
-                    off.add(d)
+                    off.append(d)
                     dp.start()
             except Exception,e:
                 self.warning('start_archivers(%s) failed: %s' % (d,e))
