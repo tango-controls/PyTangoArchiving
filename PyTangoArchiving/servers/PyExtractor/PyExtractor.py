@@ -232,7 +232,8 @@ class PyExtractor(PyTango.Device_4Impl):
         print time.ctime()+"In ", self.get_name(), "::init_device()"
         self.set_state(PyTango.DevState.ON)
         self.get_device_properties(self.get_device_class())
-        if not self.reader: self.reader = PyTangoArchiving.reader.ReaderProcess(self.DbSchema)
+        if not self.reader: 
+            self.reader = PyTangoArchiving.reader.ReaderProcess(self.DbSchema)
         if self.AttrData: self.RemoveCachedAttributes()
 
 #------------------------------------------------------------------
@@ -288,7 +289,8 @@ class PyExtractor(PyTango.Device_4Impl):
         attrs = [tag,tag+'_r',tag+'_w',tag+'_t'] if RW else [tag,tag+'_r',tag+'_w',tag+'_t']
         
         self.reader.get_attribute_values(aname,
-            (lambda v: self.reader_hook(aname,v)),dates[0],dates[1],decimate=True)
+            (lambda v: self.reader_hook(aname,v)),dates[0],dates[1],
+            decimate=True, cache=self.UseApiCache)
         argout = [fn.shape(attrs),[a for a in attrs]]
         
         if not synch:
@@ -434,10 +436,14 @@ class PyExtractorClass(PyTango.DeviceClass):
             [PyTango.DevString,
             "Database to use (hdb/tdb)",
             ["hdb"] ],
+        'UseApiCache':
+            [PyTango.DevBoolean,
+            "Enable/Disable Reader Cache",
+            [ True ] ],            
         'ExpireTime':
             [PyTango.DevLong,
             "Seconds to cache each request",
-            [ 1800 ] ],
+            [ 180 ] ],
         'PeriodicQueries':
             [PyTango.DevVarStringArray,
             "Queries to be executed periodically: Attr,Start,Stop,Period(s)",
