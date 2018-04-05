@@ -6,6 +6,14 @@
 @TODO Rename     widgetArchivingBrowser.ModelSearchWidget to widget.browser.ArchivingBrowser
 @TODO: rename ArchivingBrowser to browser
 
+7.9.0 HDB++ multi module and new api access
+
+PyTangoArchiving.api() now allows access to all declared Schemas
+Solved bugs in loading data into trends
+Solved bugs in load_last_values method for hdb++
+Solved bugs in using long/short tango uris
+Solved bugs in testing events availability
+
 7.8.1 HDB++ decimation with ms resolution
 
 Add float resolution to decimation methods
