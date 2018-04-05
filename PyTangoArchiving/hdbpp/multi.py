@@ -9,6 +9,13 @@ import PyTangoArchiving
 import PyTangoArchiving as pta
 ##############################################################################    
 
+__all__ = [
+    get_archivers_for_attributes,
+    get_archivers_filters, get_hdbpp_databases,
+    get_class_archiving, 
+    is_attribute_code_pushed, check_attribute_in_all_dbs,
+    ]
+    
 def get_archivers_filters(archiver='archiving/es/*'):
     filters = fn.SortedDict(sorted((k,v['AttributeFilters']) for k,v in 
                     fn.tango.get_matching_device_properties(
@@ -196,7 +203,7 @@ def get_class_archiving(target):
     return attrs
 
 
-def match_attributes_and_archivers(attrs=[],archs='archiving/es/*'):
+def get_archivers_for_attributes(attrs=[],archs='archiving/es/*'):
     """
     This method returns matching archivers for a list of attributes
     in simplename format (no tango host).
@@ -239,6 +246,8 @@ def match_attributes_and_archivers(attrs=[],archs='archiving/es/*'):
                 archattrs[k] = currattrs
             
     return archattrs
+
+match_attributes_and_archivers = get_archivers_for_attributes
         
 ############################################################################## 
 
