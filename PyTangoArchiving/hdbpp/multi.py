@@ -9,13 +9,7 @@ import PyTangoArchiving
 import PyTangoArchiving as pta
 ##############################################################################    
 
-__all__ = [
-    get_archivers_for_attributes,
-    get_archivers_filters, get_hdbpp_databases,
-    get_class_archiving, 
-    is_attribute_code_pushed, check_attribute_in_all_dbs,
-    ]
-    
+   
 def get_archivers_filters(archiver='archiving/es/*'):
     filters = fn.SortedDict(sorted((k,v['AttributeFilters']) for k,v in 
                     fn.tango.get_matching_device_properties(
@@ -394,3 +388,11 @@ def migrate_matching_attributes(regexp,simulate=True):
     
     for a in hdb,tdb:
         pass
+
+
+__all__ = [
+    'get_archivers_for_attributes',
+    'get_archivers_filters', 'get_hdbpp_databases',
+    'get_class_archiving', 
+    'is_attribute_code_pushed', 'check_attribute_in_all_dbs',
+    ]
