@@ -49,6 +49,8 @@ ARCHIVING_CLASSES =     ['HdbArchiver','TdbArchiver','SnapArchiver',
 MAX_SERVERS_FOR_CLASS=5
 MIN_ARCHIVING_PERIOD=10
 
+import fandango as fn
+
 import utils
 import dbs
 import common
@@ -70,9 +72,16 @@ try:
     from snap import SnapDB,SnapAPI
     __all__.extend(('snap',))#'SnapDB','SnapAPI'))
 except:
-    print 'Unable to import snap'
+    print('Unable to import snap')
 
-api = ArchivingAPI
+try:
+   import hdbpp
+   from hdbpp import HDBpp, multi
+  
+except:
+   print('Unable to import hdbpp') 
+
+api = Schemas.getApi #ArchivingAPI
 
 #Order matters!, it should be the last import
 import reader

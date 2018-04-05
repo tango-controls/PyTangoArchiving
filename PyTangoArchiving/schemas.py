@@ -83,7 +83,7 @@ class Schemas(object):
         
         if schema.startswith('#') and EXPERT_MODE:
             schema = schema.strip('#')
-            print('%s available only in EXPERT_MODE'%schema)
+            print('%s is available'%schema)
 
         if schema in k.SCHEMAS:
             # Failed schemas should be also returned (to avoid unneeded retries)
