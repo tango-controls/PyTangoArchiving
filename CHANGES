@@ -6,8 +6,9 @@
 @TODO Rename     widgetArchivingBrowser.ModelSearchWidget to widget.browser.ArchivingBrowser
 @TODO: rename ArchivingBrowser to browser
 
-7.9.0 HDB++ multi module and new api access
+7.9.2 HDB++ multi module and new api access
 
+AddToTrend action^Cdded to context menu
 PyTangoArchiving.api() now allows access to all declared Schemas
 Solved bugs in loading data into trends
 Solved bugs in load_last_values method for hdb++

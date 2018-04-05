@@ -104,10 +104,15 @@ class AttributesPanel(PARENT_KLASS):
         #self.connect(self, Qt.SIGNAL('customContextMenuRequested(const QPoint&)'), self.onContextMenu)
         self.popMenu = Qt.QMenu(self)
         self.actions = {
-            'TestDevice': self.popMenu.addAction(Qt.QIcon(),"Test Device",self.onTestDevice),
-            'ShowDeviceInfo': self.popMenu.addAction(Qt.QIcon(),"Show Device Info",self.onShowInfo),
+            'TestDevice': self.popMenu.addAction(Qt.QIcon(),
+                "Test Device",self.onTestDevice),
+            'ShowDeviceInfo': self.popMenu.addAction(Qt.QIcon(),
+                "Show Device Info",self.onShowInfo),
             #'ShowDevicePanel': self.popMenu.addAction(Qt.QIcon(),"Show Info",self.onShowPanel),
-            'ShowArchivingInfo': self.popMenu.addAction(Qt.QIcon(),"Show Archiving Info",self.onShowArchivingModes),
+            'ShowArchivingInfo': self.popMenu.addAction(Qt.QIcon(),
+                "Show Archiving Info",self.onShowArchivingModes),
+            'AddToTrend': self.popMenu.addAction(Qt.QIcon(),
+                "Add attribute to Trend", self.addAttributeToTrend),
             #'Test Device': self.popMenu.addAction(Qt.QIcon(),"Test Device",self.onTestDevice)
             }
         #if hasattr(self,'setFrameStyle'):
@@ -140,6 +145,7 @@ class AttributesPanel(PARENT_KLASS):
             self.actions['TestDevice'].setEnabled('/' in self.current_item._model)
             self.actions['ShowDeviceInfo'].setEnabled('/' in self.current_item._model)
             self.actions['ShowArchivingInfo'].setEnabled('/' in self.current_item._model)
+            self.actions['AddToTrend'].setEnabled(hasattr(self,'trend'))
             self.popMenu.exec_(self.mapToGlobal(point))
         except:
             traceback.print_exc()
@@ -165,6 +171,13 @@ class AttributesPanel(PARENT_KLASS):
           showArchivingModes(model,parent=self)
         except:
           Qt.QMessageBox.warning(self,"ups!",traceback.format_exc())
+          
+    def addAttributeToTrend(self,model=None):
+        try:
+          model = model or self.getCurrentModel()
+          self.trend.addModels([model])
+        except:
+          Qt.QMessageBox.warning(self,"ups!",traceback.format_exc())        
     
     def setValues(self,values,filters=None):
         """ filters will be a tuple containing several regular expressions to match """
@@ -513,9 +526,11 @@ class ArchivingBrowser(Qt.QWidget):
             self._scroll.setWidget(self.panel)
             self._scroll.setMaximumHeight(700)
             self.toppan.layout().addWidget(self._scroll)
+            self.attrpanel = self._background
         else:
             self.panel = AttributesPanel(self.toppan)
             self.toppan.layout().addWidget(self.panel)
+            self.attrpanel = self.panel
             
         self.toppan.layout().addWidget(Qt.QLabel('Drag any attribute from the first column into the trend or any taurus widget you want:'))
         
@@ -529,6 +544,7 @@ class ArchivingBrowser(Qt.QWidget):
             self.trend = ArchivingTrendWidget() #TaurusArchivingTrend()
             self.trend.setUseArchiving(True)
             self.trend.showLegend(True)
+            self.attrpanel.trend = self.trend
             self.split.addWidget(self.trend)
             self.layout().addWidget(self.split)
         else:
@@ -620,7 +636,11 @@ class ArchivingBrowser(Qt.QWidget):
                   self.panel = None
                 if not self.panel: 
                     self.panel = AttributesPanel(self._scroll,devices=self.all_devices)
-                else: self.panel.clear()
+                    self.attrpanel = self.panel
+                    if hasattr(self,'trend'): 
+                        self.attrpanel.trend = self.trend
+                else: 
+                    self.panel.clear()
                 if old: 
                   old.clear()
                   old.deleteLater() #Must be done after creating the new one!!
