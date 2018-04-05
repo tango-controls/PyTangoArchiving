@@ -350,9 +350,12 @@ class HDBpp(ArchivingDB,SingletonMap):
           d.AttributeAdd()
           
           if start:
-              arch = self.get_attribute_archiver(attribute)
-              self.info('%s.Start()' % arch)
-              fn.get_device(arch).Start()
+              try:
+                arch = archiver # self.get_attribute_archiver(attribute)
+                self.warning('%s.Start()' % (arch))
+                fn.get_device(arch).Start()
+              except:
+                traceback.print_exc()
               
         except Exception,e:
           if 'already archived' not in str(e).lower():
@@ -387,7 +390,9 @@ class HDBpp(ArchivingDB,SingletonMap):
             else:
                 return False
           
-    def start_archiving(self,attribute,*args,**kwargs):
+    def start_archiving(self,attribute,archiver,period=0,
+                      rel_event=None,per_event=300000,abs_event=None,
+                      code_event=False, ttl=None, start=False):
         """
         See HDBpp.add_attribute.__doc__ for a full description of arguments
         """
@@ -401,7 +406,11 @@ class HDBpp(ArchivingDB,SingletonMap):
                 d = self.get_manager()
                 fullname = parse_tango_model(attribute,fqdn=True).fullname
                 if not self.is_attribute_archived(attribute):
-                    self.add_attribute(fullname,*args,**kwargs)
+                    self.add_attribute(fullname,archiver=archiver,
+                        period=period, rel_event=rel_event, 
+                        per_event=per_event, abs_event=abs_event,
+                        code_event=code_event, ttl=ttl, 
+                        start=start)
                     time.sleep(5.)
                     #fullname = self.is_attribute_archived(attribute,cached=0)
                 d.AttributeStart(fullname)
@@ -583,7 +592,6 @@ class HDBpp(ArchivingDB,SingletonMap):
         start_date and stop_date must be in a format valid for SQL
         """
         t0 = time.time()
-        self.setLogLevel('INFO')
         self.warning('HDBpp.get_attribute_values(%s,%s,%s,%s,decimate=%s,%s)'
               %(table,start_date,stop_date,N,decimate,kwargs))
         if fn.isSequence(table):
@@ -636,28 +644,22 @@ class HDBpp(ArchivingDB,SingletonMap):
         ######################################################################
 
         if 'array' in table:
-            #t = result[0][0]
-            #if 0: #N == 1: 
-              #interval += " and CAST(UNIX_TIMESTAMP(data_time) as INT) = '%s'" \
-                  #% round(t)
-            #query = 'select %s from %s %s order by data_time' \
-                #% (what, table, interval)
-            #self.warning(query)
-            #result = self.Query(query)
             data = fandango.dicts.defaultdict(list)
             for t in result:
                 data[float(t[0])].append(t[1:])
             result = []
-            #print('array',data)
             for k,v in sorted(data.items()):
-                l = [0]*len(v)
-                for t in v:
+                l = [0]*(1+max(t[0] for t in v))
+                for i,t in enumerate(v):
                     if None in t: 
                         l = None
                         break
                     l[t[0]] = t[1] #Ignoring extra columns (e.g. quality)
                 result.append((k,l))
-            if N > 0: result = result[-N:]
+            if N > 0: 
+                #for k,l in result:
+                    #print((k,l and len(l)))
+                result = result[-N:]
             self.warning('array arranged [%d] in %f s'
                          % (len(result),time.time()-t0))
             t0 = time.time()
