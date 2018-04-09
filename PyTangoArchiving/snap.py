@@ -104,7 +104,7 @@ class SnapAPI(Logger,Singleton):
                 print traceback.format_exc()
                 print('ERROR: Unable to load contexts')
         except Exception, e:
-            #print traceback.format_exc()
+            print traceback.format_exc()
             print('ERROR: Unable to set Snapshoting DB host: ',e)
 
         if SINGLETON: 

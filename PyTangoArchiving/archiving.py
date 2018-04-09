@@ -154,21 +154,6 @@ class ArchivingAPI(CommonAPI):
         self.tango_host = tango_host or fandango.get_tango_host()
         self.db = ArchivingDB(self.schema,self.host,self.user,self.passwd)
         self.load_all(values=values,dedicated=load and dedicated,servers=load)
-        
-    ## The ArchivingAPI is an iterator through archived attributes
-    def __getitem__(self,k): return self.attributes.__getitem__(k)
-    def __contains__(self,k): return self.attributes.__contains__(k)
-    def get(self,k): return self.attributes.get(k)
-    def has_key(self,k): return self.attributes.has_key(k)
-    #[setattr(self,method,lambda k,meth=method:getattr(self.attributes,meth)(k)) for method in ('__getitem__','__contains__','get','has_key')]
-    def __iter__(self): return self.attributes.__iter__()
-    def iteritems(self): return self.attributes.iteritems()
-    def keys(self): return self.attributes.keys()
-    def values(self): return self.attributes.values()
-    def __len__(self): return len(self.attributes.keys())
-    def items(self): return self.attributes.items()
-    #[setattr(self,method,lambda meth=method:getattr(self.attributes,meth)()) for method in ('__iter__','iteritems','items','keys','values')]
-
     
     def get_archiving_classes(self):        
         '''overriden for convenience '''
