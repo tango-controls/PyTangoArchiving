@@ -11,7 +11,7 @@ Accessing schemas from ipython
 Accessing schemas from Reader
 -----------------------------
 
-.. :
+code ::
 
   import PyTangoArchiving as pta
   rd = pta.Reader()
