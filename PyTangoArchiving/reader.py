@@ -1255,7 +1255,8 @@ class Reader(Object,SingletonMap):
             self.log.info('\tIn extract_array_index(...).raw: decimated repeated values in spectrum ... %s -> %s'%(l0,len(new_values)))
         return new_values
     
-    def get_attributes_values(self,attributes,start_date,stop_date=None,correlate=False,asHistoryBuffer=False,trace = False, text = False, N=-1):
+    def get_attributes_values(self,attributes,start_date,stop_date=None,correlate=False,
+                              asHistoryBuffer=False,trace = False, text = False, N=0):
         """ 
         This method reads values for a list of attributes between specified dates.
         
@@ -1557,7 +1558,8 @@ class ReaderByBunches(Reader):
             self.callbacks[key].append(callback)
         return
 
-    def get_attribute_values(self,attribute,callback,start_date,stop_date=None,asHistoryBuffer=False,decimate=False,notNone=False,N=-1):
+    def get_attribute_values(self,attribute,callback,start_date,stop_date=None,
+                             asHistoryBuffer=False,decimate=False,notNone=False,N=0):
         """This method should be capable of>
          - cut queries in pieces, 
          - execute a callback for each of 
@@ -1594,7 +1596,7 @@ class ReaderByBunches(Reader):
         self._send_query(key,query,callback)
 
     def get_attributes_values(self,attributes,callback,start_date,stop_date=None,
-            correlate=False,asHistoryBuffer=False,trace = False, text = False, N=-1
+            correlate=False,asHistoryBuffer=False,trace = False, text = False, N=0
             ):
         """
         Works like Reader.get_attributes_values, but 2nd argument must be a callable to be executed with the values received as argument
@@ -1794,7 +1796,7 @@ class ReaderProcess(Logger,SingletonMap): #,Object,SingletonMap):
         return self.last_dates[attribute]
 
     def get_attribute_values(self,attribute,callback,start_date,stop_date=None,
-            asHistoryBuffer=False,decimate=False,notNone=False,N=-1,
+            asHistoryBuffer=False,decimate=False,notNone=False,N=0,
             cache=True,fallback=True):
         """
         Works like Reader.get_attribute_values, but 2nd argument must be a 
@@ -1816,7 +1818,7 @@ class ReaderProcess(Logger,SingletonMap): #,Object,SingletonMap):
         
     def get_attributes_values(self,attributes,callback,start_date,stop_date=None,
             correlate=False,asHistoryBuffer=False,trace = False, text = False,
-            N=-1
+            N=0
             ):
         """
         Works like Reader.get_attributes_values, but 2nd argument must be a 

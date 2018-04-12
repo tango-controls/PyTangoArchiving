@@ -626,7 +626,7 @@ class HDBpp(ArchivingDB,SingletonMap):
             human = 1
         if N<0 or desc: 
             query+=" desc" # or (not stop_date and N>0):
-        if N not in (0,1): 
+        if N: 
             query+=' limit %s'%abs(N) # if 'array' not in table else 1024)
         
         ######################################################################
@@ -717,7 +717,7 @@ class HDBpp(ArchivingDB,SingletonMap):
         return result
         
     def get_attributes_values(self,tables='',start_date=None,stop_date=None,
-                desc=False,N=-1,unixtime=True,extra_columns='quality',
+                desc=False,N=0,unixtime=True,extra_columns='quality',
                 decimate=0,human=False):
         
         if not fn.isSequence(tables):
