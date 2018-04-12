@@ -100,7 +100,7 @@ class Schemas(object):
                 props = [map(str.strip,t.split('=',1)) for t in props]
             dct.update(props)
             
-            rd = dct.get('reader')
+            rd = dct.get('reader',dct.get('api'))
             if rd:
                 dct['logger'] = logger 
                 dct['reader'] = rd = k._load_object(rd,dct)
@@ -142,7 +142,7 @@ class Schemas(object):
           k.LOCALS.update({'attribute':attribute,
                 'match':clmatch,'clmatch':clmatch,
                 'start':start,'end':end,'now':now,
-                'reader':schema.get('reader'),
+                'reader':schema.get('reader',schema.get('api')),
                 'schema':schema.get('schema'),
                 'dbname':schema.get('dbname',schema.get('schema','')),
                 })
@@ -159,7 +159,7 @@ class Schemas(object):
         schema = k.getSchema(schema)
         api = schema.get('api','PyTangoArchiving.ArchivingAPI')
         if fun.isString(api): api = k._load_object(api,schema)
-        return api(schema['schema'])
+        return api(schema['schema']) if isinstance(api,type) else api
         
 
 
