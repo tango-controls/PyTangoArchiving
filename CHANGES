@@ -6,6 +6,10 @@
 @TODO Rename     widgetArchivingBrowser.ModelSearchWidget to widget.browser.ArchivingBrowser
 @TODO: rename ArchivingBrowser to browser
 
+7.9.4 Trends solved issues on loading/refreshing data
+
+Added backtracking when N<0
+
 7.9.3 HDB++ multi module and new api access
 
 dict-like methods moved to CommonAPI (snap bug)
