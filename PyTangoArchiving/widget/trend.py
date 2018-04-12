@@ -1288,13 +1288,16 @@ def getArchivedTrendValues(trend_set,model,start_date=0,stop_date=None,
                  #@debug
                 logger_obj.warning('Inserted %s values into %s trend [%s]'
                         %(h,attribute,len(trend_set._xBuffer)))
-                logger_obj.warning('forcing read ...')
-                trend_set.forceReading()
             else:
                 h = len(history)
 
             logger_obj.setLastArgs(model,args[0],args[1],h)
             logger_obj.info('last_args = %s\n'%(logger_obj.last_args)) #@debug
+            
+            if insert: # THIS MUST BE DONE AFTER UPDATING LAST ARGS!
+                logger_obj.warning('forcing read ...')
+                trend_set.forceReading()
+                
             #logger('Return history[%d] at + %f' % (h, time.time()-t00))
             return history # Success!
         
