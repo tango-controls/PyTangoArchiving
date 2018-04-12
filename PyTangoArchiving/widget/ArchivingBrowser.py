@@ -668,6 +668,9 @@ class ArchivingBrowser(Qt.QWidget):
 ModelSearchWidget = ArchivingBrowser
 
 def main(args=None):
+    """
+    --range YYYY/MM/DD,XXh
+    """
     import sys
     #from taurus.qt.qtgui.container import TaurusMainWindow
     tmw = Qt.QMainWindow() #TaurusMainWindow()
@@ -694,9 +697,11 @@ def main(args=None):
     args = [a for a in args if not a.startswith('-')]
     if args: 
         table.updateSearch(*args)
+
     if '--range' in opts:
         tracer('Setting trend range to %s' % opts['--range'])
         table.trend.applyNewDates(opts['--range'].split(','))
+
     return tmw
     
 if __name__ == "__main__":
