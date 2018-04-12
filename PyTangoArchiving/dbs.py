@@ -171,13 +171,14 @@ class ArchivingDB(FriendlyDB):
             return self.Query('SELECT time,value from %s T order by T.time desc limit %d'%(query,n))
     
     def get_attribute_values(self,table,start_date=None,stop_date=None,
-                             desc=False,N=-1,unixtime=True):
+                             desc=False,N=0,unixtime=True):
         """
         This method returns values between dates from a given table.
         If stop_date is not given, then anything above start_date is returned.
         desc controls the sorting of values
         
-        unixtime = True enhances the speed of querying by a 60%!!!! (due to MySQLdb implementation of datetime)
+        unixtime = True enhances the speed of querying by a 60%!!!! 
+        (due to MySQLdb implementation of datetime)
         
         If N is specified:
         
@@ -194,10 +195,11 @@ class ArchivingDB(FriendlyDB):
         elif start_date and fandango.str2epoch(start_date):
             interval = "where time > '%s'"%start_date
         query = 'select %s from %s %s order by time' % (what,table,interval)
-        if desc or (not stop_date and N>0): query+=" desc"
-        if N>0: query+=' limit %s'%N
+        if desc or (not stop_date and N>0) or (N<0):
+            query+=" desc"
+        if N!=0: query+=' limit %s'%abs(N)
         
-        if not desc and not stop_date and N>0:
+        if not desc and ((not stop_date and N>0) or (N<0)):
             #THIS WILL BE APPLIED ONLY WHEN LAST N VALUES ARE ASKED
             return list(reversed(self.Query(query)))
         else:

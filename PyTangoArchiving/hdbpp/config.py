@@ -571,7 +571,7 @@ class HDBpp(ArchivingDB,SingletonMap):
             
     @CatchedAndLogged(throw=True)
     def get_attribute_values(self,table,start_date=None,stop_date=None,
-                             desc=False,N=-1,unixtime=True,
+                             desc=False,N=0,unixtime=True,
                              extra_columns='quality',decimate=0,human=False,
                              as_double=True,
                              **kwargs):
@@ -618,14 +618,16 @@ class HDBpp(ArchivingDB,SingletonMap):
                             %(start_date,stop_date))
           elif start_date and fandango.str2epoch(start_date):
             interval += " and data_time > '%s'"%start_date
-        if N == 1:
-            human = 1
             
         query = 'select %s from %s %s order by data_time' \
                         % (what,table,interval)
-        if desc: query+=" desc" # or (not stop_date and N>0):
-        if N>0: 
-          query+=' limit %s'%(N if 'array' not in table else 1024)
+                    
+        if N == 1:
+            human = 1
+        if N<0 or desc: 
+            query+=" desc" # or (not stop_date and N>0):
+        if N not in (0,1): 
+            query+=' limit %s'%abs(N) # if 'array' not in table else 1024)
         
         ######################################################################
         # QUERY
@@ -703,8 +705,9 @@ class HDBpp(ArchivingDB,SingletonMap):
         if human: 
             result = [list(t)+[fn.time2str(t[0])] for t in result]
 
-        if not desc and not stop_date and N>0:
+        if not desc and ((not stop_date and N>0) or (N<0)):
             #THIS WILL BE APPLIED ONLY WHEN LAST N VALUES ARE ASKED
+            #self.warning('reversing ...' )
             result = list(reversed(result))
         else:
             # why?

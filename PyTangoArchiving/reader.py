@@ -918,6 +918,7 @@ class Reader(Object,SingletonMap):
         :param asHistoryBuffer: return a history buffer object instead 
                 of a list (for trends)
         :param N: if N>0, only the last N values will be returned
+                  if N<0, values will be extracted from the end of the query
         :param decimate: remove repeated values, False by default but True 
                 when called from trends
         
