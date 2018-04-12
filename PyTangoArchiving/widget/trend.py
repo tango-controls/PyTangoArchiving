@@ -954,6 +954,7 @@ def updateTrendBuffers(self,data,logger=None):
     (inserting instead of extendLeft)
     """
     print('-'*80)
+    t = []
     try:
         #self.curves_lock.acquire()
         import numpy,datetime,PyTangoArchiving.utils as utils
@@ -1054,22 +1055,20 @@ def updateTrendBuffers(self,data,logger=None):
                         %(ntrends,data and data[0],traceback.format_exc()))
                 t = []
             
-            #from PyQt4 import Qt
             pending = getattr(getattr(logger,'reader',None),'callbacks',None)
             if not pending:
                 Qt.QApplication.instance().restoreOverrideCursor()
                 
             emitHistoryChanged(self)
-            return len(t)
             
     except Exception,e:
         import traceback
         logger.warning('updateBuffer failed: %s'%(traceback.format_exc()))
-        return []
     finally:
         print('-'*80)
-        #self.curves_lock.release()
-        pass
+        pass #self.curves_lock.release()
+
+    return len(t)
         
 QT_CONNECTIONS = defaultdict(list)
 
@@ -1141,7 +1140,8 @@ def getArchivedTrendValues(trend_set,model,start_date=0,stop_date=None,
         logger_obj.debug('using reader: %s(%s)' %(type(reader),reader.schema))
         
         if not multiprocess and time.time() < STARTUP+STARTUP_DELAY:
-            logger_obj.warning('PyTangoArchiving.Reader waiting until %s'%fandango.time2str(STARTUP+STARTUP_DELAY))
+            logger_obj.warning('PyTangoArchiving.Reader waiting until %s'
+                               %fandango.time2str(STARTUP+STARTUP_DELAY))
             return []
         if not parent.xIsTime:
             logger('PyTangoArchiving.Reader: Archiving is available only for trends')
@@ -1152,7 +1152,8 @@ def getArchivedTrendValues(trend_set,model,start_date=0,stop_date=None,
             logger_obj.setLastArgs(model)
             return []
         if not reader.is_attribute_archived(attribute): #Cached check
-            if model not in logger_obj.last_args: logger('%s: attribute %s is not archived'%(time.ctime(),attribute))
+            if model not in logger_obj.last_args: 
+                logger('%s: attribute %s is not archived'%(time.ctime(),attribute))
             logger_obj.setLastArgs(model)
             return []
         
@@ -1171,7 +1172,7 @@ def getArchivedTrendValues(trend_set,model,start_date=0,stop_date=None,
         # Check trend X scale (not data, just axxis)
         bounds = getTrendBounds(parent,rough=True)
             
-        if lasts and lasts[2] and time.time()<lasts[3]+MIN_REFRESH_PERIOD:
+        if lasts and time.time()<lasts[3]+MIN_REFRESH_PERIOD: #and lasts[2]
             if bounds!=logger_obj.last_check:
                 logger('PyTangoArchiving.Reader: Last %s query was %d < %d'
                        ' seconds ago'%(model,time.time()-lasts[3],
@@ -1299,7 +1300,7 @@ def getArchivedTrendValues(trend_set,model,start_date=0,stop_date=None,
                 trend_set.forceReading()
                 
             #logger('Return history[%d] at + %f' % (h, time.time()-t00))
-            return history # Success!
+            return history if history is not None else [] # Success!
         
             ###################################################################
 
