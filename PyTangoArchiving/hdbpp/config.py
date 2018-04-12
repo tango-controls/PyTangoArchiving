@@ -289,8 +289,6 @@ class HDBpp(ArchivingDB,SingletonMap):
             kwargs['start'] = False #Avoid recursive start
             self.add_attribute(a,*args,**kwargs)
           time.sleep(3.)
-          for a in attributes:
-            self.start_archiving(a)
             
           if start:
             archs = set(map(self.get_attribute_archiver,attributes))
