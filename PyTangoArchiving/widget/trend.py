@@ -1305,6 +1305,8 @@ def getArchivedTrendValues(trend_set,model,start_date=0,stop_date=None,
             ###################################################################
 
         else: # If Multiprocess
+            #MULTIPROCESS IS USED BY PYEXTRACTOR, BE CAREFUL!!
+            
             raise Exception('Reader.Multiprocess Disabled!')
             
             #trend,tt = logger_obj.trend,(id(trend_set),attribute,start_date,stop_date)

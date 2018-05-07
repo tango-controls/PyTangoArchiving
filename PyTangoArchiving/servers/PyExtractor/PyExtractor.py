@@ -37,6 +37,7 @@ import fandango
 import fandango.functional as fn
 import PyTangoArchiving
 import traceback
+from fandango.objects import Cached
 
 def decimate_values(values,N=1024,method=None):
     """
@@ -80,7 +81,8 @@ class PyExtractor(PyTango.Device_4Impl):
     
     @staticmethod
     def tag2attr(argin):
-        if any(argin.endswith(s) for s in ('_r','_t','_w','_d')): argin = argin[:-2]
+        if any(argin.endswith(s) for s in ('_r','_t','_w','_d','_l','_ld')): 
+            argin = argin.rsplit('_',1)[0]
         if '/' not in argin: argin = argin.replace('__','/')
         return argin
     
@@ -94,6 +96,7 @@ class PyExtractor(PyTango.Device_4Impl):
         aname,values = attr.get_name(),[]
         attribute = self.tag2attr(aname)
         print time.ctime()+'In read_dyn_attr(%s)'%aname
+        print(self.counter)
 
         try:
             req,atformat,attype,data = self.AttrData[attribute]
@@ -115,6 +118,20 @@ class PyExtractor(PyTango.Device_4Impl):
             else: print '\tno values'
             attr.set_value(values,len(values))
             
+        elif aname.endswith('_l'):
+            if data[-1:]:
+                value = conv(data[-1:][1])
+                date =  float(data[-1:][0] or 0.)
+                q = ft.AttrQuality.ATTR_VALID
+            else:
+                value = None
+                date = ft.now()
+                q = ft.AttrQuality.ATTR_INVALID
+
+            print( time.ctime()+'In read_dyn_attr(%s): (%s,%s,%s)' 
+                  % ( aname, value, date, quality ) )
+            attr.set_value_date_quality((value or 0.),date,quality)
+            
         elif aname.endswith('_w'): 
             if atformat is PyTango.SpectrumAttr:
                 values = [conv(v[2] or 0.) for v in data]
@@ -135,6 +152,14 @@ class PyExtractor(PyTango.Device_4Impl):
             if values: print time.ctime()+'In read_dyn_attr(%s): %s[%d]:%s...%s'%(aname,type(values[0]),len(values),values[0],values[-1])
             else: print '\tno values'
             attr.set_value(values,len(values))            
+            
+        elif aname.endswith('_ld'): 
+            lv = [fn.time2str(float(v[0] or 0.)) for v in data[-1:]]
+            if lv: 
+                print(time.ctime()+'In read_dyn_attr(%s): %s[%d]:%s...%s'
+                        %(aname,type(lv[0]),len(lv),lv[0],lv[-1]))
+            else: print '\tno values'
+            attr.set_value(lv[-1])
             
         else:
             if atformat == PyTango.SpectrumAttr:
@@ -163,6 +188,8 @@ class PyExtractor(PyTango.Device_4Impl):
             print('>'*80)
             print(time.ctime()+' In reader_hook(%s,[%d])'
                   %(attribute,len(values)))
+            self.counter-=1
+            print(self.counter)
             
             MAXDIM = 1024*1024*1024
             #First create the attributes
@@ -198,6 +225,13 @@ class PyExtractor(PyTango.Device_4Impl):
             self.add_attribute(atformat(aname+'_r',attype, writable,*dims),
                                self.read_dyn_attr,None,self.is_dyn_attr_allowed)
             
+            self.add_attribute(PyTango.Attr(aname+'_l',attype,PyTango.AttrWriteType.READ),
+                               self.read_dyn_attr,None,self.is_dyn_attr_allowed)   
+            
+            self.add_attribute(
+                PyTango.Attr(aname+'_ld',PyTango.DevString,PyTango.AttrWriteType.READ),
+                               self.read_dyn_attr,None,self.is_dyn_attr_allowed)              
+            
             #Then add the data to Cache values, so IsDataReady will return True
             t = fn.now()
             self.RemoveCachedAttribute(attribute)
@@ -230,6 +264,7 @@ class PyExtractor(PyTango.Device_4Impl):
 #------------------------------------------------------------------
     def init_device(self):
         print time.ctime()+"In ", self.get_name(), "::init_device()"
+        self.counter = 0
         self.set_state(PyTango.DevState.ON)
         self.get_device_properties(self.get_device_class())
         if not self.reader: 
@@ -240,7 +275,10 @@ class PyExtractor(PyTango.Device_4Impl):
 #    Always excuted hook method
 #------------------------------------------------------------------
     def always_executed_hook(self):
-        msg = 'Attributes in cache:\n\t%s\n'%','.join(self.AttrData.keys())
+        msg = 'Attributes in cache:\n'
+        for k,v in self.AttrData.items():
+            msg+='\t%s: %s\n'%(k,fn.time2str(v[0]))
+            
         print(time.ctime()+"In "+ self.get_name()+ "::always_executed_hook()"+'\n'+msg)
         status = 'The device is in %s state\n\n'%self.get_state()
         status += msg
@@ -269,6 +307,7 @@ class PyExtractor(PyTango.Device_4Impl):
 #
 #==================================================================
 
+    @Cached(depth=30,expire=15.)
     def GetAttDataBetweenDates(self, argin):
         """
         Arguments to be AttrName, StartDate, StopDate, Synchronous
@@ -291,6 +330,9 @@ class PyExtractor(PyTango.Device_4Impl):
         self.reader.get_attribute_values(aname,
             (lambda v: self.reader_hook(aname,v)),dates[0],dates[1],
             decimate=True, cache=self.UseApiCache)
+        self.counter+=1
+        print(self.counter)
+        
         argout = [fn.shape(attrs),[a for a in attrs]]
         
         if not synch:
@@ -363,6 +405,7 @@ class PyExtractor(PyTango.Device_4Impl):
         #    Add your own code here
         return self.reader.get_attributes(active=True)
       
+    @Cached(depth=30,expire=10.)      
     def GetCurrentQueries(self):
         print("In "+self.get_name()+"::GetCurrentQueries()")
         
@@ -373,7 +416,7 @@ class PyExtractor(PyTango.Device_4Impl):
           pending = []
           for s in self.PeriodicQueries:
             s = s.split(',')
-            a,t = s[0],max((float(s[-1]),60))
+            a,t = s[0],max((float(s[-1]),self.ExpireTime))
             if a not in self.AttrData or self.AttrData[a][0]<(fn.now()-t):
               if a in self.AttrData: 
                 print('%s data is %s seconds old'%(a,fn.now()-self.AttrData[a][0]))
@@ -391,6 +434,7 @@ class PyExtractor(PyTango.Device_4Impl):
           self.set_state(PyTango.DevState.FAULT)
           self.set_status(traceback.format_exc())
           print(self.get_status())
+          
         return self.PeriodicQueries
       
     def AddPeriodicQuery(self,argin):
@@ -478,7 +522,7 @@ class PyExtractorClass(PyTango.DeviceClass):
             [[PyTango.DevVoid, ""],
             [PyTango.DevVarStringArray, ""],
             {
-                'Polling period': "3000",
+                'Polling period': "15000",
             } ],
         'AddPeriodicQuery':
             [[PyTango.DevVarStringArray, ""],
