@@ -221,6 +221,33 @@ class HDBpp(ArchivingDB,SingletonMap):
         time.sleep(1.)
         astor.load_from_devs_list(self.get_archivers())
         astor.start_servers(host=(host or self.db_host))
+        
+    def start_devices(self,regexp = '*', force = False, do_init = False):
+        devs = fn.tango.get_class_devices('HdbEventSubscriber')
+        if regexp:
+            devs = fn.filtersmart(devs,regexp)
+        off = sorted(set(d for d in devs if not fn.check_device(d)))
+
+        if off:
+            astor = fn.Astor()
+            astor.load_from_devs_list(list(off))
+            astor.stop_servers()
+            fn.wait(3.)
+            astor.start_servers()
+            fn.wait(3.)
+
+        for d in devs:
+            try:
+                dp = fn.get_device(d)
+                if do_init:
+                    dp.init()
+                if force or dp.attributenumber != dp.attributestartednumber:
+                    off.append(d)
+                    dp.start()
+            except Exception,e:
+                self.warning('start_archivers(%s) failed: %s' % (d,e))
+                
+        return off        
     
     def add_archiving_manager(self,srv,dev):
         if '/' not in srv: srv = 'hdb++cm-srv/'+srv
@@ -417,33 +444,6 @@ class HDBpp(ArchivingDB,SingletonMap):
             self.error('start_archiving(%s): %s'
                         %(attribute,traceback.format_exc().replace('\n','')))
         return False        
-    
-    def start_archivers(self,regexp = '*', force = False, do_init = False):
-        devs = fn.tango.get_class_devices('HdbEventSubscriber')
-        if regexp:
-            devs = fn.filtersmart(devs,regexp)
-        off = sorted(set(d for d in devs if not fn.check_device(d)))
-
-        if off:
-            astor = fn.Astor()
-            astor.load_from_devs_list(list(off))
-            astor.stop_servers()
-            fn.wait(3.)
-            astor.start_servers()
-            fn.wait(3.)
-
-        for d in devs:
-            try:
-                dp = fn.get_device(d)
-                if do_init:
-                    dp.init()
-                if force or dp.attributenumber != dp.attributestartednumber:
-                    off.append(d)
-                    dp.start()
-            except Exception,e:
-                self.warning('start_archivers(%s) failed: %s' % (d,e))
-                
-        return off
 
     def get_attribute_ID(self,attr):
         # returns only 1 ID
