@@ -34,9 +34,7 @@ import fandango
 from fandango.objects import Object,SingletonMap,Cached
 from fandango.log import Logger
 import fandango.functional as fun
-from fandango.functional import ( isString,isSequence,isCallable,
-    str2time, str2epoch, clmatch, time2str, epoch2str, now,
-    ctime2time, mysql2time, NaN )
+
 from fandango.dicts import CaselessDict, SortedDict
 from fandango.linos import check_process,get_memory
 from fandango.tango import get_tango_host,parse_tango_model
@@ -598,7 +596,6 @@ class Reader(Object,SingletonMap):
                 return [pref]
             else:
                 sch = []
-                print(Schemas.keys())
                 for a,c in self.configs.items():
                     try:
                         if (c and (a not in Schemas.keys() or

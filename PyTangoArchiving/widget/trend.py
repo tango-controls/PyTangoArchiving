@@ -30,7 +30,8 @@ import time
 import traceback
 import platform
 import PyTango
-import fandango
+import fandango as fn
+
 import PyTangoArchiving
 import PyTangoArchiving.utils as utils
 from PyTangoArchiving.reader import Reader,ReaderProcess
@@ -59,7 +60,7 @@ try:
                                         ['Multiprocess'])['Multiprocess']
     if any(a in str(prop).lower() for a in ('true','1')):
         USE_MULTIPROCESS=True
-    elif any(fandango.matchCl(p,platform.node()) for p in prop):
+    elif any(fn.matchCl(p,platform.node()) for p in prop):
         USE_MULTIPROCESS=True
 except:
     print traceback.format_exc()
@@ -69,10 +70,10 @@ print 'Multiprocess:%s'%USE_MULTIPROCESS
 # Methods for enabling archiving values in TauTrends
 
 try:
-    fakeTrend = fandango.Struct({
-        '_parent':fandango.Struct({'xIsTime':True}),'_history':[],
-        'info':fandango.printf,'error':fandango.printf,'debug':fandango.printf,
-        'warning':fandango.printf,
+    fakeTrend = fn.Struct({
+        '_parent':fn.Struct({'xIsTime':True}),'_history':[],
+        'info':fn.printf,'error':fn.printf,'debug':fn.printf,
+        'warning':fn.printf,
         })
 except: pass
 
@@ -81,17 +82,17 @@ global STARTUP_DELAY
 STARTUP_DELAY = 0.
 
 MAX_QUERY_TIME = 3600*24*10
-MAX_QUERY_LENGTH = int(2e6)
+MAX_QUERY_LENGTH = int(1e5)
 MIN_REFRESH_PERIOD = 3.
 MIN_WINDOW = 60
 
-ZONES = fandango.Struct({'BEGIN':0,'MIDDLE':1,'END':2})
+ZONES = fn.Struct({'BEGIN':0,'MIDDLE':1,'END':2})
 DECIMATION_MODES = [
-    #('Hide Nones',fandango.arrays.notnone),
-    ('Pick One',fandango.arrays.pickfirst),
-    ('Minimize Noise',fandango.arrays.mindiff),
-    ('Maximize Peaks',fandango.arrays.maxdiff),
-    ('Average Values',fandango.arrays.average),
+    #('Hide Nones',fn.arrays.notnone),
+    ('Pick One',fn.arrays.pickfirst),
+    ('Minimize Noise',fn.arrays.mindiff),
+    ('Maximize Peaks',fn.arrays.maxdiff),
+    ('Average Values',fn.arrays.average),
     ('RAW',None),        
     ]
 
@@ -201,7 +202,7 @@ class ArchivingTrend(TaurusTrend):
       self.setUseArchiving(True)
       self.setModelInConfig(False)
       self.disconnect(self.axisWidget(self.xBottom), Qt.SIGNAL("scaleDivChanged ()"), self._scaleChangeWarning)
-      #ArchivedTrendLogger(self,tango_host=fandango.get_tango_host(),multiprocess=USE_MULTIPROCESS)
+      #ArchivedTrendLogger(self,tango_host=fn.get_tango_host(),multiprocess=USE_MULTIPROCESS)
       ArchivedTrendLogger(self,multiprocess=USE_MULTIPROCESS)
       #self.MENU_ACTIONS = [
         #('_zoomBackOption','Zoom Back (middle click)',(lambda o:o._zoomBack())),
@@ -211,7 +212,7 @@ class ArchivingTrend(TaurusTrend):
       #self.MENU_ACTIONS.insert(0,)
       
     def getArchivedTrendLogger(self,model=None):
-        host = fandango.get_tango_host(model or None)
+        host = fn.get_tango_host(model or None)
         return ArchivedTrendLogger(self,tango_host=host)
       
     def setForcedReadingPeriod(self, msec=None, tsetnames=None):
@@ -368,10 +369,12 @@ class ArchivingTrend(TaurusTrend):
           if v == Qt.QMessageBox.Cancel:
             return
         if t0 is not None:
-          print('applyNewDates(%s,%s)'%(fandango.time2str(t0),fandango.time2str(t1)))
+          print('applyNewDates(%s,%s)'%(fn.time2str(t0),fn.time2str(t1)))
           self.setAxisScale(Qwt5.QwtPlot.xBottom, t0, t1)
-          hosts = map(fandango.get_tango_host,self.getModel())
-          for m in fandango.toList(self.getModel()):
+          hosts = map(fn.get_tango_host,self.getModel())
+          print('applyNewDates.CheckBuffers(%s)'%str(fn.toList(self.getModel())))
+          for i,m in enumerate(fn.toList(self.getModel())):
+            print(i)
             self.getArchivedTrendLogger().checkBuffers()
       except:
         ms = Qt.QMessageBox.warning(self,"Error!",traceback.format_exc())
@@ -536,7 +539,7 @@ class MenuActionAppender(BoundDecorator):
         for actname,label,method in MenuActionAppender.ACTIONS:
           action = getattr(instance,actname,None)
           if not action: 
-              method = method if fandango.isCallable(method) else getattr(obj,method,None)
+              method = method if fn.isCallable(method) else getattr(obj,method,None)
               setattr(instance,actname,Qt.QAction(label, None))
               action = getattr(instance,actname)
               instance.connect(action,Qt.SIGNAL("triggered()"),(lambda o=instance,m=method:m(o)))
@@ -563,7 +566,7 @@ class ArchivedTrendLogger(SingletonMap):
     def __new__(cls,*p,**k):
         trend = p and p[0] or k['trend']
         override = k.get('override',False)
-        tango_host = k.get('tango_host',None) or fandango.get_tango_host()
+        tango_host = k.get('tango_host',None) or fn.get_tango_host()
         schema = k.get('schema','*')
         if not getattr(trend,'_ArchiveLoggers',None):
             trend._ArchiveLoggers = {} #cls.__instances
@@ -587,6 +590,8 @@ class ArchivedTrendLogger(SingletonMap):
         self.logger = logger_obj or trend
         self.log_objs = {}
         self.last_args = {}
+        self.last_bounds = (0,0,0) ##NOT USED
+        self.on_check_scales = False
         self.last_msg = ''
         self.loglevel = 'INFO'
         
@@ -620,7 +625,7 @@ class ArchivedTrendLogger(SingletonMap):
                 self._reloadbutton = Qt.QPushButton('Reload Archiving')
                 self.dialog().layout().addWidget(self._reloadbutton)
                 self._reloadbutton.connect(self._reloadbutton,Qt.SIGNAL('clicked()'),
-                    fandango.partial(fandango.qt.QConfirmAction,self.checkBuffers))
+                    fn.partial(fn.qt.QConfirmAction,self.checkBuffers))
                 self._decimatecombo = Qt.QComboBox()
                 self._decimatecombo.addItems([t[0] for t in DECIMATION_MODES])
                 self._decimatecombo.setCurrentIndex(0)
@@ -640,7 +645,7 @@ class ArchivedTrendLogger(SingletonMap):
                 self._clearbutton = Qt.QPushButton('Clear Buffers and Redraw')
                 self.dialog().layout().addWidget(self._clearbutton)
                 self._clearbutton.connect(self._clearbutton,Qt.SIGNAL('clicked()'),
-                    fandango.partial(fandango.qt.QConfirmAction,self.clearBuffers))
+                    fn.partial(fn.qt.QConfirmAction,self.clearBuffers))
 
                 if hasattr(self.trend,'closeEvent'): 
                     #setDialogCloser(self.dialog(),self.trend)
@@ -668,7 +673,7 @@ class ArchivedTrendLogger(SingletonMap):
     def setLastArgs(self,model,start=0,stop=None,history=-1,date=None):
         #self.info('ArchivedTrendLogger.setLastArgs(%s)'%str((model,start,stop,history,date)))
         date = date or time.time()
-        if fandango.isSequence(history): history = len(history)
+        if fn.isSequence(history): history = len(history)
         self.last_args[model] = [start,stop,history,date] #It must be a list, not tuple
     
     def getDecimation(self):
@@ -684,17 +689,41 @@ class ArchivedTrendLogger(SingletonMap):
     
     def checkScales(self):
         bounds = getTrendBounds(self.trend,True)
-        if self.trend.getXDynScale():
-            if not getattr(self.trend,'_configDialog',None):
-                if bounds[-1]<(time.time()-3600):
-                    self.info('Disabling XDynScale when showing past data')
-                    self.trend.setXDynScale(False) 
-
-            if self.trend.isPaused(): # A paused trend will not load data
-                self.warning('resume plotting ...')
-                self.trend.setPaused(False)
         
-        self.checkBuffers()
+        if self.on_check_scales:
+            return False
+        
+        try:
+            self.on_check_scales = True
+            ## Check to be done before triggering anything else
+            diff = bounds[0]-self.last_bounds[0], bounds[1]-self.last_bounds[-1]
+            diff = max(map(abs,diff))
+            td = fn.now()-self.last_bounds[-1]
+            r = max((30.,0.5*(bounds[1]-bounds[0])))
+            ##This avoids re-entring calls into checkScales
+            self.last_bounds = (bounds[0],bounds[1],fn.now())
+            
+            if self.trend.getXDynScale():
+                if not getattr(self.trend,'_configDialog',None):
+                    if (bounds[-1]<(time.time()-3600) 
+                        or (bounds[-1]-bounds[0])>7200):
+                        self.info('Disabling XDynScale when showing past data')
+                        self.trend.setXDynScale(False) 
+
+                if self.trend.isPaused(): # A paused trend will not load data
+                    self.warning('resume plotting ...')
+                    self.trend.setPaused(False)
+
+            #if not (diff > r or td > 1.): #This avoids re-entring calls into checkScales
+                #return False
+
+            print('In checkScales(%s,%s,%s)'%(str(bounds),diff,r))
+            self.checkBuffers()
+            print('Out of checkScales(%s,%s,%s)'%(str(bounds),diff,r))
+        except:
+            self.warning(traceback.format_exc())
+        finally:
+            self.on_check_scales = False
 
     def checkBuffers(self,*args):
         self.warning('CheckBuffers(%s)'%str(self.trend.trendSets.keys()))
@@ -733,7 +762,7 @@ class ArchivedTrendLogger(SingletonMap):
         
     def showRawValues(self):
         try:
-            self._dl = fandango.qt.QDialogWidget(buttons=True)
+            self._dl = fn.qt.QDialogWidget(buttons=True)
             qc = Qt.QComboBox()
             qc.addItems(sorted(self.last_args.keys()))
             self._dl.setWidget(qc)
@@ -759,14 +788,14 @@ class ArchivedTrendLogger(SingletonMap):
                     if severity not in self.log_objs: self.log_objs[severity] = \
                         getattr(self.logger,severity.lower(),
                                 lambda m,s=severity:'%s:%s: %s'%
-                                (s.upper(),fandango.time2str(),m))
+                                (s.upper(),fn.time2str(),m))
                     self.log_objs[severity](msg)
                 except: pass
         if self.dialog():
             if msg!='+1': 
-                msg = '%s:%s: %s'%(severity.upper(),fandango.time2str(),msg)
+                msg = '%s:%s: %s'%(severity.upper(),fn.time2str(),msg)
             if self.filters:
-                msg = (fandango.filtersmart(msg,self.filters) or [''])[0]
+                msg = (fn.filtersmart(msg,self.filters) or [''])[0]
             if msg:
                 if len(self.instances())>1: msg = self.tango_host+':'+msg
                 self.dialog().append(msg)
@@ -912,7 +941,7 @@ def getTrendGaps(trend,trend_set,bounds=None):
     
     if tbounds[1] < tbounds[0]:
         print('#'*80)
-        print('System date seems wrong!!!: %s'%fandango.time2str(tbounds[1]))
+        print('System date seems wrong!!!: %s'%fn.time2str(tbounds[1]))
     
     bounds = min(tbounds[0],now),min(tbounds[1],now) #Ignoring the "future" part of the scale
     if not bounds[1]-bounds[0]: return bounds[0],bounds[1],ZONES.BEGIN,0.
@@ -960,7 +989,7 @@ def updateTrendBuffers(self,data,logger=None):
         import numpy,datetime,PyTangoArchiving.utils as utils
         from taurus.core.util.containers import ArrayBuffer
         logger = logger or self
-        logmsg = lambda m: (fandango.printf(m),self.warning(m)) #logger.warning
+        logmsg = lambda m: (fn.printf(m),self.warning(m)) #logger.warning
         trend_set = self
         parent = getattr(logger,'trend',logger)
         fromHistoryBuffer = data is not None and len(data) and hasattr(data[0],'time')
@@ -999,7 +1028,7 @@ def updateTrendBuffers(self,data,logger=None):
                                 
                 overlap = ((len(t) and numpy.max(t) or 0) > 
                             (len(self._xBuffer) and numpy.min(self._xBuffer) 
-                                or fandango.END_OF_TIME ))
+                                or fn.END_OF_TIME ))
                 minstep = abs(t[-1] - t[0]) / 1081.
                 logger.warning('In updateTrendBuffers('
                         '(%s - %s)[%d] \n\t+ (%s - %s)[%d],'
@@ -1141,7 +1170,7 @@ def getArchivedTrendValues(trend_set,model,start_date=0,stop_date=None,
         
         if not multiprocess and time.time() < STARTUP+STARTUP_DELAY:
             logger_obj.warning('PyTangoArchiving.Reader waiting until %s'
-                               %fandango.time2str(STARTUP+STARTUP_DELAY))
+                               %fn.time2str(STARTUP+STARTUP_DELAY))
             return []
         if not parent.xIsTime:
             logger('PyTangoArchiving.Reader: Archiving is available only for trends')
@@ -1194,10 +1223,11 @@ def getArchivedTrendValues(trend_set,model,start_date=0,stop_date=None,
         # Forcing the update of data by bunches, 
         # it should be combined with gaps!!!
         if stop_date-start_date > MAX_QUERY_TIME:
-            logger_obj.warning('In getArchivedTrendValues(%s,%s,%s,%s): '
-                        'Interval too big, restricted to %d rows'
-                        %(model,start_date,stop_date,use_db,
-                            MAX_QUERY_LENGTH))                        
+            logger_obj.warning('<-'*40+'\n'+
+                'In getArchivedTrendValues(%s,%s,%s,%s): '
+                'Interval too big, restricted to %d rows'
+                %(model,start_date,stop_date,use_db,MAX_QUERY_LENGTH))
+            
             # Fills using data from the end of the query
             N = - MAX_QUERY_LENGTH
             logger_obj.last_args[model][2] = 0
@@ -1240,8 +1270,8 @@ def getArchivedTrendValues(trend_set,model,start_date=0,stop_date=None,
         logger_obj.info('<3')
         logger_obj.warning('In getArchivedTrendValues(%s, %s = %s, %s = %s)(%s): '
             'lasts=%s, getting new data (previous[%s]:%s at %s)'%(
-            attribute,start_date,fandango.time2str(start_date),stop_date,
-            fandango.time2str(stop_date),reader.schema,lasts and lasts[0],
+            attribute,start_date,fn.time2str(start_date),stop_date,
+            fn.time2str(stop_date),reader.schema,lasts and lasts[0],
             model,lasts,lasts[-1]))
         logger_obj.debug('prev %s != curr %s' % (lasts,args))
         
@@ -1249,7 +1279,7 @@ def getArchivedTrendValues(trend_set,model,start_date=0,stop_date=None,
         decimation = logger_obj.getDecimation()
         if not decimation:
             if logger_obj._nonescheck.isChecked(): 
-                decimation = fandango.arrays.notnone
+                decimation = fn.arrays.notnone
             elif decimate: 
                 decimation = PyTangoArchiving.reader.data_has_changed
             
@@ -1272,7 +1302,7 @@ def getArchivedTrendValues(trend_set,model,start_date=0,stop_date=None,
             if ((0 < len(history) < abs(N) and area>(.11,.05)[zone==ZONES.MIDDLE])
                 or start_date<=bounds[0]):
                 # Windowed query was finished, stop refreshing
-                check = fandango.tango.check_attribute(attribute,readable=True)
+                check = fn.tango.check_attribute(attribute,readable=True)
                 #logger_obj.warning(check)
                 if not check:
                     logger_obj.warning('Pausing %s ...'%attribute)

@@ -35,10 +35,17 @@ TRACE = False
 import fandango
 from fandango.db import FriendlyDB
 import fandango.functional as fun
+
+from fandango.functional import ( isString,isSequence,isCallable,
+    str2time, str2epoch, clmatch, time2str, epoch2str, now,
+    ctime2time, mysql2time, NaN )
+
+from fandango.functional import ( date2time,date2str,mysql2time,ctime2time,
+    time2str,isNumber,clmatch,isCallable )
+
 import fandango.linos as linos
 from fandango.dicts import SortedDict, CaselessDict
-from fandango.functional import date2time,date2str,mysql2time,ctime2time,\
-    time2str,isNumber,clmatch,isCallable
+
 from fandango.functional import reldiff,absdiff,seqdiff
 from fandango.arrays import decimate_custom,decimate_array
 
