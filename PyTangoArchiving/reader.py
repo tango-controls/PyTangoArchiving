@@ -41,9 +41,11 @@ from fandango.dicts import CaselessDict, SortedDict
 from fandango.linos import check_process,get_memory
 from fandango.tango import get_tango_host,parse_tango_model
 
-from PyTangoArchiving.utils import PyTango, patch_booleans
+from PyTangoArchiving.utils import * #PyTango, patch_booleans
 import PyTangoArchiving.utils as utils
-from PyTangoArchiving.dbs import ArchivingDB
+
+from PyTangoArchiving.dbs import ArchivingDB, get_table_name
+from PyTangoArchiving.common import DB_MODES, translate_attribute_modes
 from PyTangoArchiving.schemas import Schemas
 import MySQLdb,MySQLdb.cursors
 
@@ -60,239 +62,7 @@ def getArchivedTrendValues(*args,**kwargs):
         return []
 
 ###############################################################################
-# Decimation/Conversion methods
-
-isNaN = lambda f: 'nan' in str(f).lower()
-RULE_LAST = lambda v,w: sorted([v,w])[-1]
-RULE_MAX = lambda v,w: (max((v[0],w[0])),max((v[1],w[1])))
-START_OF_TIME = time.time()-10*365*24*3600 #Archiving reading limited to last 10 years.
-MAX_RESOLUTION = 10*1080.
-
-def get_jumps(values):
-    jumps = [(values[i][0],values[i+1][0]) for i in range(len(values)-1) if 120<(values[i+1][0]-values[i][0])]
-    return [[time.ctime(d) for d in j] for j in jumps]
-
-def get_failed(values):
-    i,failed = 0,[]
-    while i<len(values)-1:
-        if not isNaN(values[i][1]) and isNaN(values[i+1][1]):
-            print 'found error at %s' % time.ctime(values[i+1][0])
-            try:
-                next = (j for j in range(i+1,len(values)) if not isNaN(values[j][1])).next()
-                failed.append((values[i][0],values[i+1][0],values[next][0]))
-                i=next
-            except StopIteration: #Unable to find the next valid value
-                print 'no more values found afterwards ...'
-                failed.append((values[i][0],values[i+1][0],-1))
-                break
-        i+=1
-    return [[time.ctime(d) for d in j] for j in failed]
-        
-def data_has_changed(val,prv,nxt=None,t=300):
-    """ 
-    Method to calculate if decimation is needed, 
-    any value that preceeds a change is considered a change
-    any time increment above 300 seconds is considered a change
-    """
-    return (val[1]!=prv[1] 
-                    or (nxt is not None and nxt[1]!=prv[1]) 
-                    or val[0]>(prv[0]+t))
-
-def decimation(history,method,window='0',logger_obj=None, N=1080):
-    """
-    Nones and NaNs are always removed if this method is called
-    
-    history: array of data
-    method: method or callable
-    window: string for time
-    logger_obj: ArchivedTrendLogger or similar
-    N: max array size to return
-    """
-    t0 = time.time()
-    l0 = len(history)
-    if not l0:
-        return history
-    
-    trace = getattr(logger_obj,'warning',fandango.printf)
-    try: 
-        window = str2time(window or '0') 
-    except: 
-        window = 0
-        
-    start_date,stop_date = float(history[0][0]),float(history[-1][0])
-
-    ## Decimation by data_has_changed is ALWAYS done
-    if len(history): #method is not None
-        nv = []
-        #sq = isSequence(history[0][1])
-        for i,v in enumerate(history):
-            if (v[1] not in (None,NaN)# is not None and (sq or not isNaN(v[1]))
-                    #and (i in (0,l0-1,l0-2) or 
-                        #data_has_changed(history[i-1],v,history[i+1]))
-                    ):
-                nv.append(v)
-        t1 = time.time()
-        trace('Removed %d (None,NaN, Rep) values in %fs'
-              %(l0-len(nv),t1-t0))
-
-        t0,i,c,lh = t1,0,0,len(history)
-        while i<len(history):
-            if history[c] in (None,NaN):
-                history.pop(c)
-            else:
-                c+=1
-            i+=1
-        t1 = time.time()
-        trace('Removed %d (None,NaN, Rep) values in %fs'
-              %(l0-len(history),t1-t0))
-        history = nv   
-        
-    if (method and isCallable(method) and method!=data_has_changed 
-        and len(history) and type(history[0][-1]) in (int,float,bool)): #type(None)):
-        # Data is filtered applying an averaging at every "window" interval.
-        # As range() only accept integers the minimum window is 1 second.
-        # It means that filtering 3 hours will implicitly prune millis data.        
-        #DATA FROM EVAL IS ALREADY FILTERED; SHOULD NOT PASS THROUGH HERE        
-        
-        wmin = max(1.,(stop_date-start_date)/(10*1080.))
-        wauto = max(1.,(stop_date-start_date)/(10*N))
-        trace('WMIN,WUSER,WAUTO = %s,%s,%s'%(wmin,window,wauto))
-        window = wauto if not window else max((wmin,window))
-        
-        if len(history) > (stop_date-start_date)/window:
-            history = fandango.arrays.filter_array(
-                data=history,window=window,method=method)
-            t2 = time.time()
-            trace('Decimated %d values to %d in %f seconds '
-                  '(%s,%s)'
-                  %(l0,len(history),t2-t1,method,window))
-    else:
-        trace('Decimation is not callable')
-            
-    return history
-
-def choose_first_value(v,w,t=0,tmin=-300):
-    """ 
-    Args are v,w for values and t for point to calcullate; 
-    tmin is the min epoch to be considered valid
-    """  
-    r = (0,None)
-    t = t or max((v[0],w[0]))
-    if tmin<0: tmin = t+tmin
-    if not v[0] or v[0]<w[0]: r = v #V chosen if V.time is smaller
-    elif not w[0] or w[0]<v[0]: r = w #W chosen if W.time is smaller
-    if tmin>0 and r[0]<tmin: r = (r[0],None) #If t<tmin; value returned is None
-    return (t,r[1])
-
-def choose_last_value(v,w,t=0,tmin=-300):
-    """ 
-    Args are v,w for values and t for point to calcullate; 
-    tmin is the min epoch to be considered valid
-    """  
-    r = (0,None)
-    t = t or max((v[0],w[0]))
-    if tmin<0: tmin = t+tmin
-    if not w[0] or v[0]>w[0]: r = v #V chosen if V.time is bigger
-    elif not v[0] or w[0]>v[0]: r = w #W chosen if W.time is bigger
-    if tmin>0 and r[0]<tmin: r = (r[0],None) #If t<tmin; value returned is None
-    return (t,r[1])
-    
-def choose_max_value(v,w,t=0,tmin=-300):
-    """ 
-    Args are v,w for values and t for point to calcullate; 
-    tmin is the min epoch to be considered valid
-    """  
-    r = (0,None)
-    t = t or max((v[0],w[0]))
-    if tmin<0: tmin = t+tmin
-    if tmin>0:
-        if v[0]<tmin: v = (0,None)
-        if w[0]<tmin: w = (0,None)
-    if not w[0] or v[1]>w[1]: r = v
-    elif not v[0] or w[1]>v[1]: r = w
-    return (t,r[1])
-    
-def choose_last_max_value(v,w,t=0,tmin=-300):
-    """ 
-    This method returns max value for epochs out of interval
-    For epochs in interval, it returns latest
-    Args are v,w for values and t for point to calcullate; 
-    tmin is the min epoch to be considered valid
-    """  
-    if t>max((v[0],w[0])): return choose_max_value(v,w,t,tmin)
-    else: return choose_last_value(v,w,t,tmin)
-    
-    
-""" 
-CONVERSION METHODS FROM MYSQL
-
-This is how data looks like in the MySQL database tables:
-    
-Boolean spectrums in HDBArchivingReader
-    In [9]:hdb.db.Query('select * from att_06339 limit 10')
-    ((datetime.datetime(2014, 2, 23, 8, 41, 50),5,'false, false, false, false, false'),
-Simple boolean (stored as strings!!)
-    ((datetime.datetime(2014, 2, 21, 18, 39, 17), '0'),
-DevShort
-    ((datetime.datetime(2013, 2, 11, 14, 20, 15), 1.0, 0.0),
-DevLong
-    ((datetime.datetime(2013, 1, 12, 0, 58, 48), 2999.0),
-DevLongArray
-    (datetime.datetime(2013, 1, 11, 17, 6, 22),124,'1.0, 1.0, 1.0, 1.0, 3.0, 1.0, 1.0, 0.0, 1.0, 2.0, 2.0, 0.0, 0.0, 1.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 1.0, 0.0, 0.0, 1.0, 1.0, 0.0, 2.0, 4.0, 0.0, 0.0, 0.0, 0.0, 1.0, 1.0,
-DevDouble
-    ((datetime.datetime(2013, 1, 1, 0, 0, 6), 26.583766937255898),
-DevDoubleArray
-    (datetime.datetime(2013, 1, 11, 21, 17, 9),
-    82,
-    '24.3, 22.6, 21.7, 21.4, 19.4, 20.9, 20.1, 20.7, 21.8, 21.5, 20.3, 19.1, 19.8, 20.0, 20.2, 20.0, 20.1, 19.4, 20.0, 20.6, 20.8, 19.8, 19.8, 19.0, 19.7, 20.4, 21.1, 20.4, 20.2, 18.7, 20.3, 20.5, 20.4, 20.2, 21.0, 19.2, 20.6, 19.8, 20.8, 20.3, 21.5, 20.0, 19.8, 19.0, 19.3, 20.4, 20.0, 19.9, 19.7, 18.6, 19.2, 20.5, 20.6, 20.5, 19.2, 20.1, 19.4, 20.5, 20.7, 19.4, 19.8, 19.0, 19.9, 20.1, 20.7, 20.1, 21.6, 20.6, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0'))
-DevState
-    (datetime.datetime(2013, 1, 11, 18, 9, 41), 3.0),
-"""    
-
-def h_to_tuple(T):
-    return (T.time.tv_sec,T.value if not hasattr(T.value,'__len__') else tuple(T.value)) #if data_format == PyTango.AttrDataFormat.SPECTRUM:
-def get_mysql_value(v):
-    return (mysql2time(v[0]),v[1 if len(v)<4 else 2]) #Date and read value (excluding dimension?!?)
-def listToHistoryBuffer(values):
-    return [FakeAttributeHistory(*v) for v in values]
-def mysql2array(v,data_type,default=None):
-    #lambda v: [(s.strip() and data_type(s.strip()) or (0.0 if data_type in (int,float) else None)) for s in str(v[1]).split(',')]
-    return [data_type(x) if x else default for x in map(str.strip,str(v).split(','))]
-def mysql2bool(v):
-    v = str(v)
-    if v in ('','None','none','null','NULL'): return None 
-    if v in ('1','1.0','True','true'): return 1 
-    return 0
-
-class FakeAttributeHistory():
-    def __init__(self,date,value):
-        self.value = value
-        self.time = PyTango.TimeVal(date) if not isinstance(date,PyTango.TimeVal) else date
-    def __repr__(self): 
-        return 'fbHistory(value=%s,time=%s)'%(self.value,self.time)
-
-###############################################################################
 # Helpers
-    
-def read_alias_file(alias_file,trace=False):
-    # Reading the Alias file
-    # The format of the file will be:
-    #   Alias                                   Attribute
-    #   sr01/vc/eps-plc-01/sr01_vc_tc_s0112     sr01/vc/eps-plc-01/thermocouples[11]
-    alias = CaselessDict()
-    if alias_file:
-        try:
-            csv = fandango.arrays.CSVArray(alias_file)
-            csv.setOffset(1)
-            for i in range(csv.size()[0]):
-                line = csv.getd(i)
-                try: alias[line['Alias']] = line['Attribute']
-                except: pass
-            if trace: print('%d Attribute alias loaded from %s' % (len(alias),alias_file))
-        except Exception,e:
-            print('Unable to parse AliasFile: %s\n%s'%(alias_file,traceback.format_exc()))
-            alias.clear()
-    return alias
     
 def expandEvalAttribute(attribute):
     if '{' not in attribute: return []
@@ -357,7 +127,7 @@ def getArchivingReader(attr_list=None,start_date=0,stop_date=0,
     
     for name in schemas:
       try:
-        data = Schemas.getSchema(name,tango=tango)
+        data = Schemas.getSchema(name,tango=tango,logger=log)
         if data is None: continue #Unreached schema
       
         ## Backwards compatibility
@@ -558,7 +328,7 @@ class Reader(Object,SingletonMap):
                   self.configs[s] = Reader(s,logger=logger)
 
                 else:
-                  sch = Schemas.getSchema(s)
+                  sch = Schemas.getSchema(s,logger=self.log)
                   if sch: 
                       self.configs[sch.get('schema')] = sch.get('reader')
 
@@ -590,7 +360,7 @@ class Reader(Object,SingletonMap):
                     alias_file = (self.tango.get_class_property('%sextractor'%self.schema,['AliasFile'])['AliasFile'] or [''])[0]
                     self.alias = read_alias_file(alias_file)
                 except Exception,e: 
-                    self.low.warning('Unable to read alias file %s: %s'%(alias_file,e))
+                    self.log.warning('Unable to read alias file %s: %s'%(alias_file,e))
 
         #Initializing the state machine        
         self.reset() 
@@ -796,9 +566,9 @@ class Reader(Object,SingletonMap):
         attribute = re.sub('\[([0-9]+)\]','',attribute.lower())
         if force or attribute not in self.modes:
             if self.db_name!='*':
-                self.modes[attribute] = dict((utils.translate_attribute_modes(k),v) 
+                self.modes[attribute] = dict((translate_attribute_modes(k),v) 
                     for k,v in self.get_database().get_attribute_modes(attribute,asDict=True).items()
-                    if k in utils.DB_MODES or k.lower() in ('archiver','id'))
+                    if k in DB_MODES or k.lower() in ('archiver','id'))
             else:
                 self.modes[attribute] = dict((a,self.configs[a].get_attribute_modes(attribute,force)) for a in ('hdb','tdb') if a in self.configs)
         return self.modes[attribute]
@@ -828,6 +598,7 @@ class Reader(Object,SingletonMap):
                 return [pref]
             else:
                 sch = []
+                print(Schemas.keys())
                 for a,c in self.configs.items():
                     try:
                         if (c and (a not in Schemas.keys() or
@@ -836,7 +607,7 @@ class Reader(Object,SingletonMap):
                             sch.append(a)
                     except: 
                         self.log.warning('%s archiving not available'%a)
-                        #traceback.print_exc()
+                        self.log.warning(traceback.format_exc())
                         
                 return tuple(sch) 
                 #return tuple(a for a in self.configs if self.configs.get(a) \
@@ -854,6 +625,7 @@ class Reader(Object,SingletonMap):
                 alias = self.get_attribute_alias(attr)
                 alias = parse_tango_model(alias)
                 if alias.tango_host == self.tango_host:
+                    alias = alias.simplename
                     cache = (self.current_attributes if active 
                         else self.available_attributes)
                     return alias if alias in cache else False
@@ -1134,7 +906,7 @@ class Reader(Object,SingletonMap):
             
             self.log.debug('%s, ID=%s, data_type=%s, data_format=%s'
                             %(attribute,ID,data_type,data_format))
-            table = utils.get_table_name(ID)
+            table = get_table_name(ID)
             method = db.get_attribute_values
         else:
             table = attribute

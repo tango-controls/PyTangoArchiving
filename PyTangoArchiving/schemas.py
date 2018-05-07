@@ -34,7 +34,7 @@ from fandango import clmatch
 import sys
 EXPERT_MODE = any(a in str(sys.argv) for a in 
         ('ArchivingBrowser.py','ctarchiving','taurustrend',
-         'taurusfinder','ctsearch','ipython', 'test','python -c',
+         'taurusfinder','ctsearch','ipython', 'test','-c',
          'archiving2csv','archiving2plot','matlab','PyExtractor'))
         
 class Schemas(object):
@@ -83,7 +83,7 @@ class Schemas(object):
         
         if schema.startswith('#') and EXPERT_MODE:
             schema = schema.strip('#')
-            print('%s is available'%schema)
+            print('%s is enabled'%schema)
 
         if schema in k.SCHEMAS:
             # Failed schemas should be also returned (to avoid unneeded retries)
@@ -116,10 +116,11 @@ class Schemas(object):
             if not hasattr(rd,'schema'): rd.schema = dct['schema']
 
         except Exception,e:
-            print('Reader.getSchema(%s): failed!'%schema)
-            if logger: 
-                try: logger.warning(traceback.format_exc())
-                except: traceback.print_exc()
+            print('getSchema(%s): failed!'%schema)
+            if 1: #logger: 
+                exc = traceback.format_exc()
+                try: logger.warning(exc)
+                except: print(exc)
             dct = None
         
         if write:
