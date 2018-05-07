@@ -38,6 +38,8 @@ try:
 except:
     raise Exception,'import FriendlyDB failed, is MySQLdb module installed?'
 
+
+
 class ArchivingDB(FriendlyDB):
     """ 
     Class for managing the direct access to the database 
@@ -270,3 +272,477 @@ class ArchivingDB(FriendlyDB):
         if name: q+=" and table_name like '%s'"%name
         updates = dict((a,fandango.date2time(t) if t else 0) for a,t in self.Query(q))
         return updates
+
+
+###############################################################################
+
+###############################################################################
+# DB Methods
+
+SCHEMAS = ('hdb','tdb','snap')
+
+from fandango import time2date,str2time
+    
+def repair_attribute_name(attr):
+    """
+    Remove "weird" characters from attribute names
+    """
+    import re
+    return re.sub('[^a-zA-Z-_\/0-9\*]','',attr)
+            
+def get_table_name(ID):
+    ID = int(ID)
+    return 'att_%05d'%ID if ID<10000 else 'att_%06d'%ID
+
+def get_table_updates(api='hdb'):
+    import PyTangoArchiving
+    if fun.isString(api): 
+        api = PyTangoArchiving.ArchivingAPI(api)
+    if isinstance(api,PyTangoArchiving.ArchivingAPI):
+        db = api.db
+    if isinstance(api,fandango.db.FriendlyDB):
+        db = api
+    updates = db.Query('select table_name,update_time from information_schema.tables where table_schema like "%s"'%api.schema)
+    updates = dict((a,fun.date2time(t) if t else 0) for a,t in updates)    
+    return updates
+
+def decimate_db_table(db,table,host='',user='',passwd='',start=0,end=0,period=300,iteration=1000,condition='',cols=None,us=True,test=False, repeated = False):
+    """ 
+    This method will remove all values from a MySQL table that seem duplicated 
+    in time or value.
+    All values with a difference in time lower than period will be kept.
+    
+    To use it with hdb++:
+    
+    decimate_db_table('hdbpp',user='...',passwd='...',
+      table = 'att_scalar_devdouble_ro',
+      start = 0,
+      end = now()-600*86400,
+      period = 60, #Keep a value every 60s
+      condition = 'att_conf_id = XX',
+      iteration = 1000,
+      columns = ['data_time','value_r'],
+      us=True,
+      )
+    """
+    print('Decimating all repeated values in %s(%s) with less '
+      'than %d seconds in between.'%(table,condition,period))
+    
+    db = FriendlyDB(db,host,user,passwd) if not isinstance(db,FriendlyDB) else db
+    #rw = 'write_value' in ','.join([l[0] for l in db.Query("describe %s"%table)]).lower()
+    #date,column = 'read_value,write_value' if rw else 'value'
+    columns = cols or ['time','value']
+    date,column = columns[0],columns[1:]
+    start = time2date(start) if isNumber(start) else time2date(str2time(start))
+    t0,vw0,now = start,None,time2date(time.time())
+    end = time2date(end) if isNumber(end) else time2date(str2time(end))
+    removed,pool,reps = 0,[],[]
+    count = 0
+    
+    ## WHY T0 AND END ARE DATES!?!? : to be easy to compare against read values
+
+    while t0<(end or now):
+
+        query = "select %s,%s from %s where" %(date,','.join(column),table)
+        query += " '%s' < %s"%(date2str(t0,us=True),date)#,date2str(end))
+        if condition: query+=' and %s'%condition
+        query += ' order by %s'%date
+        query += ' limit %d'%iteration
+        values = db.Query(query)
+        #print(query+': %d'%len(values))
+        #print('inspecting %d values between %s and %s'%(len(values),date2str(t0),date2str(end)))
+        
+        if not values: 
+            break
+          
+        for i,v in enumerate(values):
+            count += 1
+            t1,vw1 = v[0],v[1:1+len(column)] #v[1],(rw and v[2] or None)
+            #print((i,count,t1,vw0,vw1))
+            e0,e1 = 1e-3*int(1e3*date2time(t0)),1e-3*int(1e3*date2time(t1)) #millisecs
+            tdelta = e1-e0
+            is_last = i >= (len(values)-1) or t1 >= end
+            buff = len(pool)
+
+            if is_last or tdelta>=period or vw0!=vw1:
+                #if tdelta>=period: print('%s >= %s'%(tdelta,period))
+                #elif vw0!=vw1: print('%s != %s'%(vw0,vw1))
+                #else: print('i = %s/%s'%(i,len(values)))
+                # End of repeated values, apply decimation ...
+                if buff:
+                    # Dont apply remove on windows < 1 second
+                    e1 = date2time(values[i-1][0]) #previous value
+                    if True: #(int(e1)-int(e0))>1:
+                        #print('remove %d values in pool'%len(pool))
+                        if not test:
+                            #Don't use the between syntax!!
+                            q = "delete from %s where "%table
+                            if condition:
+                                q+= condition+' and '
+                            #e0,e1 = e0+1,e1-1 #t0 should not be removed!
+                            q+= "%s > '%s' and "%(date,time2str(e0,us=us)) 
+                            q+= "%s < '%s'"%(date,time2str(e1,us=us))
+                            #print(q)
+                            #removed += buff
+                            db.Query(q)
+
+                        #print('t0: %s; removed %d values' % (date2str(t0),buff-1))
+                        #print('pool:%s'%str(pool))
+                        
+                if reps:
+                    if not test:
+                        #print('repeated timestamp: %s,%s == %s,%s'%(t0,vw0,t1,vw1))
+                        q = "delete from %s where "%(table)
+                        if condition:
+                            q+= condition+' and '
+                        q+= "%s = '%s' limit %d" % (
+                          date,date2str(reps[-1],us=us),len(reps))
+                        #print(q)
+                        db.Query(q)                
+ 
+                pool,reps = [],[]
+                #print('%s => %s'%(t0,t1))
+                t0,vw0 = t1,vw1
+
+            else:
+                # repeated values with tdiff<period will be removed in a single query
+                    
+                # This should apply only if values are different and timestamp equal?
+                # if timestamp is repeated the condition t < d < t is useless
+                # repeated timestamps are removed directly
+                #print(tdelta)
+                if repeated and not tdelta:
+                    reps.append(t1)
+                    #print(('reps',t1))
+                        
+                elif vw0 == vw1:
+                    #if buff and not buff%100:
+                    #    print('%s repeated values in %s seconds'%(buff,tdelta))
+                    pool.append(t1)
+
+                    #removed +=1  
+                
+                else: pass
+                #print((vw0,vw1))                  
+                    
+            if is_last: break
+    
+    query = "select count(*) from %s where" %(table)
+    query += " '%s' < %s and %s < '%s'"%(date2str(start,us=us),date,date,date2str(end,us=us))
+    if condition: query+=' and %s'%condition   
+    cur =  db.Query(query)[0][0]
+    removed = count-cur
+
+    print('decimate_db_table(%s,%s) took %d seconds to remove %d = %d - %d values'%(
+      table,condition,time.time()-date2time(now),removed,count,cur))
+
+    return removed
+
+
+def create_attribute_tables(attribute):
+    raise 'Method moved to PyTangoArchiving.dbs module'
+
+def import_into_db(db,table,data,delete=False,offset=0):
+    """
+    db = a FriendlyDB instance
+    table = table name
+    data = [(time,value)] array
+    offset = offset to apply to time values
+    delete = boolean, if True the data between t0 and t-1 will be deleted from db before inserting.
+    """
+    #raise '@TODO:TEST THIS IN ARCHIVING02 BEFORE COMMIT'
+    from fandango import time2str,date2str,date2time
+    print 'import_into_db(%s,%s,[%s],%s,%s)'%(db,table,len(data),delete,offset)
+    if delete: 
+        limits = data[0][0],data[-1][0]
+        t = db.Query("select count(*) from %s where time between '%s' and '%s'"%(table,time2str(limits[0]),time2str(limits[1])))[0]
+        print('deleting %s values from %s'%(t,table))
+        db.Query("delete from %s where time between '%s' and '%s'"%(table,time2str(limits[0]),time2str(limits[1])))
+    if not db.Query('SHOW INDEX from %s'%table):
+        try: db.Query('create index time on  %s (time)'%table)
+        except: pass
+    print('inserting %d values into %s ...'%(len(data),table))
+    #for i,d in enumerate(data):
+        #t = (fandango.time2str(d[0]+offset),d[1])
+        #q = "INSERT INTO %s VALUES('%s',%s)"%(table,t[0],t[1])
+        #db.Query(q)
+    l,total = [],0
+    for i,d in enumerate(data):
+        l.append(d)
+        if not (len(data)-(i+1))%100:
+            q = "INSERT INTO `%s` VALUES %s ;"%(table,', '.join("('%s',%s)"%(fun.time2str(d[0]+offset),d[1] if 'none' not in str(d[1]).lower() else 'NULL') for d in l))
+            #print q[:160]
+            db.Query(q)
+            total += len(l)
+            print i,len(l),total
+            l = []
+    return total,len(data)
+
+    #net = fandango.db.FriendlyDB('net6020a',user='...',passwd='...')
+    #hdb = PyTangoArchiving.archiving.ArchivingAPI('hdb')
+    #dev_table = dict((t[1].lower()[:4],t[0].lower()) for t in net.Query('select device,id from devices'))
+    #def insert_data(r,offset,delete=''):
+    #def get_data(r,dt=dev_table):
+        #i = r.split('/')[-1]
+        #if i[:4] not in dt:
+            #print('no device found for %s'%i)
+            #return
+        #d = dt[i[:4]]
+        #t = 'val_10sec_%s_0913'%d
+        #a = 'NeutronDRMean' if r.endswith('n') else 'AccDRMean'
+        #data = [(fandango.date2time(d[0]),d[1]) for d in net.Query("select time,%s from %s"%(a,t))]
+        #return data
+        
+## @name Methods for repairing the databases
+# @{
+
+
+def RepairColumnNames():
+    db = MySQLdb.connect(db='hdb',user='root')
+    q = db.cursor()
+    
+    q.execute('select ID,full_name,writable from adt')
+    adt=q.fetchall()
+    
+    print 'There are %d attribute_ID registered in the database'%len(adt)
+    done=0
+    for line in adt:
+        ID = line[0]
+        full_name = line[1]
+        writable = line[2]
+        print 'ID %05d: %s, w=%d'%(ID,full_name,writable)
+        q.execute('describe %s'%get_table_name(ID))
+        describe=q.fetchall()
+        col_name=describe[1][0]
+        col_type=describe[1][1]
+        if writable==int(PyTango.AttrWriteType.READ) and col_name!='value':
+            query='ALTER TABLE %s CHANGE COLUMN %s value %s AFTER time'%(get_table_name(ID),col_name,col_type)
+            print 'query: ',query
+            q.execute(query)
+            done+=1
+            
+    print 'Attributes repaired: %d'%done    
+                
+##@}
+
+def listLastTdbTime():
+    db = MySQLdb.connect(db='tdb')
+    q = db.cursor()
+    q.execute('show tables')
+    #It returns a TUPLE of TUPLES!!!, not a list!
+    alltables = q.fetchall()
+    
+    q.execute('select ID,archiver from amt where stop_date is NULL')
+    attribs = q.fetchall()
+    
+    attrtables = [ get_table_name(i[0]) for i in attribs ]
+    print str(len(attribs))+' attributes being archived.'
+    
+    print 'Searching newest/oldest timestamps on attribute tables ...'
+    results = []
+    tmin,tmax = None,None
+    
+    for i,a in enumerate(attrtables):
+        q.execute('select max(time),min(time) from '+a);
+        #q.execute('select time from '+a+' order by time desc limit 1')
+        #type returned is datetime.datetime
+        row = q.fetchone()
+        date,date2 = row[0],row[1]
+        if tmax is None or date>tmax:
+            tmax = date
+        if tmin is None or date2<tmin:
+            tmin = date2
+        results.append((date,date2,a))
+        print '\r%05d/%05d:\tOldest:%s;\tNewest:%s'%(i,len(attrtables),str(tmin),str(tmax)),
+        sys.stdout.flush()
+        
+    results.sort()
+    """
+    print 'The last updated time found in database is '+str(results[0][1])+'-'+str(results[0][0])
+    print 'Difference with newest is '+str(results.pop()[0]-results[0][0])
+    
+    print '\n'
+    """
+    
+    
+def RemoveWrongValues(db,table,column,null_value,ranges,dates,extra_clauses='',check=False):
+    ''' Sets the specified null_value for all values in columnd out of specified ranges
+    Usage (for removing all temperatures above 200 degrees): 
+     * RemoveWrongValues('hdb','att_00001','value',None,[0,200])
+    @remark Values cannot be deleted from archiving tables, NULL values must be inserted instead
+    
+    #EXAMPLE: 
+    #In [42]:tables = [v.table for k,v in api.attributes.items() if re.match('ws/ct/plctest3/.*',k)]
+    #In [44]:[PyTangoArchiving.utils.RemoveWrongValues('hdb',t,'value',None,[0,500],['2009-03-26','2009-04-07']) for t in tables]
+    #In [48]:[PyTangoArchiving.utils.RemoveWrongValues('hdb',t,'value',None,[50,150],['2009-03-30 19:00:00','2009-04-01 19:00:00']) for t in tables]
+    '''
+    result = False
+    start,stop=dates
+    if type(start) is not str: start=time.strftime('%Y-%m-%d %H:%M:%S',time.localtime(start))
+    if type(stop) is not str: stop=time.strftime('%Y-%m-%d %H:%M:%S',time.localtime(stop))
+    ranges = type(ranges) in (list,set,tuple,dict) and ranges or list(ranges)
+    max_,min_ = max(ranges),(len(ranges)>1 and min(ranges) or None)
+       
+    db = MySQLdb.connect(db='hdb',user='root')
+    q = db.cursor()
+    if check: query = "SELECT count(*) FROM %s" % (table)
+    else: query = "UPDATE %s SET %s=%s" % (table,column,null_value is None and 'NULL' or null_value)
+    where = " WHERE (%s" % ("%s > %s"%(column,max_))
+    where += min_ is not None and " OR %s < %s)" % (column,min_) or ")"
+    where += " AND (time BETWEEN '%s' AND '%s')" % (start,stop)
+    if extra_clauses:
+        where = " AND (%s)" % extra_clauses
+
+    print 'the query is : ', query+where
+    q.execute(query+where)
+    if check:
+        result = q.fetchone()[0]
+        print 'result is %s; type is %s'%(result,type(result))
+        print 'Values to remove: %d'%int(result)
+    else:
+        result = True
+    db.close()
+    return result
+    
+    
+    #adt=q.fetchall()    
+    #print 'There are %d attribute_ID registered in the database'%len(adt)
+    #done=0
+    #for line in adt:
+        #ID = line[0]
+        #full_name = line[1]
+        #writable = line[2]
+        #print 'ID %05d: %s, w=%d'%(ID,full_name,writable)
+        #q.execute('describe att_%05d'%ID)
+        #describe=q.fetchall()
+        #col_name=describe[1][0]
+        #col_type=describe[1][1]
+        #if writable==int(PyTango.AttrWriteType.READ) and col_name!='value':
+            #query='ALTER TABLE att_%05d CHANGE COLUMN %s value %s AFTER time'%(ID,col_name,col_type)
+            #print 'query: ',query
+            #q.execute(query)
+            #done+=1
+            
+    
+def rename_archived_attributes(attribs,load=False,restart=False,modes={'MODE_P':[10000]},schemas=('hdb','tdb')):
+    """
+    Renaming attributes in archiving 
+    PyTangoArchiving.utils.rename_archived_attributes({oldname:newname}) 
+    The following actions must be automated for both HDB and TDB
+    """
+    import archiving
+    attribs = dict((k.lower(),v.lower()) for k,v in attribs.items())
+    for schema in schemas:
+        api = archiving.ArchivingAPI(schema)
+        api.load_dedicated_archivers()
+        #Get the list of old names 
+        targets = dict((a,api[a].ID) for a in api if a in attribs)
+        #Search for archivers 
+        archivers = fandango.dicts.defaultdict(set)
+        servers = fandango.dicts.defaultdict(set)
+        for a in targets:
+            arch = api[a].archiver
+            if arch:
+                servers[fandango.tango.get_device_info(arch).server].add(arch)
+                archivers[arch].add(a)
+        astor = fandango.Astor()
+        if load: astor.load_from_devs_list(archivers.keys())
+        
+        #Check if they are dedicated 
+        dedicated = dict((a,api[a].dedicated.lower()) for a in targets if api[a].dedicated)
+        print('>> update dedicated')
+        properties = []
+        for arch in set(dedicated.values()):
+            prop = map(str.lower,api.tango.get_device_property(arch,['reservedAttributes'])['reservedAttributes'])
+            nprop = [attribs.get(p,p) for p in prop]
+            properties.append((arch,nprop))
+        print properties
+        if load: [api.tango.put_device_property(arch,{'reservedAttributes':nprop}) for arch,nprop in properties]
+            
+        #Store the list of modes, 
+        #NOP!, instead we will try to use the new modes provided as argument.
+        #modes = dict.fromkeys(modes_to_string(api[a].modes) for a in targets)
+        #[modes.__setitem__(k,[attribs[a] for a in targets if modes_to_string(api[a].modes)==k]) for k in modes.keys()]
+        
+        for server,archs in servers.items():
+            if restart or modes is not None:
+                for arch in archs:
+                    atts = archivers[arch]
+                    print('>> stopping archiving: %s'%atts)
+                    if load: api.stop_archiving(atts)
+            print('>> stopping archiver %s: %s'%(server,archs))
+            if load: astor.stop_servers(server)
+            for arch in archs:
+                atts = archivers[arch]
+                print('>> modifying adt table for %s attributes (%d)'%(arch,len(atts)))
+                queries = []
+                for name in atts:
+                    ID = targets[name]
+                    name = attribs[name]
+                    device,att_name = name.rsplit('/',1)
+                    domain,member,family = device.split('/')
+                    queries.append("update adt set full_name='%s',device='%s',domain='%s',family='%s',member='%s',att_name='%s' where ID=%d" % (name,device,domain,family,member,att_name,ID))
+                print '\n'.join(queries[:10]+['...'])
+                if load: [api.db.Query(query) for query in queries]
+            print('>> start %s archivers '%server)
+            if load: 
+                time.sleep(10)
+                astor.start_servers(server)
+                
+        if load:
+            fandango.Astor("ArchivingManager/*").stop_servers()
+            time.sleep(15)
+            fandango.Astor("ArchivingManager/*").start_servers()
+            time.sleep(20)
+        if restart or modes:
+            print('>> start archiving: %s'%modes)
+            if load: 
+                api.start_archiving(attribs.values(),modes)
+                #for m,atts in modes.items():
+                    #m = modes_to_dict(m)
+                    #api.start_archiving(atts,m)
+    return archivers
+
+def repair_attribute_names(db,attrlist=None,upper=False,update=False):
+    """ 
+    This method sets all domain/family/member names to upper case in the ADT table 
+    db must be a FriendlyDB object like, db = FriendlyDB(db_name,host,user,passwd)
+    """
+    allnames = db.Query('SELECT full_name,device,att_name,ID FROM adt ORDER BY full_name',export=True)
+    failed = 0
+    device,attrs = '',[]
+    if attrlist: attrlist = [a.lower() for a in attrlist]
+    for line in sorted(allnames):
+        fname,dev,att_name,ID = line
+        if attrlist and fname.lower() not in attrlist:
+            continue
+        if dev.lower()!=device.lower(): #Device changed
+            try:
+                dp = PyTango.DeviceProxy(dev)
+                device = dp.name()
+                attrs = dp.get_attribute_list() #Getting real attribute names
+            except:
+                attrs = []
+            
+        try:
+            if attrs: #If attribute list is not available we should not modify attribute names
+                eq = [a for a in attrs if a.lower()==att_name.lower()]
+                if eq: att_name = eq[0]
+            #full_name = device+'/'+str(att_name) #Using real device name does not solve the problem when attributes are being re-inserted
+            device = dev.upper() if upper else dev.lower()
+            full_name = device+'/'+str(att_name)
+            if full_name.rsplit('/',1)[0] == fname.rsplit('/',1)[0]: continue #Nothing to update
+            domain,family,member = device.split('/')
+            q = "update adt set domain = '%s',family = '%s',member = '%s',device = '%s',full_name = '%s', att_name = '%s' where id=%s" % (domain,family,member,device,full_name,att_name,ID)
+            print "%s: %s"%(fname,q)
+            if update: db.Query(q) 
+        except Exception,e:
+            print '%s: %s'%(fname,e)
+            print traceback.format_exc()
+            break
+            failed += 1
+    
+    if update: db.Query('COMMIT')
+    ok = len(allnames)-failed
+    if update: print '%d names updated' % (len(attrlist or allnames)-failed)
+    return ok    

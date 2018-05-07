@@ -44,10 +44,11 @@ from fandango.log import Logger
 from fandango.db import FriendlyDB
 import fandango.functional as fun
 
-from PyTangoArchiving.common import CommonAPI,PyTango,ServersDict
+from PyTangoArchiving.common import CommonAPI,PyTango,ServersDict, \
+    modes_to_string, modes_to_dict, check_attribute_modes
 from PyTangoArchiving import ARCHIVING_CLASSES,ARCHIVING_TYPES,MAX_SERVERS_FOR_CLASS,MIN_ARCHIVING_PERIOD
 import PyTangoArchiving.utils as utils
-from PyTangoArchiving.dbs import ArchivingDB
+from PyTangoArchiving.dbs import ArchivingDB, get_table_name
 
 #################################################################################################
 # Class for managing archived attributes
@@ -76,7 +77,7 @@ class ArchivedAttribute(Object):
         ID=None ;"Unique ID associated to the attribute in the database"
         """
         ID = ID and int(ID) or 0
-        self.ID,self.table=ID,utils.get_table_name(ID)
+        self.ID,self.table=ID,get_table_name(ID)
 
     def setConfig(self,data_type,data_format,writable):
         """ Stores the information about Attribute Format and Type (adt table)
@@ -117,12 +118,12 @@ class ArchivedAttribute(Object):
         if self and not modestring: modestring=self.archiving_mode
         if isinstance(modestring,str):
             attrib = ':' in modestring and modestring.split(':')[0] or self.name
-            modes = utils.modes_to_dict(modestring)
+            modes = modes_to_dict(modestring)
             if self and attrib==self.name or attrib==(self.device+'/'+self.name):
                 self.modes=modes
             return modes
         if isinstance(modestring,dict):
-            return utils.modes_to_string(modestring)
+            return modes_to_string(modestring)
 
     def __repr__(self):
         if not self.modes and self.archiving_mode: self.extractModeString()
@@ -482,7 +483,7 @@ class ArchivingAPI(CommonAPI):
                             [errors[attribute][mode].append(t0) for mode in modes]
                         for value in values:
                             t1,v1 = utils.date2time(value[0]),value[1]
-                            for mode,check in utils.check_attribute_modes((t0,v0),(t1,v1),self[attribute].modes).items():
+                            for mode,check in check_attribute_modes((t0,v0),(t1,v1),self[attribute].modes).items():
                                 if not check:
                                     if mode not in errors[attribute]: 
                                         params = self[attribute].modes[mode]
@@ -827,7 +828,7 @@ class ArchivingAPI(CommonAPI):
             att = self.attributes[att_name]
             if att.ID in IDs:
                 line=IDs[att.ID]
-                archiver,start_date,arch_mode = line['archiver'],line['start_date'],utils.modes_to_string(line,translate=True)
+                archiver,start_date,arch_mode = line['archiver'],line['start_date'],modes_to_string(line,translate=True)
                 att.setArchiver(archiver,start_date,arch_mode)
                 self.log.debug( 'Attribute %s Status loaded: %s,%s,%s'%tuple(
                     [a+':'+str(getattr(self.attributes[att.name],a)) for a in ['name','archiver','start_date','archiving_mode']]))
