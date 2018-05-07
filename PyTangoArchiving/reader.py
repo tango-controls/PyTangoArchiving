@@ -481,7 +481,7 @@ class Reader(Object,SingletonMap):
         k.update(zip(('db','config'),p))
         if 'db' in k: key+=':'+k['db']
         if 'config' in k: key+=':'+k['config']
-        if 'schema' in k: key+=':'+(k['schema']).replace('*','') # or (not k.get('db','') and '*'))
+        if 'schema' in k: key+=':'+(k['schema'] or '').replace('*','') # or (not k.get('db','') and '*'))
         if 'tango_host' in k: key+=':'+(k['tango_host'] or get_tango_host())
         if not key: 
             key = SingletonMap.parse_instance_key(cls,*p,**k)
@@ -497,10 +497,11 @@ class Reader(Object,SingletonMap):
         else: 
             self.log = logger
         
-        self.log.debug('In PyTangoArchiving.Reader.__init__(%s)' % (schema or db or '...'))
         self.configs = SortedDict()
+        if schema is None: schema = db
         if schema is not None and db=='*': db = schema
         if any(s in ('*','all') for s in (db,schema)): db,schema = '*','*'
+        self.log.debug('In PyTangoArchiving.Reader.__init__(%s)' % (schema or db or '...'))        
         self.db_name = db
         self._last_db = ''
         self.dbs = {}
@@ -1624,7 +1625,8 @@ class ReaderProcess(Logger,SingletonMap): #,Object,SingletonMap):
             key = SingletonMap.parse_instance_key(cls,*p,**k)
         return key
     
-    def __init__(self,db='',config='',servers = None, schema = 'hdb',timeout=300000,log='INFO',logger=None,tango_host=None,alias_file=''):
+    def __init__(self,db='*',config='',servers = None, schema = None,
+            timeout=300000,log='INFO',logger=None,tango_host=None,alias_file=''):
         
         import multiprocessing
         import threading
@@ -1633,18 +1635,24 @@ class ReaderProcess(Logger,SingletonMap): #,Object,SingletonMap):
         self.logger = logger
         if self.logger: [setattr(self,f,getattr(logger,f)) for f in ('debug','info','warning','error')]
         self.info('In ReaderProcess(%s)'%([db,config,servers,schema,timeout,log,logger,tango_host,alias_file]))
+
         #Reader Part
         self.available_attributes,self.failed_attributes,self.asked_attributes = [],[],[]
         self.last_dates = defaultdict(lambda:(1e10,0))
         self.updated,self.last_retry = 0,0
         self.tango_host = tango_host or os.getenv('TANGO_HOST')
         self.tango = PyTango.Database(*self.tango_host.split(':'))
+
         if not alias_file:
             try: alias_file = (self.tango.get_class_property('%sextractor'%schema,['AliasFile'])['AliasFile'] or [''])[0]
             except: alias_file = ''
+
+        if schema is not None and db=='*': db = schema
+        if any(s in ('*','all') for s in (db,schema)): db,schema = '*','*'
         self.alias = read_alias_file(alias_file)
         self.state = PyTango.DevState.INIT
         self.schema = schema
+        
         #Process Part
         self._pipe1,self._pipe2 = multiprocessing.Pipe()
         self._process_event,self._threading_event,self._command_event = multiprocessing.Event(),threading.Event(),threading.Event()
@@ -1775,6 +1783,7 @@ class ReaderProcess(Logger,SingletonMap): #,Object,SingletonMap):
         return self._return
         
     # Public methods
+    #@Cached(depth=10,expire=60.)
     def check_state(self,period=300):
         """ It tries to reconnect to extractors every 5 minutes. """
         assert self.alive()
@@ -1782,9 +1791,11 @@ class ReaderProcess(Logger,SingletonMap): #,Object,SingletonMap):
             self.last_retry = time.time()
             self.state = self._remote_command('check_state')
         return (self.state!=PyTango.DevState.FAULT)
-    def get_attributes(self,period=300):
+
+    @Cached(depth=10,expire=60.)
+    def get_attributes(self,active=False):
         """ Queries the database for the current list of archived attributes."""
-        return self._local.get_attributes()
+        return self._local.get_attributes(active=active)
     
     def is_attribute_archived(self,attribute,active=False):
         """ This method uses two list caches to avoid redundant device proxy calls, launch .reset() to clean those lists. """
