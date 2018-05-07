@@ -284,7 +284,57 @@ def get_current_conf(attr):
 
     result['polling'] = int(polling)        
     return result
-                
+
+def start_archiving_for_attributes(attrs,*args,**kwargs):
+    """
+    def start_archiving(self,attribute,archiver,period=0,
+                      rel_event=None,per_event=300000,abs_event=None,
+                      code_event=False, ttl=None, start=False):
+
+    See HDBpp.add_attribute.__doc__ for a full description of arguments
+    """    
+    archs = get_archivers_for_attributes(attrs)
+    dbs = get_hdbpp_databases(archs.keys())
+    done = []
+    
+    for db,devs in dbs.items():
+        api = PyTangoArchiving.Schemas.getApi(db)
+        devs = [d for d in devs if d in archs]
+        for d in devs:
+            ts = archs[d]
+            print('Launching %d attributes in %s.%s'%(len(ts),db,d))
+            for t in ts:
+                api.start_archiving(t,d,*args,**kwargs)            
+                done.append(fn.tango.get_full_name(t))
+
+    if len(done)!=len(attrs):
+        print('No hdbpp database match for: %s' % str(
+            [a for a in attrs if fn.tango.get_full_name(a) not in done]))
+
+    return done
+
+def get_last_values_for_attributes(attrs,*args,**kwargs):
+    """
+    def start_archiving(self,attribute,archiver,period=0,
+                      rel_event=None,per_event=300000,abs_event=None,
+                      code_event=False, ttl=None, start=False):
+
+    See HDBpp.add_attribute.__doc__ for a full description of arguments
+    """    
+    attrs = [fn.tango.get_full_name(a) for a in attrs]
+    archs = get_archivers_for_attributes(attrs)
+    dbs = get_hdbpp_databases(archs.keys())
+    result = dict((a,None) for a in attrs)
+    
+    for db,devs in dbs.items():
+        api = PyTangoArchiving.Schemas.getApi(db)
+        devs = [d for d in devs if d in archs]
+        for d in devs:
+            for t in archs[d]:
+                result.update(api.load_last_values(t))
+
+    return result
+
 
 def start_attributes_for_archivers(target,attr_regexp='',event_conf={},
             load=False, by_class=False, min_polling = 100, overwrite = False, check = True):
