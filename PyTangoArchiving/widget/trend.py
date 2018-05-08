@@ -52,19 +52,13 @@ from taurus.qt.qtgui.plot import TaurusTrend
 from taurus.qt.qtgui.base import TaurusBaseWidget
 from taurus.qt.qtgui.container import TaurusWidget,TaurusGroupBox
 
+from PyTangoArchiving.widget.dialogs import (
+    DatesWidget, ArchivedTrendLogger, QReloadDialog,
+    getTrendObject, getObjectParent, getTrendBounds,
+    MenuActionAppender, DECIMATION_MODES, USE_MULTIPROCESS )
 
 
-USE_MULTIPROCESS=False
-try:
-    prop = PyTango.Database().get_class_property('HdbExtractor',
-                                        ['Multiprocess'])['Multiprocess']
-    if any(a in str(prop).lower() for a in ('true','1')):
-        USE_MULTIPROCESS=True
-    elif any(fn.matchCl(p,platform.node()) for p in prop):
-        USE_MULTIPROCESS=True
-except:
-    print traceback.format_exc()
-print 'Multiprocess:%s'%USE_MULTIPROCESS
+
 
 #################################################################################################
 # Methods for enabling archiving values in TauTrends
@@ -87,14 +81,6 @@ MIN_REFRESH_PERIOD = 3.
 MIN_WINDOW = 60
 
 ZONES = fn.Struct({'BEGIN':0,'MIDDLE':1,'END':2})
-DECIMATION_MODES = [
-    #('Hide Nones',fn.arrays.notnone),
-    ('Pick One',fn.arrays.pickfirst),
-    ('Minimize Noise',fn.arrays.mindiff),
-    ('Maximize Peaks',fn.arrays.maxdiff),
-    ('Average Values',fn.arrays.average),
-    ('RAW',None),        
-    ]
 
 class ArchivingTrendWidget(TaurusGroupBox):
     def __init__(self, parent = None, designMode = False):
@@ -118,71 +104,6 @@ class ArchivingTrendWidget(TaurusGroupBox):
       if attr not in ('_trend','_datesWidget'):
         return getattr(self._trend,attr)
 
-class DatesWidget(Qt.QWidget): #Qt.QDialog): #QGroupBox):
-    """
-    DatesWidget to control a TaurusTrend from an external widget
-    
-    Little panel with:
-        Start date
-        Length
-        add Apply = Reload+Pause+ShowArchivingDialog
-    """
-    def __init__(self,trend,parent=None,layout=Qt.QVBoxLayout):
-      print('DatesWidget(%s)'%trend)
-      #parent = parent or trend.legend()
-      Qt.QWidget.__init__(self,parent or trend)
-      #trend.showLegend(True)
-      self._trend = trend
-      self.setLayout(layout())
-      self.DEFAULT_START = 'YYYY/MM/DD hh:mm:ss'
-      self.setTitle("Show Archiving since ...")
-      self.xLabelStart = Qt.QLabel('Start')
-      self.xEditStart = Qt.QLineEdit(self.DEFAULT_START)
-      self.xEditStart.setToolTip("""
-        Start date, it can be: 
-          <empty>              #apply -range to current date
-          YYYY/MM/DD hh:mm:ss  #absolute
-          -1d/h/m/s            #relative to current date
-        """)
-      self.xLabelRange = Qt.QLabel("Range")
-      self.xRangeCB = Qt.QComboBox()
-      self.xRangeCB.setEditable(True)
-      self.xRangeCB.addItems(["","1 m","1 h","1 d","1 w","30 d","1 y"])
-      self.xRangeCB.setToolTip("""
-        Any range like:
-          <empty> show data from Start 'til now
-          1m : X minutes
-          1h : X hours
-          1d : X days
-          1w : X weeks
-          1y : X years
-          """)
-      self.xApply = Qt.QPushButton("Reload")
-      self.layout().addWidget(QWidgetWithLayout(self,child=[self.xLabelStart,self.xEditStart]))
-      self.layout().addWidget(QWidgetWithLayout(self,child=[self.xLabelRange,self.xRangeCB]))
-      self.layout().addWidget(QWidgetWithLayout(self,child=[self.xApply]))
-      trend.connect(self.xApply,Qt.SIGNAL("clicked()"),trend.applyNewDates)
-      
-      #if parent is trend.legend():
-
-          #trend.legend().setLayout(Qt.QVBoxLayout())
-          #trend.legend().layout().setAlignment(Qt.Qt.AlignBottom)
-          #self.setMinimumWidth(150)
-          #self.setMinimumHeight(15*4)
-          #trend.legend().layout().addWidget(self)
-          #trend.legend().setMinimumWidth(150)
-          #trend.setMinimumHeight(250)
-          #try:
-            #trend.legend().children()[0].setMinimumWidth(150)
-            #trend.legend().children()[0].children()[0].setMinimumWidth(150)
-          #except:
-            #ms = Qt.QMessageBox.warning(trend,"Error!",traceback.format_exc())
-            
-      return
-      
-    def setTitle(self,title):
-      self.setWindowTitle(title)
-
 class ArchivingTrend(TaurusTrend):
   
     MENU_ACTIONS =         [
@@ -203,7 +124,7 @@ class ArchivingTrend(TaurusTrend):
       self.setModelInConfig(False)
       self.disconnect(self.axisWidget(self.xBottom), Qt.SIGNAL("scaleDivChanged ()"), self._scaleChangeWarning)
       #ArchivedTrendLogger(self,tango_host=fn.get_tango_host(),multiprocess=USE_MULTIPROCESS)
-      ArchivedTrendLogger(self,multiprocess=USE_MULTIPROCESS)
+      ArchivedTrendLogger(self,multiprocess=USE_MULTIPROCESS, value_setter=getArchivedTrendValues)
       #self.MENU_ACTIONS = [
         #('_zoomBackOption','Zoom Back (middle click)',(lambda o:o._zoomBack())),
         #('_setAxisFormatOption','Set Y Axis Format',(lambda o:o._showAxisFormatDialog())),
@@ -213,7 +134,7 @@ class ArchivingTrend(TaurusTrend):
       
     def getArchivedTrendLogger(self,model=None):
         host = fn.get_tango_host(model or None)
-        return ArchivedTrendLogger(self,tango_host=host)
+        return ArchivedTrendLogger(self,tango_host=host, value_setter=getArchivedTrendValues)
       
     def setForcedReadingPeriod(self, msec=None, tsetnames=None):
         '''Sets the forced reading period for the trend sets given by tsetnames.
@@ -235,8 +156,8 @@ class ArchivingTrend(TaurusTrend):
             except AttributeError:
                 qgetint = Qt.QInputDialog.getInteger
             msec,ok = qgetint(self, 'New forced reading period', 
-                                               'Enter the new period for forced reading (in ms).\n Enter "0" for disabling', 
-                                               max(0,msec), 0, 604800000, 100)
+                'Enter the new period for forced reading (in ms).\n Enter "0" for disabling', 
+                max(0,msec), 0, 604800000, 100)
             if not ok: 
                 return
             if msec == 0: 
@@ -353,10 +274,12 @@ class ArchivingTrend(TaurusTrend):
             start = str(ui.xEditStart.text())
         
         print('applyNewDates(%s,%s)'%(start,end))
+        
         try: t0 = str2time(start)
         except: t0 = None
         try: t1 = str2time(end)
         except: t1 = None
+        
         if t1 is not None:
           if t0 is None:
             now = time.time()
@@ -364,18 +287,26 @@ class ArchivingTrend(TaurusTrend):
           else:
             if t0<0: t0 = time.time()+t0
             t0,t1 = t0,t0+t1
+            
         if t1-t0 > 365*86400:
           v = Qt.QMessageBox.warning(self,'Warning!','Reading an interval so big may hung your PC!!',Qt.QMessageBox.Ok|Qt.QMessageBox.Cancel)
-          if v == Qt.QMessageBox.Cancel:
+          
+          if t0 < 1000 or v == Qt.QMessageBox.Cancel:
             return
+        
         if t0 is not None:
+            
           print('applyNewDates(%s,%s)'%(fn.time2str(t0),fn.time2str(t1)))
           self.setAxisScale(Qwt5.QwtPlot.xBottom, t0, t1)
           hosts = map(fn.get_tango_host,self.getModel())
           print('applyNewDates.CheckBuffers(%s)'%str(fn.toList(self.getModel())))
-          for i,m in enumerate(fn.toList(self.getModel())):
-            print(i)
-            self.getArchivedTrendLogger().checkBuffers()
+          rd = QReloadDialog(ui,logger=self.getArchivedTrendLogger())
+          rd.setModal(True)
+          rd.show()
+          #for i,m in enumerate(fn.toList(self.getModel())):
+            #print(i)
+            #self.getArchivedTrendLogger().checkBuffers()
+            
       except:
         ms = Qt.QMessageBox.warning(self,"Error!",traceback.format_exc())
         
@@ -511,335 +442,6 @@ class ArchivingTrend(TaurusTrend):
                 
         return picked,pickedCurveName,pickedIndex        
 
-class MenuActionAppender(BoundDecorator):
-    #self._showArchivingDialogAction = Qt.QAction("Show Archiving Dialog", None)
-    #self.trend.connect(self._showArchivingDialogAction, Qt.SIGNAL("triggered()"), self.show_dialog)
-    #TaurusTrend._canvasContextMenu = MenuActionAppender(self._showArchivingDialogAction)(TaurusTrend._canvasContextMenu)
-    
-    ACTIONS = [
-          ('_showArchivingDialogAction',"Show Archiving Dialog",'show_dialog'),
-          ('_reloadArchiving',"Reload Archiving",'checkBuffers'),
-          ]
-    
-    def __init__(self,before=None): #,action,before=None):
-      #self.action = action
-      self.tracer = 0
-      MenuActionAppender.before = before
-      
-    #def wrapper(self,instance,f,*args,**kwargs):
-    @staticmethod
-    def wrapper(instance,f,*args,**kwargs):
-      try:
-        from taurus.qt.qtgui.plot import TaurusPlot
-        obj = ArchivedTrendLogger(trend=instance)
-        menu = f(instance)
-        before = MenuActionAppender.before or instance._usePollingBufferAction
-        menu.insertSeparator(before)
-
-        for actname,label,method in MenuActionAppender.ACTIONS:
-          action = getattr(instance,actname,None)
-          if not action: 
-              method = method if fn.isCallable(method) else getattr(obj,method,None)
-              setattr(instance,actname,Qt.QAction(label, None))
-              action = getattr(instance,actname)
-              instance.connect(action,Qt.SIGNAL("triggered()"),(lambda o=instance,m=method:m(o)))
-          menu.insertAction(before,action)
-        menu.insertSeparator(before)
-        return menu
-      except:
-        traceback.print_exc()
-        
-class ReloadDialog(Qt.QDialog):
-    
-    def __init__(self,title='Reload Archiving',maxlen=300,parent=None):
-        Qt.QDialog.__init__(self,parent) #,*args)
-        self.setWindowTitle(title)
-        lwidget,lcheck = Qt.QVBoxLayout(),Qt.QHBoxLayout()
-        self.setLayout(lwidget)
-        lwidget.addWidget(QLabel("..."))
-        #self._maxlen = maxlen
-        #self._buffer = [] #collections.deque could be used instead
-        #self._count = Qt.QLabel('0/%d'%maxlen)
-        #lwidget.addWidget(self._count)
-        #self._browser = Qt.QTextBrowser()
-        #lwidget.addWidget(self._browser)
-        #self._cb = Qt.QCheckBox('Dont popup logs anymore')
-        #self._checked = False
-        ##self._label = Qt.QLabel('Dont popup logs anymore')
-        ##self._label.setAlignment(Qt.Qt.AlignLeft)
-        #map(lcheck.addWidget,(self._cb,)) #self._label))
-        lwidget.addLayout(lcheck)
-        self.connect(self._cb,Qt.SIGNAL('toggled(bool)'),self.toggle)
-        self._savebutton = Qt.QPushButton('Save Logs to File')
-        self._savebutton.connect(self._savebutton,Qt.SIGNAL('clicked()'),self.saveLogs)
-        self.layout().addWidget(self._savebutton)    
-    pass
-        
-class ArchivedTrendLogger(SingletonMap):
-    """
-    This klass is attached to a TaurusTrendSet and keeps the information related to its archived values
-    It will replace the tau_trend.TDBArchivingReader and tau_trend.HDBArchivingReader objects
-    
-    The object is a singleton for each trend,tango host pair; to get an existing logger just call:
-       reader = ArchivedTrendLogger(trend,tango_host=tango_host).reader
-       
-    The ATLogger will show a QTextEdit with log messages, it can be closed once it has been executed
-    """
-
-    #Singleton behavior disabled
-    #_instances = {}
-    
-    def __new__(cls,*p,**k):
-        trend = p and p[0] or k['trend']
-        override = k.get('override',False)
-        tango_host = k.get('tango_host',None) or fn.get_tango_host()
-        schema = k.get('schema','*')
-        if not getattr(trend,'_ArchiveLoggers',None):
-            trend._ArchiveLoggers = {} #cls.__instances
-        else:
-            for kk,vv in trend._ArchiveLoggers.items():
-                print(kk,vv)
-
-        if override or tango_host not in trend._ArchiveLoggers:
-            trend._ArchiveLoggers[tango_host] = object.__new__(cls)
-            trend._ArchiveLoggers[tango_host].setup(*p,**k)
-        return trend._ArchiveLoggers[tango_host]
-        
-    def setup(self,trend,use_db=True,db_config='',tango_host='',logger_obj=None,
-          multiprocess=USE_MULTIPROCESS,schema='',show_dialog=False,
-          filters=['*','!DEBUG'],force_period=10000):
-        #trend widget,attribute,start_date,stop_date,use_db,db_config,tango_host,logger_obj,multiprocess,schema=''):
-        print('>'*80)
-        
-        from PyTangoArchiving.reader import Reader,ReaderProcess
-        self.tango_host = tango_host
-        self.trend = trend
-        self.model_trend_sets = defaultdict(list)
-        self.last_check = (0,0)
-        self.logger = logger_obj or trend
-        self.log_objs = {}
-        self.last_args = {}
-        self.last_bounds = (0,0,0) ##NOT USED
-        self.on_check_scales = False
-        self.last_msg = ''
-        self.loglevel = 'INFO'
-        
-        self.schema = schema or (use_db and '*') or 'hdb'
-        print('In ArchivedTrendLogger.setup(%s,%s)'%(trend,self.schema))
-        self.filters = filters
-        self._dialog = None
-        self.show_dialog(show_dialog) #The dialog is initialized here
-        self.reader = (ReaderProcess if multiprocess else Reader)(
-            schema=self.schema,config=db_config,tango_host=tango_host,logger=self)
-        try:
-            axis = self.trend.axisWidget(self.trend.xBottom)
-            #self.trend.connect(axis,Qt.SIGNAL("scaleDivChanged ()"),lambda s=self:s.dialog()._checked or s.show_dialog()) #a new axis change will show archiving dialog
-            self.trend.connect(axis,Qt.SIGNAL("scaleDivChanged ()"),self.checkScales)
-            #self.trend.connect(self.trend._useArchivingAction,Qt.SIGNAL("toggled(bool)"), self.show_dialog)
-            
-            MenuActionAppender.ACTIONS.extend(getattr(self.trend,'MENU_ACTIONS',[]))
-            MenuActionAppender.ACTIONS=list(set(MenuActionAppender.ACTIONS))
-            if True: TaurusTrend._canvasContextMenu = MenuActionAppender()(TaurusTrend._canvasContextMenu)
-            else: self.trend._canvasContextMenu = MenuActionAppender()(self.trend._canvasContextMenu)
-        except:
-            self.warning(traceback.format_exc())
-
-    def show_dialog(self,enable=True):
-        if not self.dialog():
-            try:
-                self._dialog = QTextBuffer(title='Archiving Logs',maxlen=1000)
-                self._showhist = Qt.QPushButton('Show/Save values in a Table')
-                self._showhist.connect(self._showhist,Qt.SIGNAL('clicked()'),self.showRawValues)
-                self.dialog().layout().addWidget(self._showhist)
-                self._reloadbutton = Qt.QPushButton('Reload Archiving')
-                self.dialog().layout().addWidget(self._reloadbutton)
-                self._reloadbutton.connect(self._reloadbutton,Qt.SIGNAL('clicked()'),
-                    fn.partial(fn.qt.QConfirmAction,self.checkBuffers))
-                self._decimatecombo = Qt.QComboBox()
-                self._decimatecombo.addItems([t[0] for t in DECIMATION_MODES])
-                self._decimatecombo.setCurrentIndex(0)
-                self._nonescheck = Qt.QCheckBox('Remove Nones')
-                self._nonescheck.setChecked(True)
-                self._nonescheck.connect(self._nonescheck,Qt.SIGNAL('toggled(bool)'),self.toggle_nones)
-                self._windowedit = Qt.QLineEdit()
-                self._windowedit.setText('0')
-
-                dl = Qt.QGridLayout()
-                dl.addWidget(Qt.QLabel('Decimation method:'),0,0,1,2)
-                dl.addWidget(self._decimatecombo,0,3,1,2)
-                dl.addWidget(Qt.QLabel('Fixed Period (0=AUTO)'),1,0,1,1)
-                dl.addWidget(self._windowedit,1,1,1,1)
-                dl.addWidget(self._nonescheck,1,2,1,2)
-                self.dialog().layout().addLayout(dl)
-                self._clearbutton = Qt.QPushButton('Clear Buffers and Redraw')
-                self.dialog().layout().addWidget(self._clearbutton)
-                self._clearbutton.connect(self._clearbutton,Qt.SIGNAL('clicked()'),
-                    fn.partial(fn.qt.QConfirmAction,self.clearBuffers))
-
-                if hasattr(self.trend,'closeEvent'): 
-                    #setDialogCloser(self.dialog(),self.trend)
-                    setCloserTimer(self.dialog(),self.trend)
-            except: self.warning(traceback.format_exc())
-
-        if self.dialog():
-            ### @TODO
-            self.dialog().toggle(not enable)
-            #if not enable: 
-                #print('show_dialog(False): hiding dialog')
-                #self.dialog().hide()
-            if enable:
-                self.dialog().toggle(True)
-                self.dialog().show()
-                
-    def show_dates_widget(self,show=True):
-        self.trend.showDatesWidget(show=show)
-
-    def toggle_nones(self,checked=False):
-        return True
-            
-    def instances(self):
-        return self.trend._ArchiveLoggers
-    def dialog(self):
-        return self._dialog #ArchivedTrendLogger._dialog #Logger is single-trend based; having a singleton fails when having several trends
-    
-    def setLastArgs(self,model,start=0,stop=None,history=-1,date=None):
-        #self.info('ArchivedTrendLogger.setLastArgs(%s)'%str((model,start,stop,history,date)))
-        date = date or time.time()
-        if fn.isSequence(history): history = len(history)
-        self.last_args[model] = [start,stop,history,date] #It must be a list, not tuple
-    
-    def getDecimation(self):
-        # The decimation method must be a function that takes a series of values and return a single value that summarizes the interval
-        try:
-            t = str(self._decimatecombo.currentText())
-            m = dict(DECIMATION_MODES)[t]
-            self.info('Decimation mode: %s,%s'%(m,t))
-            return m
-        except:
-            self.warning(traceback.format_exc())
-            return None
-    
-    def checkScales(self):
-        bounds = getTrendBounds(self.trend,True)
-        
-        if self.on_check_scales:
-            return False
-        
-        try:
-            self.on_check_scales = True
-            ## Check to be done before triggering anything else
-            diff = bounds[0]-self.last_bounds[0], bounds[1]-self.last_bounds[-1]
-            diff = max(map(abs,diff))
-            td = fn.now()-self.last_bounds[-1]
-            r = max((30.,0.5*(bounds[1]-bounds[0])))
-            ##This avoids re-entring calls into checkScales
-            self.last_bounds = (bounds[0],bounds[1],fn.now())
-            
-            if self.trend.getXDynScale():
-                if not getattr(self.trend,'_configDialog',None):
-                    if (bounds[-1]<(time.time()-3600) 
-                        or (bounds[-1]-bounds[0])>7200):
-                        self.info('Disabling XDynScale when showing past data')
-                        self.trend.setXDynScale(False) 
-
-                if self.trend.isPaused(): # A paused trend will not load data
-                    self.warning('resume plotting ...')
-                    self.trend.setPaused(False)
-
-            #if not (diff > r or td > 1.): #This avoids re-entring calls into checkScales
-                #return False
-
-            print('In checkScales(%s,%s,%s)'%(str(bounds),diff,r))
-            self.checkBuffers()
-            print('Out of checkScales(%s,%s,%s)'%(str(bounds),diff,r))
-        except:
-            self.warning(traceback.format_exc())
-        finally:
-            self.on_check_scales = False
-
-    def checkBuffers(self,*args):
-        self.warning('CheckBuffers(%s)'%str(self.trend.trendSets.keys()))
-        self.trend.doReplot()
-        self.show_dialog(not self.dialog()._checked)
-        for n,ts in self.trend.trendSets.iteritems():
-            try:
-                model = ts.getModel()
-                if model in self.last_args: self.last_args[model][-1] = 0
-                getArchivedTrendValues(ts,model,insert=True)
-                ## THIS CODE MUST BE HERE, NEEDED FOR DEAD ATTRIBUTES
-                self.warning('forcing readings ...')
-                ts.forceReading()
-            except: 
-                self.warning(traceback.format_exc())
-
-        self.trend.doReplot()
-        
-    def clearBuffers(self,*args):
-        self.warning('ArchivedTrendLogger.clearBuffers(%s)'%str(args))
-        self.last_args = {}
-        self.reader.reset()
-        for rd in self.reader.configs.values():
-          try:
-            rd.reset()
-            rd.cache.clear()
-            rd.last_dates.clear()
-          except:
-            self.debug('unable to clear %s buffers'%rd)
-        for n,ts in self.trend.trendSets.iteritems():
-            ts.clearTrends(replot=True)
-            #self._xBuffer.moveLeft(self._xBuffer.maxSize())
-            #self._yBuffer.moveLeft(self._yBuffer.maxSize())
-            ts.forceReading()
-        return
-        
-    def showRawValues(self):
-        try:
-            self._dl = fn.qt.QDialogWidget(buttons=True)
-            qc = Qt.QComboBox()
-            qc.addItems(sorted(self.last_args.keys()))
-            self._dl.setWidget(qc)
-            #dates = []
-            #try:
-              #self.warning('-------------------')
-              #dates.append(self.trend.axisScaleDiv(self.trend.xBottom).lowerBound())
-              #dates.append(self.trend.axisScaleDiv(self.trend.xBottom).upperBound())
-              #self.warning(dates)
-            #except: self.warning(traceback.format_exc())
-            self._dl.setAccept(lambda q=qc:show_history(parseTrendModel(str(q.currentText()))[1])) #,dates=dates))
-            self._dl.show()
-        except:
-            self.warning(traceback.format_exc())
-        
-    def log(self,severity,msg):
-        if msg == self.last_msg: 
-            msg = '+1'
-        else: 
-            self.last_msg = msg
-            if self.logger:
-                try:
-                    if severity not in self.log_objs: self.log_objs[severity] = \
-                        getattr(self.logger,severity.lower(),
-                                lambda m,s=severity:'%s:%s: %s'%
-                                (s.upper(),fn.time2str(),m))
-                    self.log_objs[severity](msg)
-                except: pass
-        if self.dialog():
-            if msg!='+1': 
-                msg = '%s:%s: %s'%(severity.upper(),fn.time2str(),msg)
-            if self.filters:
-                msg = (fn.filtersmart(msg,self.filters) or [''])[0]
-            if msg:
-                if len(self.instances())>1: msg = self.tango_host+':'+msg
-                self.dialog().append(msg)
-                
-    def setLogLevel(self,level): self.loglevel = level
-    def getLogLevel(self): return self.loglevel
-    def trace(self,msg): self.log('trace',msg)
-    def debug(self,msg): self.log('debug',msg)
-    def info(self,msg): self.log('info',msg)
-    def warning(self,msg): self.log('warning',msg)
-    def alarm(self,msg): self.log('alarm',msg)
-    def error(self,msg): self.log('error',msg)
     
 ###############################################################################
     
@@ -885,32 +487,7 @@ def get_history_buffer_from_model(trend_set,model):
         self.traceback()
         #self._history = []
     return history
-            
-def setCloserTimer(dialog,parent=None,period=3000):
-    if not parent: parent = getObjectParent(dialog)
-    dialog._timer = Qt.QTimer()
-    dialog._timer.setInterval(period)
-    def closer(s=dialog,p=parent):
-        try:
-            if not p.isVisible():
-                s.close()
-        except:pass
-    dialog._timer.connect(dialog._timer,Qt.SIGNAL('timeout()'),closer)
-    dialog._timer.start()
         
-def getTrendObject(trend_set):
-    return trend_set if hasattr(trend_set,'axisScaleDiv') else getObjectParent(trend_set)
-
-def getObjectParent(obj):
-    return getattr(obj,'_parent',None) or obj.parent()
-        
-def getTrendBounds(trend_set,rough=False):
-    parent = getTrendObject(trend_set)
-    lbound = parent.axisScaleDiv(parent.xBottom).lowerBound()
-    ubound = parent.axisScaleDiv(parent.xBottom).upperBound()
-    if not rough: ubound = min(time.time(),ubound)
-    return [lbound,ubound]
-    
 def getTrendDimensions(self,value=None):
     if value is not None:
         v = getattr(value,'value',value)
@@ -1186,7 +763,8 @@ def getArchivedTrendValues(trend_set,model,start_date=0,stop_date=None,
         tango_host,attribute,model = parseTrendModel(model)
         parent = getTrendObject(trend_set)
         logger_obj = ArchivedTrendLogger(parent,tango_host=tango_host,
-                                         multiprocess=multiprocess)
+            multiprocess=multiprocess, value_setter = getArchivedTrendValues)
+        
         #logger_obj.info('< %s'%str((model,start_date,stop_date,use_db,decimate,multiprocess)))
         lasts = logger_obj.last_args.get(model,None)
         
@@ -1310,7 +888,7 @@ def getArchivedTrendValues(trend_set,model,start_date=0,stop_date=None,
         Qt.QApplication.instance().restoreOverrideCursor()
         decimation = logger_obj.getDecimation()
         if not decimation:
-            if logger_obj._nonescheck.isChecked(): 
+            if logger_obj.getNonesCheck(): 
                 decimation = fn.arrays.notnone
             elif decimate: 
                 decimation = PyTangoArchiving.reader.data_has_changed
@@ -1424,6 +1002,7 @@ def getArchivedTrendValues(trend_set,model,start_date=0,stop_date=None,
 # TaurusTrend -a helper for be4tter config
 
 def get_archiving_trend(models=None,length=12*3600,show=False,n_trends=1):
+    ## DEPRECATED?
     #class PressureTrend(TaurusTrend):
         #def showEvent(self,event):
             #if not getattr(self,'_tuned',False): 
