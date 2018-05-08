@@ -114,27 +114,41 @@ class ArchivingTrend(TaurusTrend):
         ]
   
     def __init__(self, parent = None, designMode = False):
-      actions = [a[1] for a in MenuActionAppender.ACTIONS]
-      print '>'*80+'\n'+str(MenuActionAppender.ACTIONS)
-      TaurusTrend.__init__(self,parent,designMode)
-      self.resetDefaultCurvesTitle()
-      self.setXDynScale(True)
-      self.setXIsTime(True)
-      self.setUseArchiving(True)
-      self.setModelInConfig(False)
-      self.disconnect(self.axisWidget(self.xBottom), Qt.SIGNAL("scaleDivChanged ()"), self._scaleChangeWarning)
-      #ArchivedTrendLogger(self,tango_host=fn.get_tango_host(),multiprocess=USE_MULTIPROCESS)
-      ArchivedTrendLogger(self,multiprocess=USE_MULTIPROCESS, value_setter=getArchivedTrendValues)
-      #self.MENU_ACTIONS = [
-        #('_zoomBackOption','Zoom Back (middle click)',(lambda o:o._zoomBack())),
-        #('_setAxisFormatOption','Set Y Axis Format',(lambda o:o._showAxisFormatDialog())),
-        #('_pausedOption','Pause (P)',(lambda o:o.setPaused(not o.isPaused()))),
-        #]
-      #self.MENU_ACTIONS.insert(0,)
+        actions = [a[1] for a in MenuActionAppender.ACTIONS]
+        print '>'*80+'\n'+str(MenuActionAppender.ACTIONS)
+        TaurusTrend.__init__(self,parent,designMode)
+        self.resetDefaultCurvesTitle()
+        self.setXDynScale(True)
+        self.setXIsTime(True)
+        self.setUseArchiving(True)
+        self.setModelInConfig(False)
+        self.disconnect(self.axisWidget(self.xBottom), Qt.SIGNAL("scaleDivChanged ()"), self._scaleChangeWarning)
+        #ArchivedTrendLogger(self,tango_host=fn.get_tango_host(fqdn=True),multiprocess=USE_MULTIPROCESS)
+        ArchivedTrendLogger(self,multiprocess=USE_MULTIPROCESS, value_setter=getArchivedTrendValues)
+        
+        self.connect(self,Qt.SIGNAL("refreshData"),self.refreshCurves)
+        #self.MENU_ACTIONS = [
+            #('_zoomBackOption','Zoom Back (middle click)',(lambda o:o._zoomBack())),
+            #('_setAxisFormatOption','Set Y Axis Format',(lambda o:o._showAxisFormatDialog())),
+            #('_pausedOption','Pause (P)',(lambda o:o.setPaused(not o.isPaused()))),
+            #]
+        #self.MENU_ACTIONS.insert(0,)
       
     def getArchivedTrendLogger(self,model=None):
-        host = fn.get_tango_host(model or None)
+        host = fn.get_tango_host(model or None, fqdn=True)
         return ArchivedTrendLogger(self,tango_host=host, value_setter=getArchivedTrendValues)
+    
+    def refreshCurves(self):
+        names =  self.getCurveNames()
+        print('%s: In refreshCurves(%s) ...'%(fn.time2str(),names))
+        for n in names:
+            c = self.getCurve(n)
+            v = c.isVisible()
+            if v:
+                c.setVisible(False)
+                c.setYAxis(c.yAxis())
+                c.setVisible(True)
+        return
       
     def setForcedReadingPeriod(self, msec=None, tsetnames=None):
         '''Sets the forced reading period for the trend sets given by tsetnames.
@@ -298,14 +312,16 @@ class ArchivingTrend(TaurusTrend):
             
           print('applyNewDates(%s,%s)'%(fn.time2str(t0),fn.time2str(t1)))
           self.setAxisScale(Qwt5.QwtPlot.xBottom, t0, t1)
-          hosts = map(fn.get_tango_host,self.getModel())
+          hosts = [fn.get_tango_host(m,fqdn=True) for m in self.getModel()]
           print('applyNewDates.CheckBuffers(%s)'%str(fn.toList(self.getModel())))
-          rd = QReloadDialog(ui,logger=self.getArchivedTrendLogger())
-          rd.setModal(True)
-          rd.show()
-          #for i,m in enumerate(fn.toList(self.getModel())):
-            #print(i)
-            #self.getArchivedTrendLogger().checkBuffers()
+          #rd = QReloadDialog(ui,logger=self.getArchivedTrendLogger())
+          #rd.setModal(True)
+          #rd.show()
+          for i,m in enumerate(fn.toList(self.getModel())):
+            print(i)
+            self.getArchivedTrendLogger().checkBuffers()
+            
+        self.emit(Qt.SIGNAL("refreshData"))
             
       except:
         ms = Qt.QMessageBox.warning(self,"Error!",traceback.format_exc())
@@ -529,7 +545,7 @@ def parseTrendModel(model):
                 print e+'\n'+'getArchivedTrendValues():model(%s).getModelName() failed\, using str(model)'%model
                 model = str(model)
     if '{' not in model: #Excluding "eval-like" models
-        params = utils.parse_tango_model(model)
+        params = utils.parse_tango_model(model,fqdn=True)
         tango_host,attribute = '%s:%s'%(params['host'],params['port']),'%s/%s'%(params['devicename'],params['attributename'])
     else:
         tango_host,attribute='',modelobj.getSimpleName() if hasattr(modelobj,'getSimpleName') else model.split(';')[-1]
@@ -757,7 +773,7 @@ def getArchivedTrendValues(trend_set,model,start_date=0,stop_date=None,
     logger_obj = trend_set
     t00 = time.time()
     N = 0
-    trend_set.debug('In getArchivedTrendValues() ...')
+    trend_set.info('In getArchivedTrendValues() ...')
     
     try:
         tango_host,attribute,model = parseTrendModel(model)
@@ -774,7 +790,7 @@ def getArchivedTrendValues(trend_set,model,start_date=0,stop_date=None,
                                       for x,y in zip(curr,prev)))
             return v
 
-        logger = logger_obj.info
+        logger = logger_obj.warning
         reader = logger_obj.reader
         logger_obj.debug('using reader: %s(%s)' %(type(reader),reader.schema))
         

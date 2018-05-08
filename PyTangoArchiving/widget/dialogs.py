@@ -136,8 +136,7 @@ class QReloadDialog(Qt.QDialog):
 
         self._reloadbutton = Qt.QPushButton('Reload Archiving')
         self.layout().addWidget(self._reloadbutton)
-        self._reloadbutton.connect(self._reloadbutton,Qt.SIGNAL('clicked()'),
-            fn.partial(fn.qt.QConfirmAction,self.logger.checkBuffers))
+        self._reloadbutton.connect(self._reloadbutton,Qt.SIGNAL('clicked()'),self.logger.checkBuffers)
         self._decimatecombo = Qt.QComboBox()
         self._decimatecombo.addItems([t[0] for t in DECIMATION_MODES])
         self._decimatecombo.setCurrentIndex(0)
@@ -193,14 +192,10 @@ class ArchivedTrendLogger(SingletonMap):
     def __new__(cls,*p,**k):
         trend = p and p[0] or k['trend']
         override = k.get('override',False)
-        tango_host = k.get('tango_host',None) or fn.get_tango_host()
+        tango_host = k.get('tango_host',None) or fn.get_tango_host(fqdn=True)
         schema = k.get('schema','*')
         if not getattr(trend,'_ArchiveLoggers',None):
             trend._ArchiveLoggers = {} #cls.__instances
-        else:
-            print('ArchivedTrendLogger instances:')
-            for kk,vv in trend._ArchiveLoggers.items():
-                print(kk,vv)
 
         if override or tango_host not in trend._ArchiveLoggers:
             trend._ArchiveLoggers[tango_host] = object.__new__(cls)
@@ -242,8 +237,10 @@ class ArchivedTrendLogger(SingletonMap):
             
             MenuActionAppender.ACTIONS.extend(getattr(self.trend,'MENU_ACTIONS',[]))
             MenuActionAppender.ACTIONS=list(set(MenuActionAppender.ACTIONS))
-            if True: TaurusTrend._canvasContextMenu = MenuActionAppender()(TaurusTrend._canvasContextMenu)
-            else: self.trend._canvasContextMenu = MenuActionAppender()(self.trend._canvasContextMenu)
+            if True: 
+                TaurusTrend._canvasContextMenu = MenuActionAppender()(TaurusTrend._canvasContextMenu)
+            else: 
+                self.trend._canvasContextMenu = MenuActionAppender()(self.trend._canvasContextMenu)
         except:
             self.warning(traceback.format_exc())
 
@@ -346,7 +343,7 @@ class ArchivedTrendLogger(SingletonMap):
             try:
                 model = ts.getModel()
                 if model in self.last_args: self.last_args[model][-1] = 0
-                # HOOK ADDED FROM CLIENT SIDE
+                # HOOK ADDED FROM CLIENT SIDE, getArchivedTrendValues
                 self.value_setter(ts,model,insert=True)
                 ## THIS CODE MUST BE HERE, NEEDED FOR DEAD ATTRIBUTES
                 self.warning('forcing readings ...')
@@ -467,11 +464,17 @@ class DatesWidget(Qt.QWidget): #Qt.QDialog): #QGroupBox):
             1w : X weeks
             1y : X years
             """)
-        self.xApply = Qt.QPushButton("Reload")
+        self.xApply = Qt.QPushButton("Refresh")
         self.layout().addWidget(QWidgetWithLayout(self,child=[self.xLabelStart,self.xEditStart]))
         self.layout().addWidget(QWidgetWithLayout(self,child=[self.xLabelRange,self.xRangeCB]))
         self.layout().addWidget(QWidgetWithLayout(self,child=[self.xApply]))
         trend.connect(self.xApply,Qt.SIGNAL("clicked()"),trend.applyNewDates)
+        
+        if hasattr(self._trend,'getArchivedTrendLogger'):
+            self.logger = self._trend.getArchivedTrendLogger()
+            self.xReload = Qt.QPushButton("Advanced")        
+            self.layout().addWidget(QWidgetWithLayout(self,child=[self.xReload]))
+            trend.connect(self.xReload,Qt.SIGNAL("clicked()"),self.logger.show_dialog)
         
         #if parent is trend.legend():
 
