@@ -117,7 +117,7 @@ class Schemas(object):
 
         except Exception,e:
             print('getSchema(%s): failed!'%schema)
-            if 1: #logger: 
+            if logger: 
                 exc = traceback.format_exc()
                 try: logger.warning(exc)
                 except: print(exc)

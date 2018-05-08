@@ -549,6 +549,32 @@ class MenuActionAppender(BoundDecorator):
       except:
         traceback.print_exc()
         
+class ReloadDialog(Qt.QDialog):
+    
+    def __init__(self,title='Reload Archiving',maxlen=300,parent=None):
+        Qt.QDialog.__init__(self,parent) #,*args)
+        self.setWindowTitle(title)
+        lwidget,lcheck = Qt.QVBoxLayout(),Qt.QHBoxLayout()
+        self.setLayout(lwidget)
+        lwidget.addWidget(QLabel("..."))
+        #self._maxlen = maxlen
+        #self._buffer = [] #collections.deque could be used instead
+        #self._count = Qt.QLabel('0/%d'%maxlen)
+        #lwidget.addWidget(self._count)
+        #self._browser = Qt.QTextBrowser()
+        #lwidget.addWidget(self._browser)
+        #self._cb = Qt.QCheckBox('Dont popup logs anymore')
+        #self._checked = False
+        ##self._label = Qt.QLabel('Dont popup logs anymore')
+        ##self._label.setAlignment(Qt.Qt.AlignLeft)
+        #map(lcheck.addWidget,(self._cb,)) #self._label))
+        lwidget.addLayout(lcheck)
+        self.connect(self._cb,Qt.SIGNAL('toggled(bool)'),self.toggle)
+        self._savebutton = Qt.QPushButton('Save Logs to File')
+        self._savebutton.connect(self._savebutton,Qt.SIGNAL('clicked()'),self.saveLogs)
+        self.layout().addWidget(self._savebutton)    
+    pass
+        
 class ArchivedTrendLogger(SingletonMap):
     """
     This klass is attached to a TaurusTrendSet and keeps the information related to its archived values
@@ -570,6 +596,9 @@ class ArchivedTrendLogger(SingletonMap):
         schema = k.get('schema','*')
         if not getattr(trend,'_ArchiveLoggers',None):
             trend._ArchiveLoggers = {} #cls.__instances
+        else:
+            for kk,vv in trend._ArchiveLoggers.items():
+                print(kk,vv)
 
         if override or tango_host not in trend._ArchiveLoggers:
             trend._ArchiveLoggers[tango_host] = object.__new__(cls)
@@ -651,11 +680,14 @@ class ArchivedTrendLogger(SingletonMap):
                     #setDialogCloser(self.dialog(),self.trend)
                     setCloserTimer(self.dialog(),self.trend)
             except: self.warning(traceback.format_exc())
+
         if self.dialog():
+            ### @TODO
             self.dialog().toggle(not enable)
-            if not enable: 
-                self.dialog().hide()
-            else:
+            #if not enable: 
+                #print('show_dialog(False): hiding dialog')
+                #self.dialog().hide()
+            if enable:
                 self.dialog().toggle(True)
                 self.dialog().show()
                 
