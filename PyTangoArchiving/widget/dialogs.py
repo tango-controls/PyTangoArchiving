@@ -124,10 +124,13 @@ class MenuActionAppender(BoundDecorator):
       except:
         traceback.print_exc()
         
-class QReloadDialog(Qt.QDialog):
+class QReloadWidget(Qt.QWidget):
     
     def __init__(self,parent, logger, trend = None):
-        Qt.QDialog.__init__(self,parent) #,*args)
+        Qt.QWidget.__init__(self,parent) #,*args)
+        self.setup(parent,logger,trend)
+        
+    def setup(self,parent,logger,trend):
         self.trend = trend or logger.trend
         self.logger = logger
         self.setWindowTitle("Reload Archiving")
@@ -145,7 +148,6 @@ class QReloadDialog(Qt.QDialog):
         self._nonescheck.connect(self._nonescheck,Qt.SIGNAL('toggled(bool)'),self.toggle_nones)
         self._windowedit = Qt.QLineEdit()
         self._windowedit.setText('0')
-        self._windowedit.setEnabled(False)
 
         dl = Qt.QGridLayout()
         dl.addWidget(Qt.QLabel('Decimation method:'),0,0,1,2)
@@ -174,6 +176,12 @@ class QReloadDialog(Qt.QDialog):
         
     def getNonesCheck(self):
         return self._nonescheck.isChecked()
+    
+class QReloadDialog(Qt.QDialog,QReloadWidget):
+    
+    def __init__(self, parent, logger, trend=None):
+        Qt.QDialog(self,parent)
+        self.setup(parent,logger,trend)
         
 class ArchivedTrendLogger(SingletonMap):
     """
@@ -252,8 +260,8 @@ class ArchivedTrendLogger(SingletonMap):
                 self._showhist.connect(self._showhist,Qt.SIGNAL('clicked()'),self.showRawValues)
                 self.dialog().layout().addWidget(self._showhist)
                 
-                self._reloader = QReloadDialog(
-                    parent=self.dialog(), trend=self.trend, logger=self)
+                self._reloader = QReloadWidget(
+                    parent=self._dialog, trend=self.trend, logger=self)
                 self.dialog().layout().addWidget(self._reloader)
                 
                 self._clearbutton = Qt.QPushButton('Clear Buffers and Redraw')
@@ -472,7 +480,7 @@ class DatesWidget(Qt.QWidget): #Qt.QDialog): #QGroupBox):
         
         if hasattr(self._trend,'getArchivedTrendLogger'):
             self.logger = self._trend.getArchivedTrendLogger()
-            self.xReload = Qt.QPushButton("Advanced")        
+            self.xReload = Qt.QPushButton("Settings")        
             self.layout().addWidget(QWidgetWithLayout(self,child=[self.xReload]))
             trend.connect(self.xReload,Qt.SIGNAL("clicked()"),self.logger.show_dialog)
         

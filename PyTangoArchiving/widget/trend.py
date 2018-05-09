@@ -82,6 +82,12 @@ MIN_WINDOW = 60
 
 ZONES = fn.Struct({'BEGIN':0,'MIDDLE':1,'END':2})
 
+def dateHasChanged(prev,curr=None):
+    v = all(curr) and (not prev or not any(prev[:2]) 
+                        or any(abs(x-y)>MIN_WINDOW 
+                                for x,y in zip(curr,prev)))
+    return v
+
 class ArchivingTrendWidget(TaurusGroupBox):
     def __init__(self, parent = None, designMode = False):
       TaurusGroupBox.__init__(self, parent, designMode)
@@ -745,13 +751,14 @@ def getArchivedTrendValues(trend_set,model,start_date=0,stop_date=None,
     either using HdbExtractor device servers or MySQL access 
     (requires permissions).
     
-    This method can be tested with the following code:
-    def debug(s): print s
-    trend = type('fake',(object,),{})()
-    trend._history,type(trend).debug,trend._parent = [], \
-        (lambda c,s:debug(s)),type('',(object,),{'xIsTime':True} )()
-    PyTangoArchiving.reader.getArchivedTrendValues(trend,'BO02/VC/SPBX-03/I1',
-        time.time()-24*3600,time.time(),'DEBUG')
+    This method can be tested with the following code::
+
+        debug = fandango.printf()
+        trend = type('fake',(object,),{})()
+        trend._history,type(trend).debug,trend._parent = [], \
+            (lambda c,s:debug(s)),type('',(object,),{'xIsTime':True} )()
+        PyTangoArchiving.reader.getArchivedTrendValues(trend,'BO02/VC/SPBX-03/I1',
+            time.time()-24*3600,time.time(),'DEBUG')
     
     From TaurusTrendSet is called just like: 
         getArchivedTrendValues(self,model,insert=True)
@@ -784,12 +791,6 @@ def getArchivedTrendValues(trend_set,model,start_date=0,stop_date=None,
         #logger_obj.info('< %s'%str((model,start_date,stop_date,use_db,decimate,multiprocess)))
         lasts = logger_obj.last_args.get(model,None)
         
-        def hasChanged(prev,curr=None):
-            v = all(curr) and (not prev or not any(prev[:2]) 
-                               or any(abs(x-y)>MIN_WINDOW 
-                                      for x,y in zip(curr,prev)))
-            return v
-
         logger = logger_obj.warning
         reader = logger_obj.reader
         logger_obj.debug('using reader: %s(%s)' %(type(reader),reader.schema))
@@ -863,7 +864,7 @@ def getArchivedTrendValues(trend_set,model,start_date=0,stop_date=None,
         
         #Check GAPS
         if stop_date-start_date<MIN_WINDOW or area<(.11,.05)[zone==ZONES.MIDDLE]:
-            if hasChanged(lasts[:2],args): 
+            if dateHasChanged(lasts[:2],args): 
                 logger('In getArchivedTrendValues(%s,%s,%s,%s): '
                        'Interval too small, Nothing to read'
                        %(model,start_date,stop_date,use_db))
@@ -874,7 +875,7 @@ def getArchivedTrendValues(trend_set,model,start_date=0,stop_date=None,
                 traceback.print_exc()
             return []
         
-        if lasts and not hasChanged(lasts[:2],args) and lasts[2]: 
+        if lasts and not dateHasChanged(lasts[:2],args) and lasts[2]: 
             #Data was already retrieved:
             logger('In getArchivedTrendValues(%s,%s,%s) already retrieved data'
                     '([%s] at %s) is newer than requested'%(
@@ -893,7 +894,7 @@ def getArchivedTrendValues(trend_set,model,start_date=0,stop_date=None,
     #trend_set.warning('Data retrieval at + %f' % (time.time()-t00))
     was_paused = parent.isPaused()
     try:
-        logger_obj.info('<3')
+        logger_obj.warning('-'*40)
         logger_obj.warning('In getArchivedTrendValues(%s, %s = %s, %s = %s)(%s): '
             'lasts=%s, getting new data (previous[%s]:%s at %s)'%(
             attribute,start_date,fn.time2str(start_date),stop_date,
@@ -911,17 +912,19 @@ def getArchivedTrendValues(trend_set,model,start_date=0,stop_date=None,
             
         if not multiprocess or not isinstance(reader,ReaderProcess):
             Qt.QApplication.instance().setOverrideCursor(
-                                    Qt.QCursor(Qt.Qt.WaitCursor))            
+                                    Qt.QCursor(Qt.Qt.WaitCursor))
+            
             ###################################################################
+            tr = fn.now()
             history = reader.get_attribute_values(attribute,start_date,stop_date,
                 N=N,asHistoryBuffer=False,decimate=decimation) or []
             
             #(logger_obj.info if len(history) else logger_obj.debug)(
             logger_obj.warning( #@debug
-                'getArchivedTrendValues(%s,%s,%s,%s,%s):'
-                    '\n\t%d %s readings: %s ...\n' % (attribute,
-                    time2str(start_date),time2str(stop_date),
-                    decimation,N,len(history),reader.schema,
+                '%s.get_attribute_values(%s,%s,%s,%s,%s):'
+                    '\n\t%d %s readings in %f s: %s ...\n' % (reader.schema,
+                    attribute,time2str(start_date),time2str(stop_date),
+                    decimation,N,len(history),reader.schema,fn.now()-tr,
                     ','.join([str(s) for s in history[:3]]) ))
                     
             #logger_obj.warning('%s , %s , %s' % (start_date,bounds[0],start_date<=bounds[0]))
