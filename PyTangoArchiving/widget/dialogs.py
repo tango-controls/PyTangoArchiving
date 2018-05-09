@@ -367,6 +367,11 @@ class ArchivedTrendLogger(SingletonMap):
         if check_buffers:
             self.checkBuffers()
             
+        try:
+            self.forceReadings()
+        except:
+            self.warning(traceback.format_exc())
+            
         for n in names:
             c = self.trend.getCurve(n)
             v = c.isVisible()
