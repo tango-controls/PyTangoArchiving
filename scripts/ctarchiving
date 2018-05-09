@@ -20,6 +20,7 @@ case $1 in
   echo "  ctarchiving --search2 <device/attributes> ; searchs only for active attributes"
   echo "  ctarchiving --gui [--range YYYY/MM/DD,XXh] <device/attributes> ; shows Archiving GUI, TaurusFinder"
   echo "  ctarchiving [attributes] ; shows Archiving GUI, TaurusFinder"
+  echo "  ctarchiving --trend <regexps>; shows Archiving trend, without panel"
   ;;
  --load|load)
  shift 1
@@ -46,6 +47,11 @@ case $1 in
   shift 1
   ctarchiving $*
   ;;  
+ --trend|trend)
+  shift 1
+  echo "Launching ArchivingTrend ..."
+  python $PTAROOT/widget/trend.py $*
+  ;;    
  --start|start)
   shift 1
   python $PTAROOT/files.py start $*

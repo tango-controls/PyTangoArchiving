@@ -491,7 +491,7 @@ class Reader(Object,SingletonMap):
                     for i,a in enumerate(x.get_attributes(active=active)):
                         m = parse_tango_model(a)
                         attrs.append((m.simplename,m.model)[self.multihost])
-                    self.log.info('\t%s: %s'%(c,i+1))
+                    self.log.debug('\t%s: %s'%(c,i+1))
                 except:
                     self.log.debug(traceback.format_exc())
             return sorted(set(attrs))
@@ -520,7 +520,7 @@ class Reader(Object,SingletonMap):
             for m in (parse_tango_model(a) for a in self.available_attributes)]
         self.current_attributes = [(m.simplename,m.model)[self.multihost]
             for m in (parse_tango_model(a) for a in self.current_attributes)]
-        self.log.info('parse models: + %d s' % (now()-t1))
+        self.log.debug('parse models: + %f s' % (now()-t1))
         
         self.updated = now()
         
@@ -795,7 +795,8 @@ class Reader(Object,SingletonMap):
                     asHistoryBuffer=asHistoryBuffer,decimate=decimate,
                     notNone=notNone,N=N)
             
-            if fallback: # If no data, it just tries the next database
+            # If no data, it just tries the next database
+            if fallback and (values is None or not len(values)): 
                 sch = self.is_attribute_archived(attribute)[1:]
                 while not len(values) and len(sch):
                     self.log.warning('In get_attribute_values(%s,%s,%s)(%s): '

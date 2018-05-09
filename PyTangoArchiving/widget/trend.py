@@ -90,21 +90,22 @@ def dateHasChanged(prev,curr=None):
 
 class ArchivingTrendWidget(TaurusGroupBox):
     def __init__(self, parent = None, designMode = False):
-      TaurusGroupBox.__init__(self, parent, designMode)
-      self.setTitle('Archiving Trend')
-      self.setLayout(Qt.QVBoxLayout())
-      self._trend = ArchivingTrend(parent=self,designMode = designMode)
-      self._datesWidget = DatesWidget(trend=self._trend,parent=self,layout=Qt.QHBoxLayout)
-      self._trend._datesWidget = self._datesWidget
-      self.layout().addWidget(self._trend)
-      self.layout().addWidget(self._datesWidget)
-      self._datesWidget.show()
+        TaurusGroupBox.__init__(self, parent, designMode)
+        self.setTitle('Archiving Trend')
+        self.setLayout(Qt.QVBoxLayout())
+        self._trend = ArchivingTrend(parent=self,designMode = designMode)
+        self._datesWidget = DatesWidget(trend=self._trend,parent=self,
+            layout=Qt.QHBoxLayout)
+        self._trend._datesWidget = self._datesWidget
+        self.layout().addWidget(self._trend)
+        self.layout().addWidget(self._datesWidget)
+        self._datesWidget.show()
       
     #def connect(self,*a,**k):
       #self._trend.connect(*a,**k)
       
     #def disconnect(self,*a,**k):
-      #self._trend.disconnect(*a,**k)      
+      #self._trend.disconnect(*a,**k)
       
     def __getattr__(self,attr):
       if attr not in ('_trend','_datesWidget'):
@@ -132,29 +133,23 @@ class ArchivingTrend(TaurusTrend):
         #ArchivedTrendLogger(self,tango_host=fn.get_tango_host(fqdn=True),multiprocess=USE_MULTIPROCESS)
         ArchivedTrendLogger(self,multiprocess=USE_MULTIPROCESS, value_setter=getArchivedTrendValues)
         
-        self.connect(self,Qt.SIGNAL("refreshData"),self.refreshCurves)
         #self.MENU_ACTIONS = [
             #('_zoomBackOption','Zoom Back (middle click)',(lambda o:o._zoomBack())),
             #('_setAxisFormatOption','Set Y Axis Format',(lambda o:o._showAxisFormatDialog())),
             #('_pausedOption','Pause (P)',(lambda o:o.setPaused(not o.isPaused()))),
             #]
         #self.MENU_ACTIONS.insert(0,)
+        
+    def close(self):
+        try:
+            self.getArchivedTrendLogger.dialog().close()
+        except:
+            pass
+        TaurusTrend.close(self)
       
     def getArchivedTrendLogger(self,model=None):
         host = fn.get_tango_host(model or None, fqdn=True)
         return ArchivedTrendLogger(self,tango_host=host, value_setter=getArchivedTrendValues)
-    
-    def refreshCurves(self):
-        names =  self.getCurveNames()
-        print('%s: In refreshCurves(%s) ...'%(fn.time2str(),names))
-        for n in names:
-            c = self.getCurve(n)
-            v = c.isVisible()
-            if v:
-                c.setVisible(False)
-                c.setYAxis(c.yAxis())
-                c.setVisible(True)
-        return
       
     def setForcedReadingPeriod(self, msec=None, tsetnames=None):
         '''Sets the forced reading period for the trend sets given by tsetnames.
@@ -281,6 +276,7 @@ class ArchivingTrend(TaurusTrend):
         #self.setForcedReadingPeriod(3000)
         #self.setPaused(True)
         ui = self._datesWidget
+        logger = self.getArchivedTrendLogger()
         if dates is not None:
             ui.xRangeCB.setEditText(dates[-1])
             end = dates[-1]
@@ -293,7 +289,7 @@ class ArchivingTrend(TaurusTrend):
         else:
             start = str(ui.xEditStart.text())
         
-        print('applyNewDates(%s,%s)'%(start,end))
+        logger.warning('applyNewDates(%s,%s)'%(start,end))
         
         try: t0 = str2time(start)
         except: t0 = None
@@ -316,16 +312,18 @@ class ArchivingTrend(TaurusTrend):
         
         if t0 is not None:
             
-          print('applyNewDates(%s,%s)'%(fn.time2str(t0),fn.time2str(t1)))
+          logger.warning('applyNewDates(%s,%s)'%(fn.time2str(t0),fn.time2str(t1)))
           self.setAxisScale(Qwt5.QwtPlot.xBottom, t0, t1)
-          hosts = [fn.get_tango_host(m,fqdn=True) for m in self.getModel()]
-          print('applyNewDates.CheckBuffers(%s)'%str(fn.toList(self.getModel())))
-          #rd = QReloadDialog(ui,logger=self.getArchivedTrendLogger())
-          #rd.setModal(True)
-          #rd.show()
-          for i,m in enumerate(fn.toList(self.getModel())):
-            print(i)
-            self.getArchivedTrendLogger().checkBuffers()
+          #Set Axis Scale already triggers Check Buffers!!!!
+          
+          #hosts = [fn.get_tango_host(m,fqdn=True) for m in self.getModel()]
+          #logger.warning('applyNewDates.CheckBuffers(%s)'%str(fn.toList(self.getModel())))
+          ##rd = QReloadDialog(ui,logger=self.getArchivedTrendLogger())
+          ##rd.setModal(True)
+          ##rd.show()
+          #for i,m in enumerate(fn.toList(self.getModel())):
+            #logger.warning(i)
+            #logger.checkBuffers()
             
         self.emit(Qt.SIGNAL("refreshData"))
             
@@ -555,6 +553,8 @@ def parseTrendModel(model):
         tango_host,attribute = '%s:%s'%(params['host'],params['port']),'%s/%s'%(params['devicename'],params['attributename'])
     else:
         tango_host,attribute='',modelobj.getSimpleName() if hasattr(modelobj,'getSimpleName') else model.split(';')[-1]
+
+    model = fn.tango.get_full_name(model,fqdn=True)
     return tango_host,attribute,model
 
 def getTrendGaps(trend,trend_set,bounds=None):
@@ -780,7 +780,7 @@ def getArchivedTrendValues(trend_set,model,start_date=0,stop_date=None,
     logger_obj = trend_set
     t00 = time.time()
     N = 0
-    trend_set.info('In getArchivedTrendValues() ...')
+    trend_set.debug('In getArchivedTrendValues() ...')
     
     try:
         tango_host,attribute,model = parseTrendModel(model)
@@ -823,15 +823,16 @@ def getArchivedTrendValues(trend_set,model,start_date=0,stop_date=None,
         # Create/Resize buffers if needed
         checkTrendBuffers(trend_set)
         if insert: 
-            logger_obj.debug('Current buffer size: %s'%len(trend_set._xBuffer))
+            logger_obj.debug('Current %s buffer size: %s'
+                %(attribute,len(trend_set._xBuffer)))
 
         # Check trend X scale (not data, just axxis)
         bounds = getTrendBounds(parent,rough=True)
             
         if lasts and time.time()<lasts[3]+MIN_REFRESH_PERIOD: #and lasts[2]
             if bounds!=logger_obj.last_check:
-                logger('PyTangoArchiving.Reader: Last %s query was %d < %d'
-                       ' seconds ago'%(model,time.time()-lasts[3],
+                logger_obj.debug('PyTangoArchiving.Reader: Last %s query was %d < %d'
+                    ' seconds ago'%(attribute,time.time()-lasts[3],
                                        MIN_REFRESH_PERIOD))
                 logger_obj.last_check = bounds
             return []
@@ -853,7 +854,7 @@ def getArchivedTrendValues(trend_set,model,start_date=0,stop_date=None,
             logger_obj.warning('<-'*40+'\n'+
                 'In getArchivedTrendValues(%s,%s,%s,%s): '
                 'Interval too big, restricted to %d rows'
-                %(model,start_date,stop_date,use_db,MAX_QUERY_LENGTH))
+                %(attribute,start_date,stop_date,use_db,MAX_QUERY_LENGTH))
             
             # Fills using data from the end of the query
             N = - MAX_QUERY_LENGTH
@@ -865,9 +866,9 @@ def getArchivedTrendValues(trend_set,model,start_date=0,stop_date=None,
         #Check GAPS
         if stop_date-start_date<MIN_WINDOW or area<(.11,.05)[zone==ZONES.MIDDLE]:
             if dateHasChanged(lasts[:2],args): 
-                logger('In getArchivedTrendValues(%s,%s,%s,%s): '
-                       'Interval too small, Nothing to read'
-                       %(model,start_date,stop_date,use_db))
+                logger_obj.debug('In getArchivedTrendValues(%s,%s,%s,%s): '
+                    'Interval too small, Nothing to read'
+                    %(attribute,start_date,stop_date,use_db))
             logger_obj.setLastArgs(model,args[0],args[1])
             try:
                 logger_obj.trend.doReplot()
@@ -894,7 +895,7 @@ def getArchivedTrendValues(trend_set,model,start_date=0,stop_date=None,
     #trend_set.warning('Data retrieval at + %f' % (time.time()-t00))
     was_paused = parent.isPaused()
     try:
-        logger_obj.warning('-'*40)
+        logger_obj.warning('-'*40+'\n'*8)
         logger_obj.warning('In getArchivedTrendValues(%s, %s = %s, %s = %s)(%s): '
             'lasts=%s, getting new data (previous[%s]:%s at %s)'%(
             attribute,start_date,fn.time2str(start_date),stop_date,
@@ -916,14 +917,14 @@ def getArchivedTrendValues(trend_set,model,start_date=0,stop_date=None,
             
             ###################################################################
             tr = fn.now()
-            history = reader.get_attribute_values(attribute,start_date,stop_date,
+            history = reader.get_attribute_values(model,start_date,stop_date,
                 N=N,asHistoryBuffer=False,decimate=decimation) or []
             
             #(logger_obj.info if len(history) else logger_obj.debug)(
             logger_obj.warning( #@debug
-                '%s.get_attribute_values(%s,%s,%s,%s,%s):'
+                'trend.%s.get_attribute_values(%s,%s,%s,%s,%s):'
                     '\n\t%d %s readings in %f s: %s ...\n' % (reader.schema,
-                    attribute,time2str(start_date),time2str(stop_date),
+                    model,time2str(start_date),time2str(stop_date),
                     decimation,N,len(history),reader.schema,fn.now()-tr,
                     ','.join([str(s) for s in history[:3]]) ))
                     
@@ -931,11 +932,11 @@ def getArchivedTrendValues(trend_set,model,start_date=0,stop_date=None,
             if ((0 < len(history) < abs(N) and area>(.11,.05)[zone==ZONES.MIDDLE])
                 or start_date<=bounds[0]):
                 # Windowed query was finished, stop refreshing
-                check = fn.tango.check_attribute(attribute,readable=True)
+                check = fn.tango.check_attribute(model,readable=True)
                 #logger_obj.warning(check)
                 if not check:
                     logger_obj.warning('Pausing %s ...'%attribute)
-                    taurus.Attribute(attribute).deactivatePolling()
+                    taurus.Attribute(model).deactivatePolling()
                     #was_paused = True
                     
                 
@@ -952,11 +953,15 @@ def getArchivedTrendValues(trend_set,model,start_date=0,stop_date=None,
                 h = len(history)
 
             logger_obj.setLastArgs(model,args[0],args[1],h)
-            logger_obj.info('last_args = %s\n'%(logger_obj.last_args)) #@debug
+            logger_obj.debug('last_args = %s\n'%(logger_obj.last_args)) #@debug
             
             if insert: # THIS MUST BE DONE AFTER UPDATING LAST ARGS!
-                logger_obj.warning('forcing read ...')
-                trend_set.forceReading()
+                logger_obj.trend.emit(Qt.SIGNAL("refreshData"))                
+                #c = logger_obj.recount
+                #logger_obj.recount += 1
+                #logger_obj.warning('forcing read %d ...' % c)
+                #trend_set.forceReading()
+                #logger_obj.warning('forcing read %d ... done' % c)
                 
             #logger('Return history[%d] at + %f' % (h, time.time()-t00))
             return history if history is not None else [] # Success!
@@ -1064,14 +1069,30 @@ def get_archiving_trend(models=None,length=12*3600,show=False,n_trends=1):
             
 if __name__ == "__main__":
     import sys
-    from taurus.qt.qtgui.application import TaurusApplication
-    app = TaurusApplication()
+    #from taurus.qt.qtgui.application import TaurusApplication
+    from fandango.qt import Qt
+    from taurus.qt.qtcore.util.emitter import TaurusEmitterThread
+    app = Qt.QApplication([]) #TaurusApplication()
+    
+    opts = dict(a.split('=',1) if  '=' in a else (a,True)
+            for a in sys.argv[1:] if a.startswith('-'))
+    args = [a for a in sys.argv[1:] if a not in opts]
+    print(args)
+    args = fn.join(fn.find_attributes(a) for a in args)
+    print(args)
     
     aw = ArchivingTrendWidget()
     aw.show()
+    aw._trend.setModel(args)
+    if '--range' in opts:
+        dates = opts['--range'].split(',')
+    else:
+        dates = ('1h',)
+
+    print('Setting trend range to %s' % str(dates))
+    aw._trend.applyNewDates(dates)
     sys.exit(app.exec_())
     
-    args=sys.argv[1:]
     form = get_archiving_trend(models=args,n_trends=1,show=True)   
     form.show()
     #if no models are passed, show the data import dialog

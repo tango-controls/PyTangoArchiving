@@ -32,10 +32,11 @@ import fandango.functional as fun
 from fandango import clmatch
 
 import sys
-EXPERT_MODE = any(a in str(sys.argv) for a in 
-        ('ArchivingBrowser.py','ctarchiving','taurustrend',
-         'taurusfinder','ctsearch','ipython', 'test','-c',
-         'archiving2csv','archiving2plot','matlab','PyExtractor'))
+EXPERT_MODE = True
+    #any(a in str(sys.argv) for a in 
+        #('ArchivingBrowser.py','ctarchiving','taurustrend',
+         #'taurusfinder','ctsearch','ipython', 'test','-c',
+         #'archiving2csv','archiving2plot','matlab','PyExtractor'))
         
 class Schemas(object):
     """ Schemas kept in a singleton object """

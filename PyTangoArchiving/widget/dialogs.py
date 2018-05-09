@@ -124,6 +124,46 @@ class MenuActionAppender(BoundDecorator):
       except:
         traceback.print_exc()
         
+        
+class QArchivedTrendInfo(Qt.QDialog):
+    
+    INSTANCE = None
+    
+    def __init__(self,parent=None,trend=None):
+        Qt.QDialog.__init__(self,parent)
+        self.setLayout(Qt.QVBoxLayout())
+        self.panel = Qt.QTextBrowser()
+        self.layout().addWidget(self.panel)
+        self.reader = PyTangoArchiving.Reader()
+        self.trend = trend
+        self.setModel()
+        self._bt = Qt.QPushButton('Refresh')
+        self._bt.connect(self._bt,Qt.SIGNAL('clicked()'),self.setModel)
+        self.layout().addWidget(self._bt)           
+            
+    def setModel(self,trend=None):
+        trend = trend or self.trend
+        if not trend: 
+            self.panel.setText('')
+            return
+        models = []
+        for n,ts in trend.trendSets.iteritems():
+            model = ts.getModel()
+            modes = self.reader.is_attribute_archived(model)
+            buff = getattr(ts,'_xBuffer',[])
+            if not len(buff): buff = [0]
+            models.append((model,modes,len(buff),buff[0],buff[-1]))
+            
+        self.panel.setText('\n'.join(sorted(
+            '%s\n\t%s\n\t%d values\n\t%s - %s\n'
+            %(m,n,l,time2str(b),time2str(e)) for m,n,l,b,e
+            in models)))
+        
+    def show(self):
+        if self.trend:
+            self.setModel()
+        Qt.QDialog.show(self)
+    
 class QReloadWidget(Qt.QWidget):
     
     def __init__(self,parent, logger, trend = None):
@@ -230,6 +270,8 @@ class ArchivedTrendLogger(SingletonMap):
         self.last_msg = ''
         self.loglevel = 'INFO'
         
+        self.recount = 0
+        
         self.schema = schema or (use_db and '*') or 'hdb'
         print('In ArchivedTrendLogger.setup(%s,%s)'%(trend,self.schema))
         self.filters = filters
@@ -241,6 +283,8 @@ class ArchivedTrendLogger(SingletonMap):
             axis = self.trend.axisWidget(self.trend.xBottom)
             #self.trend.connect(axis,Qt.SIGNAL("scaleDivChanged ()"),lambda s=self:s.dialog()._checked or s.show_dialog()) #a new axis change will show archiving dialog
             self.trend.connect(axis,Qt.SIGNAL("scaleDivChanged ()"),self.checkScales)
+            self.trend.connect(self.trend,Qt.SIGNAL("refreshData"),self.refreshCurves)
+            
             #self.trend.connect(self.trend._useArchivingAction,Qt.SIGNAL("toggled(bool)"), self.show_dialog)
             
             MenuActionAppender.ACTIONS.extend(getattr(self.trend,'MENU_ACTIONS',[]))
@@ -256,13 +300,25 @@ class ArchivedTrendLogger(SingletonMap):
         if not self.dialog():
             try:
                 self._dialog = QTextBuffer(title='Archiving Logs',maxlen=1000)
-                self._showhist = Qt.QPushButton('Show/Save values in a Table')
-                self._showhist.connect(self._showhist,Qt.SIGNAL('clicked()'),self.showRawValues)
-                self.dialog().layout().addWidget(self._showhist)
+                
+                self._trendinfo = QArchivedTrendInfo(trend=self.trend)
+                self._trendinfobt = Qt.QPushButton('Show Models Info')
+                self._trendinfobt.connect(self._trendinfobt,Qt.SIGNAL('clicked()'),
+                                          self._trendinfo.show)
+                self.dialog().layout().addWidget(self._trendinfobt)   
+                
+                self._forcedbt = Qt.QPushButton('Force trend update')
+                self._forcedbt.connect(self._forcedbt,Qt.SIGNAL('clicked()'),
+                                          self.forceReadings)
+                self.dialog().layout().addWidget(self._forcedbt)
                 
                 self._reloader = QReloadWidget(
                     parent=self._dialog, trend=self.trend, logger=self)
                 self.dialog().layout().addWidget(self._reloader)
+                
+                self._showhist = Qt.QPushButton('Show/Save buffers as a Table')
+                self._showhist.connect(self._showhist,Qt.SIGNAL('clicked()'),self.showRawValues)
+                self.dialog().layout().addWidget(self._showhist)                
                 
                 self._clearbutton = Qt.QPushButton('Clear Buffers and Redraw')
                 self.dialog().layout().addWidget(self._clearbutton)
@@ -301,7 +357,24 @@ class ArchivedTrendLogger(SingletonMap):
     
     def getDecimation(self): return self._reloader.getDecimation()
     def getPeriod(self): return self._reloader.getPeriod()
-    def getNonesCheck(self): return self._reloader.getNonesCheck()    
+    def getNonesCheck(self): return self._reloader.getNonesCheck() 
+
+    def refreshCurves(self,check_buffers=False):
+        names =  self.trend.getCurveNames()
+        self.debug('%s: In refreshCurves(%s,%s) ...'%
+                     (fn.time2str(),names,check_buffers))
+
+        if check_buffers:
+            self.checkBuffers()
+            
+        for n in names:
+            c = self.trend.getCurve(n)
+            v = c.isVisible()
+            if v:
+                c.setVisible(False)
+                c.setYAxis(c.yAxis())
+                c.setVisible(True)
+        return
     
     def checkScales(self):
         bounds = getTrendBounds(self.trend,True)
@@ -330,16 +403,21 @@ class ArchivedTrendLogger(SingletonMap):
                     self.warning('resume plotting ...')
                     self.trend.setPaused(False)
 
-            #if not (diff > r or td > 1.): #This avoids re-entring calls into checkScales
-                #return False
-
-            print('In checkScales(%s,%s,%s)'%(str(bounds),diff,r))
+            self.debug('In checkScales(%s,%s,%s)'%(str(bounds),diff,r))
             self.checkBuffers()
-            print('Out of checkScales(%s,%s,%s)'%(str(bounds),diff,r))
+            self.debug('Out of checkScales(%s,%s,%s)'%(str(bounds),diff,r))
         except:
             self.warning(traceback.format_exc())
         finally:
             self.on_check_scales = False
+            
+    def forceReadings(self,filters=''):
+        for n,ts in self.trend.trendSets.iteritems():
+            model = ts.getModel()
+            if not filters or fn.clmatch(filters,model):
+                self.warning('forceReadings(%s)' % model)
+                ts.forceReading()
+        self.trend.emit('refreshData')
 
     def checkBuffers(self,*args):
         self.warning('CheckBuffers(%s)'%str(self.trend.trendSets.keys()))
@@ -351,11 +429,14 @@ class ArchivedTrendLogger(SingletonMap):
             try:
                 model = ts.getModel()
                 if model in self.last_args: self.last_args[model][-1] = 0
+                self.debug('%s buffer has %d values' % 
+                    (model, len(getattr(ts,'_xBuffer',[]))))
                 # HOOK ADDED FROM CLIENT SIDE, getArchivedTrendValues
                 self.value_setter(ts,model,insert=True)
-                ## THIS CODE MUST BE HERE, NEEDED FOR DEAD ATTRIBUTES
-                self.warning('forcing readings ...')
-                ts.forceReading()
+                if not fn.tango.check_attribute(model,readable=True):
+                    ## THIS CODE MUST BE HERE, NEEDED FOR DEAD ATTRIBUTES
+                    self.warning('checkBuffers(%s): forcing readings ...' % model)
+                    ts.forceReading()
             except: 
                 self.warning(traceback.format_exc())
 
