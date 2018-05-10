@@ -186,6 +186,8 @@ def get_attributes_as_event_list(attributes,start_date=None,stop_date=None,formu
     return buffer
                     
 def translate_attribute_alias(attribute):
+    full = 'tango://' in attribute
+    attribute = attribute.replace('tango://','')
     if ':' in attribute.split('/')[0]: 
         attribute = attribute.split('/',1)[-1] #removing tango_host
     if attribute.count('/') in (0,1):
@@ -198,6 +200,7 @@ def translate_attribute_alias(attribute):
             attribute+='/position'
         else:
             attribute+='/state'
+    #if full: attribute = 'tango://' + attribute
     return attribute
   
 def get_attribute_pytype(attribute=None,value=None):
