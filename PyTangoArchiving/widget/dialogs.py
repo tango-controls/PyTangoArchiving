@@ -309,7 +309,7 @@ class ArchivedTrendLogger(SingletonMap):
                 
                 self._forcedbt = Qt.QPushButton('Force trend update')
                 self._forcedbt.connect(self._forcedbt,Qt.SIGNAL('clicked()'),
-                                          self.forceReadings)
+                                          self.refreshCurves)
                 self.dialog().layout().addWidget(self._forcedbt)
                 
                 self._reloader = QReloadWidget(
@@ -422,7 +422,6 @@ class ArchivedTrendLogger(SingletonMap):
             if not filters or fn.clmatch(filters,model):
                 self.warning('forceReadings(%s)' % model)
                 ts.forceReading()
-        self.trend.emit('refreshData')
 
     def checkBuffers(self,*args):
         self.warning('CheckBuffers(%s)'%str(self.trend.trendSets.keys()))
@@ -558,6 +557,7 @@ class DatesWidget(Qt.QWidget): #Qt.QDialog): #QGroupBox):
             1w : X weeks
             1y : X years
             """)
+        self.xRangeCB.setCurrentIndex(1)
         self.xApply = Qt.QPushButton("Refresh")
         self.layout().addWidget(QWidgetWithLayout(self,child=[self.xLabelStart,self.xEditStart]))
         self.layout().addWidget(QWidgetWithLayout(self,child=[self.xLabelRange,self.xRangeCB]))
@@ -566,7 +566,7 @@ class DatesWidget(Qt.QWidget): #Qt.QDialog): #QGroupBox):
         
         if hasattr(self._trend,'getArchivedTrendLogger'):
             self.logger = self._trend.getArchivedTrendLogger()
-            self.xReload = Qt.QPushButton("Settings")        
+            self.xReload = Qt.QPushButton("Info")        
             self.layout().addWidget(QWidgetWithLayout(self,child=[self.xReload]))
             trend.connect(self.xReload,Qt.SIGNAL("clicked()"),self.logger.show_dialog)
         
