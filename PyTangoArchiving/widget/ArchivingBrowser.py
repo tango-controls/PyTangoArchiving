@@ -56,6 +56,10 @@ except:
 
 from taurus.qt.qtcore.util.emitter import SingletonWorker
 
+try:
+  from PyTangoArchiving.widget.tree import TaurusModelChooser
+except:
+  TaurusModelChooser = None
 
 def get_distinct_domains(l):
     return sorted(set(str(s).upper().split('/')[0] for s in l))
@@ -113,6 +117,9 @@ class AttributesPanel(PARENT_KLASS):
                 "Show Archiving Info",self.onShowArchivingModes),
             'AddToTrend': self.popMenu.addAction(Qt.QIcon(),
                 "Add attribute to Trend", self.addAttributeToTrend),
+            'AddSelected': self.popMenu.addAction(Qt.QIcon(),
+                "Add selected attributes to Trend", self.addSelectedToTrend),
+            
             #'Test Device': self.popMenu.addAction(Qt.QIcon(),"Test Device",self.onTestDevice)
             }
         #if hasattr(self,'setFrameStyle'):
@@ -128,6 +135,15 @@ class AttributesPanel(PARENT_KLASS):
     def __del__(self):
         print 'AttributesPanel.__del__'
         QGridTable.__del__(self)
+        
+    def setItem(self,x,y,item,spanx=1,spany=1,align=None,model=None):
+        align = align or Qt.Qt.AlignLeft
+        try:
+            if model:
+                item._model = model
+        except: pass
+        self.layout().addWidget(item,x,y,spany,spanx,Qt.Qt.AlignCenter)
+        if item not in self._widgets: self._widgets.append(item)            
             
     def mousePressEvent(self, event):
         point = event.pos()
@@ -146,6 +162,7 @@ class AttributesPanel(PARENT_KLASS):
             self.actions['ShowDeviceInfo'].setEnabled('/' in self.current_item._model)
             self.actions['ShowArchivingInfo'].setEnabled('/' in self.current_item._model)
             self.actions['AddToTrend'].setEnabled(hasattr(self,'trend'))
+            self.actions['AddSelected'].setEnabled(hasattr(self,'trend'))
             self.popMenu.exec_(self.mapToGlobal(point))
         except:
             traceback.print_exc()
@@ -178,6 +195,19 @@ class AttributesPanel(PARENT_KLASS):
           self.trend.addModels([model])
         except:
           Qt.QMessageBox.warning(self,"ups!",traceback.format_exc())        
+          
+    def addSelectedToTrend(self):
+        try:
+            y = self.columnCount()-1
+            models = []
+            for x in range(self.rowCount()):
+                item = self.itemAt(x,y).widget()
+                m = getattr(item,'_model','')
+                if m and item.isChecked():
+                    models.append(m)
+            self.trend.addModels(models)
+        except:
+            Qt.QMessageBox.warning(self,"ups!",traceback.format_exc())                  
     
     def setValues(self,values,filters=None):
         """ filters will be a tuple containing several regular expressions to match """
@@ -212,7 +242,9 @@ class AttributesPanel(PARENT_KLASS):
             ###################################################################
             qf = Qt.QFrame()
             qf.setLayout(Qt.QGridLayout())
-            self.setCellWidget(i+self.offset,0,qf) #Order changed, it is not clear if it has to be done before or after adding TaurusValue selfect
+            #Order changed, it is not clear if it has to be done before or after adding TaurusValue selfect
+            self.setCellWidget(i+self.offset,0,qf) 
+            
             #print('Adding item: %s, %s, %s, %s, %s' % (model,device,attribute,alias,archived))
             if ok:
                 tv = TaurusValue() #TaurusValueLabel()
@@ -241,6 +273,9 @@ class AttributesPanel(PARENT_KLASS):
                 lambda a=self.reader.get_attribute_alias(model),o=q: 
                  setattr(q,'w',show_history(a))) #showArchivingModes(a,parent=self)))
             self.setItem(i+self.offset,4,q)
+            
+            qc = Qt.QCheckBox()
+            self.setItem(i+self.offset,5,qc,1,1,Qt.Qt.AlignCenter,model)
 
             if ok:
                 #print('Setting Model %s'%model)
@@ -407,7 +442,7 @@ class ArchivingBrowser(Qt.QWidget):
         if len(devs)>self.MAX_DEVICES and warn:
             Qt.QMessageBox.warning(self, "Warning" , "Your search (%s,%s) matches too many devices!!! (%d); please refine your search\n\n%s\n..."%(devfilter,attrfilter,len(devs),'\n'.join(devs[:30])))
             return {}
-        elif warn and len(devs)>5:
+        elif warn and len(devs)>15:
             r = Qt.QMessageBox.warning(self, "Message" , "Your search (%s,%s) matches %d devices."%(devfilter,attrfilter,len(devs)),Qt.QMessageBox.Ok|Qt.QMessageBox.Cancel)
             if r==Qt.QMessageBox.Cancel:
                 return {}
@@ -443,7 +478,7 @@ class ArchivingBrowser(Qt.QWidget):
                 if attrfilter in ('state','','*','**'):
                     self.matching_attributes[d+'/state'] = (d,d,'state',None) #A None label means device-not-readable
                     
-        if warn and len(self.matching_attributes)>16:
+        if warn and len(self.matching_attributes)>30:
             r = Qt.QMessageBox.warning(self, "Message" , "(%s) matches %d attributes."%(attrfilter,len(self.matching_attributes)),Qt.QMessageBox.Ok|Qt.QMessageBox.Cancel)
             if r==Qt.QMessageBox.Cancel:
                 return {}
@@ -464,17 +499,20 @@ class ArchivingBrowser(Qt.QWidget):
         self.setMinimumWidth(950)#550)
         #self.setMinimumHeight(700)
         self.layout().setAlignment(Qt.Qt.AlignTop)
-        self.chooser = Qt.QFrame()
-        self.chooser.setLayout(Qt.QHBoxLayout())
-        self.combo = Qt.QComboBox() #(self)
-        #self.chooser.layout().addWidget(Qt.QLabel('Choose a domain to see temperatures status:'))
-        #self.chooser.layout().addWidget(self.combo)
-        #self.layout().addWidget(self.chooser)
+        self.browser = Qt.QFrame()
+        self.browser.setLayout(Qt.QVBoxLayout())
+        
+        self.chooser = Qt.QTabWidget()
+        self.chooser.setTabPosition(self.chooser.West)
+        self.combo = Qt.QComboBox() # Combo used for domains, currently disabled
+
         if True:
             self.searchbar = Qt.QFrame()
             self.searchbar.setLayout(Qt.QGridLayout()) 
-            self.label = Qt.QLabel('Type a part of device name and a part of attribute name, use "*" or " " as wildcards:')
-            #self.search = Qt.QLineEdit()
+
+            #self.label = Qt.QLabel('Type a part of device name and a part of attribute name, use "*" or " " as wildcards:')
+            #self.layout().addWidget(self.label)
+            
             self.ServerFilter = Qt.QLineEdit()
             self.ServerFilter.setMaximumWidth(250)
             self.DeviceFilter = fandango.qt.Dropable(Qt.QLineEdit)()
@@ -483,14 +521,17 @@ class ArchivingBrowser(Qt.QWidget):
             self.AttributeFilter.setSupportedMimeTypes([fandango.qt.TAURUS_ATTR_MIME_TYPE,fandango.qt.TEXT_MIME_TYPE])
             self.update = Qt.QPushButton('Update')
             self.archivecheck = Qt.QCheckBox("Show archived attributes only")
-            self.archivecheck.setChecked(False)
-            self.layout().addWidget(self.label)
+            self.archivecheck.setChecked(True)
+            
             [self.searchbar.layout().addWidget(o,x,y,h,w) for o,x,y,h,w in (
                 (Qt.QLabel("Device or Alias:"),0,0,1,1),(self.DeviceFilter,0,1,1,4),
                 (Qt.QLabel("Attribute:"),0,5,1,1),(self.AttributeFilter,0,6,1,4),
                 (self.update,0,10,1,1),(self.archivecheck,0,11,1,2),
                 )]
-            self.searchbar.layout().addWidget(Qt.QLabel('Enter Device and Attribute filters using wildcards (e.g. li/ct/plc[0-9]+ / ^stat*$ & !status ) and push Update'),1,0,4,13)
+            self.searchbar.layout().addWidget(Qt.QLabel(
+                'Enter Device and Attribute filters using wildcards '
+                '(e.g. li/ct/plc[0-9]+ / ^stat*$ & !status ) and push Update'),1,0,4,13)
+            
             if SHOW_OPTIONS:
                 self.options = Qt.QWidget() #self.searchbar
                 self.options.setLayout(Qt.QGridLayout())
@@ -506,14 +547,16 @@ class ArchivingBrowser(Qt.QWidget):
                 self.optiontab.addTab(self.options,'Options')
                 self.optiontab.setMaximumHeight(100)
                 self.optiontab.setTabPosition(self.optiontab.North)
-                self.layout().addWidget(self.optiontab)
-            else: self.layout().addWidget(self.searchbar)
+                self.browser.layout().addWidget(self.optiontab)
+                
+            else: 
+                self.browser.layout().addWidget(self.searchbar)
             
         self.toppan = Qt.QWidget(self)
         self.toppan.setLayout(Qt.QVBoxLayout())
         if True:
             self.header = QGridTable(self.toppan)
-            self.header.setHorizontalHeaderLabels('Label/Value Device Attribute Alias Archiving'.split())
+            self.header.setHorizontalHeaderLabels('Label/Value Device Attribute Alias Archiving Check'.split())
             self.header.setColumnWidth(0,350)
             self.toppan.layout().addWidget(self.header)
         
@@ -534,10 +577,16 @@ class ArchivingBrowser(Qt.QWidget):
             
         self.toppan.layout().addWidget(Qt.QLabel('Drag any attribute from the first column into the trend or any taurus widget you want:'))
         
+        self.browser.layout().addWidget(self.toppan)
+        self.chooser.addTab(self.browser,'Search ...')
+        if TaurusModelChooser is not None:
+            self.treemodel = TaurusModelChooser(parent=self.chooser)
+            self.chooser.addTab(self.treemodel)
+        
         if USE_TREND:
             self.split = Qt.QSplitter(Qt.Qt.Vertical)
             self.split.setHandleWidth(10)
-            self.split.addWidget(self.toppan)
+            self.split.addWidget(self.chooser)
             
             from taurus.qt.qtgui.plot import TaurusTrend
             from PyTangoArchiving.widget.trend import ArchivingTrend,ArchivingTrendWidget
@@ -548,7 +597,7 @@ class ArchivingBrowser(Qt.QWidget):
             self.split.addWidget(self.trend)
             self.layout().addWidget(self.split)
         else:
-            self.layout().addWidget(self.toppan)
+            self.layout().addWidget(self.chooser)
         type(self)._persistent_ = self
         
     def connectSignals(self):
