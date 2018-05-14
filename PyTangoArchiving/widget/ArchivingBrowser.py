@@ -93,6 +93,10 @@ class AttributesPanel(PARENT_KLASS):
     _domains = ['ALL EPS']+['LI','LT']+['LT%02d'%i for i in range(1,3)]+['SR%02d'%i for i in range(1,17)]
     _fes = [f for f in get_distinct_domains(fandango.get_database().get_device_exported('fe*')) if fun.matchCl('fe[0-9]',f)]
     
+    LABELS = 'Label/Value Device Attribute Alias Archiving Check'.split()
+    SIZES = [500, 150, 90, 90, 90, 40]
+    STRETCH = [8, 4, 4, 4, 2, 1]
+    
     def __init__(self,parent=None,devices=None):
         #print '~'*80
         tracer('In AttributesPanel()')
@@ -104,9 +108,11 @@ class AttributesPanel(PARENT_KLASS):
         self.devices=devices or []
         self.setValues(None)
         self.models = []
+        
         self.current_item = None
         #self.connect(self, Qt.SIGNAL('customContextMenuRequested(const QPoint&)'), self.onContextMenu)
         self.popMenu = Qt.QMenu(self)
+        
         self.actions = {
             'TestDevice': self.popMenu.addAction(Qt.QIcon(),
                 "Test Device",self.onTestDevice),
@@ -119,6 +125,10 @@ class AttributesPanel(PARENT_KLASS):
                 "Add attribute to Trend", self.addAttributeToTrend),
             'AddSelected': self.popMenu.addAction(Qt.QIcon(),
                 "Add selected attributes to Trend", self.addSelectedToTrend),
+            'CheckAll': self.popMenu.addAction(Qt.QIcon(),
+                "Select all attributes", self.checkAll),
+            'UncheckAll': self.popMenu.addAction(Qt.QIcon(),
+                "Deselect all attributes", self.uncheckAll),            
             
             #'Test Device': self.popMenu.addAction(Qt.QIcon(),"Test Device",self.onTestDevice)
             }
@@ -205,9 +215,23 @@ class AttributesPanel(PARENT_KLASS):
                 m = getattr(item,'_model','')
                 if m and item.isChecked():
                     models.append(m)
+            if len(models) > 20:
+                Qt.QMessageBox.warning(self,"warning",
+                    "To avoid performance issues, dynamic scale will be disabled")
+                self.trend.setXDynScale(False)
             self.trend.addModels(models)
         except:
-            Qt.QMessageBox.warning(self,"ups!",traceback.format_exc())                  
+            Qt.QMessageBox.warning(self,"ups!",traceback.format_exc())
+            
+    def checkAll(self):
+        y = self.columnCount()-1
+        for x in range(self.rowCount()):
+            self.itemAt(x,y).widget().setChecked(True)
+            
+    def uncheckAll(self):
+        y = self.columnCount()-1
+        for x in range(self.rowCount()):
+            self.itemAt(x,y).widget().setChecked(False)            
     
     def setValues(self,values,filters=None):
         """ filters will be a tuple containing several regular expressions to match """
@@ -220,10 +244,11 @@ class AttributesPanel(PARENT_KLASS):
         return
             
     def generateTable(self,values):
+        
         #thermocouples = thermocouples if thermocouples is not None else self.thermocouples
         self.setRowCount(len(values))
         self.setColumnCount(5)
-        self.vheaders = []
+        #self.vheaders = []
         self.offset = 0
         self.widgetbuffer = []
         
@@ -231,10 +256,11 @@ class AttributesPanel(PARENT_KLASS):
             #print 'setTableRow(%s,%s)'%(i,tc)
             model,device,attribute,alias,archived,ok = tc
             model,device,attribute,alias = map(str.upper,(model,device,attribute,alias))
-            self.vheaders.append(model)
-            def ITEM(m,model=''):
+            #self.vheaders.append(model)
+            def ITEM(m,model='',size=0):
                 q = fandango.qt.Draggable(Qt.QLabel)(m)
-                q.setMinimumWidth(.7*950/5.)
+                if size is not 0:
+                    q.setMinimumWidth(size) #(.7*950/5.)
                 q._model = model
                 q._archived = archived
                 q.setDragEventCallback(lambda s=q:s._model)
@@ -242,6 +268,8 @@ class AttributesPanel(PARENT_KLASS):
             ###################################################################
             qf = Qt.QFrame()
             qf.setLayout(Qt.QGridLayout())
+            qf.setMinimumWidth(self.SIZES[0])
+            qf.setSizePolicy(Qt.QSizePolicy.Expanding,Qt.QSizePolicy.Fixed)
             #Order changed, it is not clear if it has to be done before or after adding TaurusValue selfect
             self.setCellWidget(i+self.offset,0,qf) 
             
@@ -252,10 +280,11 @@ class AttributesPanel(PARENT_KLASS):
                 tv.setParent(qf)
             else:
                 self.setItem(i+self.offset,0,ITEM(model,model))
-            devlabel = ITEM(device,model)
+                
+            devlabel = ITEM(device,model,self.SIZES[1])
             self.setItem(i+self.offset,1,devlabel)
-            self.setItem(i+self.offset,2,ITEM(attribute,model))
-            self.setItem(i+self.offset,3,ITEM(alias,model))
+            self.setItem(i+self.offset,2,ITEM(attribute,model,self.SIZES[2]))
+            self.setItem(i+self.offset,3,ITEM(alias,model,self.SIZES[3]))
 
             from PyTangoArchiving.widget.panel import showArchivingModes,show_history
             if archived:
@@ -264,22 +293,24 @@ class AttributesPanel(PARENT_KLASS):
             else:
               txt = '...'
             q = Qt.QPushButton(txt)
-            q.setToolTip("""<pre>
+            q.setFixedWidth(self.SIZES[-2])
+            q.setToolTip("""%s<br><br><pre>
               'HDB' : Archived and updated, push to export values
               'hdb' : Archiving stopped, push to export values
               '...' : Not archived
-              </pre>""")
+              </pre>"""%txt)
             self.connect(q, Qt.SIGNAL("pressed ()"), 
                 lambda a=self.reader.get_attribute_alias(model),o=q: 
                  setattr(q,'w',show_history(a))) #showArchivingModes(a,parent=self)))
             self.setItem(i+self.offset,4,q)
             
             qc = Qt.QCheckBox()
+            qc.setFixedWidth(self.SIZES[-1])
             self.setItem(i+self.offset,5,qc,1,1,Qt.Qt.AlignCenter,model)
 
             if ok:
                 #print('Setting Model %s'%model)
-                #FOR SOME REASON ADDING ALL WIDGETS IN BACKGROUND DIDN'T WORKED, I JUST CAN SET MODELS FROM THE WORKER, BUT NOT ADDING WIDGETS
+                #ADDING WIDGETS IN BACKGROUND DIDN'T WORKED, I JUST CAN SET MODELS FROM THE WORKER
                 try:
                     if self.worker:
                         self.worker.put([(lambda w=tv,m=model:w.setModel(m))])
@@ -289,14 +320,14 @@ class AttributesPanel(PARENT_KLASS):
                 except: 
                     print traceback.format_exc()
                 self.models.append(tv)
-                #print('...')
+                
             #self.widgetbuffer.extend([qf,self.itemAt(i+self.offset,1),self.itemAt(i+self.offset,2),self.itemAt(i+self.offset,3),self.itemAt(i+self.offset,4)])
             fandango.threads.Event().wait(.02)
             
         if len(values):
             def setup(o=self):
                 [o.setRowHeight(i,20) for i in range(o.rowCount())]
-                o.setColumnWidth(0,350)
+                #o.setColumnWidth(0,350)
                 o.update()
                 o.repaint()
                 #print o.rowCount()
@@ -340,24 +371,26 @@ class ArchivingBrowser(Qt.QWidget):
     MAX_DEVICES = 500
     MAX_ATTRIBUTES = 1500
     
+    LABELS = AttributesPanel.LABELS
+    SIZES = AttributesPanel.SIZES
+    STRETCH = AttributesPanel.STRETCH
+    
     def __init__(self,parent=None,domains=None,regexp='*pnv-*',USE_SCROLL=True,USE_TREND=False):
         print('%s: ArchivingBrowser()' % fun.time2str())
         Qt.QWidget.__init__(self,parent)
-        self.setupUi(USE_SCROLL=USE_SCROLL,USE_TREND=USE_TREND)
+        self.setupUi(USE_SCROLL=USE_SCROLL, USE_TREND=USE_TREND, SHOW_OPTIONS=False)
         self.load_all_devices()
         try:
             import PyTangoArchiving
             self.reader = PyTangoArchiving.Reader('*') 
-            #self.hreader = PyTangoArchiving.Reader('hdb')
-            #self.treader = PyTangoArchiving.Reader('tdb')
-            #self.archattrs = sorted(set(map(str.lower,(a for l in (self.hreader.get_attributes(),self.hreader.alias.keys(),self.treader.get_attributes(active=True)) for a in l))))
             self.archattrs = sorted(set(self.reader.get_attributes()))
             self.archdevs = list(set(a.rsplit('/',1)[0] for a in self.archattrs))
         except:
             traceback.print_exc()
+            
         self.extras = []
-        self.domains = domains if domains else ['MAX','ANY','LI/LT','BO/BT']+['SR%02d'%i for i in range(1,17)]+['FE%02d'%i for i in (1,2,4,9,11,13,22,24,29,34)]
-        self.combo.addItems((['Choose...']+self.domains) if len(self.domains)>1 else self.domains)
+        #self.domains = domains if domains else ['MAX','ANY','LI/LT','BO/BT']+['SR%02d'%i for i in range(1,17)]+['FE%02d'%i for i in (1,2,4,9,11,13,22,24,29,34)]
+        #self.combo.addItems((['Choose...']+self.domains) if len(self.domains)>1 else self.domains)
         self.connectSignals()
         print('%s: ArchivingBrowser(): done' % fun.time2str())
         
@@ -397,6 +430,7 @@ class ArchivingBrowser(Qt.QWidget):
         
     def load_attributes(self,servfilter,devfilter,attrfilter,warn=True,exclude = ('dserver','tango*admin','sys*database','tmp','archiving')):
         tracer('In load_attributes(%s,%s,%s)'%(servfilter,devfilter,attrfilter))
+        
         servfilter,devfilter,attrfilter = servfilter.replace(' ','*').strip(),devfilter.replace(' ','*'),attrfilter.replace(' ','*')
         attrfilter = attrfilter or 'state'
         devfilter = devfilter or attrfilter
@@ -493,75 +527,89 @@ class ArchivingBrowser(Qt.QWidget):
         tracer('\t%d attributes found'%len(self.matching_attributes))
         return self.matching_attributes
         
-    def setupUi(self,USE_SCROLL=False,SHOW_OPTIONS=True,USE_TREND=False):
+    def setupUi(self,USE_SCROLL=False, SHOW_OPTIONS=False, USE_TREND=False):
         self.setWindowTitle('Tango Finder : Search Attributes and Archiving')
         self.setLayout(Qt.QVBoxLayout())
         self.setMinimumWidth(950)#550)
         #self.setMinimumHeight(700)
+        
         self.layout().setAlignment(Qt.Qt.AlignTop)
         self.browser = Qt.QFrame()
         self.browser.setLayout(Qt.QVBoxLayout())
         
         self.chooser = Qt.QTabWidget()
-        self.chooser.setTabPosition(self.chooser.West)
-        self.combo = Qt.QComboBox() # Combo used for domains, currently disabled
+        self.chooser.setTabPosition(self.chooser.West if SHOW_OPTIONS else self.chooser.North)
+        #self.combo = Qt.QComboBox() # Combo used for domains, currently disabled
 
-        if True:
-            self.searchbar = Qt.QFrame()
-            self.searchbar.setLayout(Qt.QGridLayout()) 
+        self.searchbar = Qt.QFrame()
+        self.searchbar.setLayout(Qt.QGridLayout()) 
 
-            #self.label = Qt.QLabel('Type a part of device name and a part of attribute name, use "*" or " " as wildcards:')
-            #self.layout().addWidget(self.label)
-            
-            self.ServerFilter = Qt.QLineEdit()
-            self.ServerFilter.setMaximumWidth(250)
-            self.DeviceFilter = fandango.qt.Dropable(Qt.QLineEdit)()
-            self.DeviceFilter.setSupportedMimeTypes(fandango.qt.TAURUS_DEV_MIME_TYPE)
-            self.AttributeFilter = fandango.qt.Dropable(Qt.QLineEdit)()
-            self.AttributeFilter.setSupportedMimeTypes([fandango.qt.TAURUS_ATTR_MIME_TYPE,fandango.qt.TEXT_MIME_TYPE])
-            self.update = Qt.QPushButton('Update')
-            self.archivecheck = Qt.QCheckBox("Show archived attributes only")
-            self.archivecheck.setChecked(True)
-            
-            [self.searchbar.layout().addWidget(o,x,y,h,w) for o,x,y,h,w in (
-                (Qt.QLabel("Device or Alias:"),0,0,1,1),(self.DeviceFilter,0,1,1,4),
-                (Qt.QLabel("Attribute:"),0,5,1,1),(self.AttributeFilter,0,6,1,4),
-                (self.update,0,10,1,1),(self.archivecheck,0,11,1,2),
+        #self.label = Qt.QLabel('Type a part of device name and a part of attribute name, use "*" or " " as wildcards:')
+        #self.layout().addWidget(self.label)
+        
+        self.ServerFilter = Qt.QLineEdit()
+        self.ServerFilter.setMaximumWidth(250)
+        self.DeviceFilter = fandango.qt.Dropable(Qt.QLineEdit)()
+        self.DeviceFilter.setSupportedMimeTypes(fandango.qt.TAURUS_DEV_MIME_TYPE)
+        self.AttributeFilter = fandango.qt.Dropable(Qt.QLineEdit)()
+        self.AttributeFilter.setSupportedMimeTypes([fandango.qt.TAURUS_ATTR_MIME_TYPE,fandango.qt.TEXT_MIME_TYPE])
+        self.update = Qt.QPushButton('Update')
+        self.archivecheck = Qt.QCheckBox("Show archived attributes only")
+        self.archivecheck.setChecked(True)
+
+        self.searchbar.layout().addWidget(Qt.QLabel(
+            'Enter Device and Attribute filters using wildcards '
+            '(e.g. li/ct/plc[0-9]+ / ^stat*$ & !status ) and push Update'),0,0,3,13)
+        
+        [self.searchbar.layout().addWidget(o,x,y,h,w) for o,x,y,h,w in (
+            (Qt.QLabel("Device or Alias:"),4,0,1,1),(self.DeviceFilter,4,1,1,4),
+            (Qt.QLabel("Attribute:"),4,5,1,1),(self.AttributeFilter,4,6,1,4),
+            (self.update,4,10,1,1),(self.archivecheck,4,11,1,2),
+            )]
+        
+        if SHOW_OPTIONS:
+            self.options = Qt.QWidget() #self.searchbar
+            self.options.setLayout(Qt.QGridLayout())
+            separator = lambda x:Qt.QLabel(' '*x)
+            row = 1
+            [self.options.layout().addWidget(o,x,y,h,w) for o,x,y,h,w in (
+                #separator(120),Qt.QLabel("Options: "),separator(5),
+                (Qt.QLabel("Server: "),row,0,1,1),(self.ServerFilter,row,1,1,4),(Qt.QLabel(''),row,2,1,11)
                 )]
-            self.searchbar.layout().addWidget(Qt.QLabel(
-                'Enter Device and Attribute filters using wildcards '
-                '(e.g. li/ct/plc[0-9]+ / ^stat*$ & !status ) and push Update'),1,0,4,13)
+            #self.panel = generate_table(load_all_thermocouples('SR14')[-1])
+            self.optiontab = Qt.QTabWidget()
+            self.optiontab.addTab(self.searchbar,'Filters')
+            self.optiontab.addTab(self.options,'Options')
+            self.optiontab.setMaximumHeight(100)
+            self.optiontab.setTabPosition(self.optiontab.North)
+            self.browser.layout().addWidget(self.optiontab)
             
-            if SHOW_OPTIONS:
-                self.options = Qt.QWidget() #self.searchbar
-                self.options.setLayout(Qt.QGridLayout())
-                separator = lambda x:Qt.QLabel(' '*x)
-                row = 1
-                [self.options.layout().addWidget(o,x,y,h,w) for o,x,y,h,w in (
-                    #separator(120),Qt.QLabel("Options: "),separator(5),
-                    (Qt.QLabel("Server: "),row,0,1,1),(self.ServerFilter,row,1,1,4),(Qt.QLabel(''),row,2,1,11)
-                    )]
-                #self.panel = generate_table(load_all_thermocouples('SR14')[-1])
-                self.optiontab = Qt.QTabWidget()
-                self.optiontab.addTab(self.searchbar,'Filters')
-                self.optiontab.addTab(self.options,'Options')
-                self.optiontab.setMaximumHeight(100)
-                self.optiontab.setTabPosition(self.optiontab.North)
-                self.browser.layout().addWidget(self.optiontab)
-                
-            else: 
-                self.browser.layout().addWidget(self.searchbar)
+        else: 
+            self.browser.layout().addWidget(self.searchbar)
             
         self.toppan = Qt.QWidget(self)
         self.toppan.setLayout(Qt.QVBoxLayout())
-        if True:
-            self.header = QGridTable(self.toppan)
-            self.header.setHorizontalHeaderLabels('Label/Value Device Attribute Alias Archiving Check'.split())
-            self.header.setColumnWidth(0,350)
-            self.toppan.layout().addWidget(self.header)
-        
+
         if USE_SCROLL:
             print '*'*30 + ' USE_SCROLL=True '+'*'*30
+            ## TO USE SCROLL, HEADER HAS BEEN SET AS A SEPARATE WIDGET
+            #self.header = QGridTable(self.toppan)
+            #self.header.setHorizontalHeaderLabels(self.LABELS)
+            #self.header.setColumnWidth(0,350)
+            self.headers = []
+            self.header = Qt.QWidget(self.toppan)
+            self.header.setLayout(Qt.QHBoxLayout())
+            for l,s in zip(self.LABELS,self.SIZES):
+                ql = Qt.QLabel(l)
+                self.headers.append(ql)
+                #if s is not None:
+                    #ql.setFixedWidth(s)
+                #else:
+                    #ql.setSizePolicy(Qt.QSizePolicy.MinimumExpanding,Qt.QSizePolicy.Fixed)
+                self.header.layout().addWidget(ql)
+                
+            self.toppan.layout().addWidget(self.header)            
+            
             self._scroll = MyScrollArea(self.toppan)#Qt.QScrollArea(self)
             self._background = AttributesPanel(self._scroll) #At least a panel should be kept (never deleted) in background to not crash the worker!
             self.panel = None
@@ -579,13 +627,10 @@ class ArchivingBrowser(Qt.QWidget):
         
         self.browser.layout().addWidget(self.toppan)
         self.chooser.addTab(self.browser,'Search ...')
-        if TaurusModelChooser is not None:
-            self.treemodel = TaurusModelChooser(parent=self.chooser)
-            self.chooser.addTab(self.treemodel)
         
         if USE_TREND:
             self.split = Qt.QSplitter(Qt.Qt.Vertical)
-            self.split.setHandleWidth(10)
+            self.split.setHandleWidth(25)
             self.split.addWidget(self.chooser)
             
             from taurus.qt.qtgui.plot import TaurusTrend
@@ -594,6 +639,13 @@ class ArchivingBrowser(Qt.QWidget):
             self.trend.setUseArchiving(True)
             self.trend.showLegend(True)
             self.attrpanel.trend = self.trend
+
+            if TaurusModelChooser is not None:
+                self.treemodel = TaurusModelChooser(parent=self.chooser)
+                self.chooser.addTab(self.treemodel,'Tree')
+                self.treemodel.updateModels.connect(self.trend.addModels)
+                #self.treemodel.connect(self.treemodel,Qt.SIGNAL('updateModels'),self.trend.addModels)            
+            
             self.split.addWidget(self.trend)
             self.layout().addWidget(self.split)
         else:
@@ -602,9 +654,9 @@ class ArchivingBrowser(Qt.QWidget):
         
     def connectSignals(self):
         #self.combo.connect(self.combo, Qt.SIGNAL("currentIndexChanged (const QString&)"), self.comboIndexChanged)
-        self.connect(self.combo, Qt.SIGNAL("currentIndexChanged (const QString&)"), self.comboIndexChanged)
+        #self.connect(self.combo, Qt.SIGNAL("currentIndexChanged (const QString&)"), self.comboIndexChanged)
         self.connect(self.update, Qt.SIGNAL("pressed ()"), self.updateSearch)
-        if len(self.domains)==1: self.emit(Qt.SIGNAL("currentIndexChanged (const QString&)"),Qt.QString(self.domains[0]))
+        #if len(self.domains)==1: self.emit(Qt.SIGNAL("currentIndexChanged (const QString&)"),Qt.QString(self.domains[0]))
         
     def open_new_trend(self):
         from taurus.qt.qtgui.plot import TaurusTrend
@@ -614,6 +666,34 @@ class ArchivingBrowser(Qt.QWidget):
         tt.setUseArchiving(True)
         tt.showLegend(True)
         return tt
+    
+    def resizeEvent(self,evt):
+        try:
+            Qt.QWidget.resizeEvent(self,evt)
+            self.adjustColumns()
+            #type(self)._persistent_ = None
+        except:
+            traceback.print_exc()
+            
+    def adjustColumns(self):
+        try:
+            if not getattr(self,'panel',None):
+                return
+            w = int(max((self.panel.width()+20,self.width()*0.9)))
+            self.header.setMaximumWidth(w)
+            for j in range(self.panel.columnCount()):
+                m = 0
+                for i in range(self.panel.rowCount()):
+                    try:
+                        w = self.panel.layout().itemAtPosition(i,j).geometry().width()
+                        if w > m: m = w
+                    except:
+                        m = self.SIZES[j]
+
+                #print(j,self.LABELS[j],self.SIZES[j],m)
+                self.headers[j].setFixedWidth(max((m,self.SIZES[j])))
+        except:
+            traceback.print_exc()
         
     def closeEvent(self,evt):
         Qt.QWidget.closeEvent(self,evt)
@@ -704,11 +784,33 @@ class ArchivingBrowser(Qt.QWidget):
                         archived = []
                     #print(k,v,archived)
                     table.append((k,v[0],v[2],v[1],archived,v[3] is not None))
+                    
                 self.panel.setValues(sorted(table))
+                
                 if hasattr(self,'_scroll'): 
                     self._scroll.setWidget(self.panel)
                     #self.panel.setParent(self._scroll) #IT DOESNT WORK
                     self._scroll.setChildrenPanel(self.panel)
+                    
+            #print('labels/columns: %d,%d' % (len(self.SIZES),self.panel.columnCount()))
+            for j in range(self.panel.columnCount()):
+                #print(j)
+                l, s = self.LABELS[j], self.SIZES[j]
+                #print('Resizing %s cells to %s' % (l,s))
+                self.panel.layout().setColumnStretch(j,self.STRETCH[j])
+                #for i in range(self.panel.rowCount()):
+                    #try:
+                        #w = self.panel.itemAt(i,j).widget()
+                        #if s is not None:
+                            #w.setFixedWidth(s)
+                        #else:
+                            #p = Qt.QSizePolicy(Qt.QSizePolicy.Expanding,Qt.QSizePolicy.Fixed)
+                            #w.setSizePolicy(p)
+                    #except:
+                        #traceback.print_exc()
+                        
+            self.adjustColumns()
+                    
         except Exception,e:
             #traceback.print_exc()
             Qt.QMessageBox.warning(self, "Warning" , "There's something wrong in your search (%s), please simplify the string"%traceback.format_exc())
