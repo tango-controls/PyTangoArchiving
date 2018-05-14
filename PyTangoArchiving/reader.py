@@ -37,7 +37,8 @@ import fandango.functional as fun
 
 from fandango.dicts import CaselessDict, SortedDict
 from fandango.linos import check_process,get_memory
-from fandango.tango import get_tango_host,parse_tango_model
+from fandango.tango import ( get_tango_host,parse_tango_model,
+    get_free_property,get_class_property,get_device_property)
 
 from PyTangoArchiving.utils import * #PyTango, patch_booleans
 import PyTangoArchiving.utils as utils
@@ -353,11 +354,18 @@ class Reader(Object,SingletonMap):
                 else:
                     self.extractors = list(self.tango.get_device_exported('*%sextractor*'%self.schema))
             
-            if not alias_file:
-                try: 
-                    alias_file = (self.tango.get_class_property('%sextractor'%self.schema,['AliasFile'])['AliasFile'] or [''])[0]
-                    self.alias = read_alias_file(alias_file)
-                except Exception,e: 
+        if not alias_file:
+            if self.schema == '*':
+                alias_file = get_free_property('PyTangoArchiving','AliasFile')
+            else:
+                alias_file = get_class_property('%sextractor'%self.schema,'AliasFile')
+                
+        if alias_file:
+            if fun.isSequence(alias_file): 
+                alias_file = alias_file[0] or ''
+            try:
+                self.alias = read_alias_file(alias_file)
+            except Exception,e: 
                     self.log.warning('Unable to read alias file %s: %s'%(alias_file,e))
 
         #Initializing the state machine        
@@ -494,6 +502,8 @@ class Reader(Object,SingletonMap):
                     self.log.debug('\t%s: %s'%(c,i+1))
                 except:
                     self.log.debug(traceback.format_exc())
+                    
+            attrs.extend(self.alias)
             return sorted(set(attrs))
         
         if self.available_attributes and self.current_attributes \
@@ -597,6 +607,7 @@ class Reader(Object,SingletonMap):
             else:
                 sch = []
                 for a,c in self.configs.items():
+                    if a == self.db_name: continue
                     try:
                         if (c and (a not in Schemas.keys() or
                                 Schemas.checkSchema(a,attribute)) 
@@ -734,8 +745,9 @@ class Reader(Object,SingletonMap):
             ckey = (attr,l1,l2,asHistoryBuffer,bool(decimate))
             values = cache.get(ckey,False)
             
-            if any(len(v)>1e5 for v in self.cache.values()) or get_memory()>2e6:
-                self.log.debug('... Reader.cache clear()')
+            #any(len(v)>1e7 for v in self.cache.values()) or 
+            if get_memory()>1e9:
+                self.log.warning('... Reader.cache clear()')
                 self.cache.clear()
             
             if values:
