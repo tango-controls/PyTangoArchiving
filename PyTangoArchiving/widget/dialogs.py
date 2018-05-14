@@ -92,8 +92,8 @@ class MenuActionAppender(BoundDecorator):
     #TaurusTrend._canvasContextMenu = MenuActionAppender(self._showArchivingDialogAction)(TaurusTrend._canvasContextMenu)
     
     ACTIONS = [
-          ('_showArchivingDialogAction',"Show Archiving Dialog",'show_dialog'),
-          ('_reloadArchiving',"Reload Archiving",'checkBuffers'),
+          ('_showArchivingDialogAction',"Show Archiving Dialog",'show_dialog',tuple()),
+          ('_reloadArchiving',"Reload Archiving",'refreshCurves',(True,)), #'checkBuffers'),
           ]
     
     def __init__(self,before=None): #,action,before=None):
@@ -104,25 +104,38 @@ class MenuActionAppender(BoundDecorator):
     #def wrapper(self,instance,f,*args,**kwargs):
     @staticmethod
     def wrapper(instance,f,*args,**kwargs):
-      try:
-        from taurus.qt.qtgui.plot import TaurusPlot
-        obj = ArchivedTrendLogger(trend=instance)
-        menu = f(instance)
-        before = MenuActionAppender.before or instance._usePollingBufferAction
-        menu.insertSeparator(before)
+        try:
+            from taurus.qt.qtgui.plot import TaurusPlot
+            obj = ArchivedTrendLogger(trend=instance)
+            menu = f(instance)
+            before = MenuActionAppender.before \
+                or instance._usePollingBufferAction
+            menu.insertSeparator(before)
 
-        for actname,label,method in MenuActionAppender.ACTIONS:
-          action = getattr(instance,actname,None)
-          if not action: 
-              method = method if fn.isCallable(method) else getattr(obj,method,None)
-              setattr(instance,actname,Qt.QAction(label, None))
-              action = getattr(instance,actname)
-              instance.connect(action,Qt.SIGNAL("triggered()"),(lambda o=instance,m=method:m(o)))
-          menu.insertAction(before,action)
-        menu.insertSeparator(before)
-        return menu
-      except:
-        traceback.print_exc()
+            for t in MenuActionAppender.ACTIONS:
+                if len(t)==4:
+                    actname,label,method,args = t
+                else:
+                    actname,label,method = t
+                    args = (instance,)
+                action = getattr(instance,actname,None)
+                if not action: 
+                    setattr(instance,actname,Qt.QAction(label, None))
+                    action = getattr(instance,actname)
+                    instance.connect(action,Qt.SIGNAL("triggered()"),
+                        (lambda o=instance,m=method,a=args,l=obj:
+                            (l.warning(','.join(map(str,(o,m,a)))),
+                            (m(o) if fn.isCallable(m) 
+                                else getattr(o,m,
+                                    getattr(l,m,None)))(*a)))
+                        )
+
+                menu.insertAction(before,action)
+            menu.insertSeparator(before)
+            return menu
+        
+        except:
+            traceback.print_exc()
         
         
 class QArchivedTrendInfo(Qt.QDialog):
@@ -261,7 +274,8 @@ class ArchivedTrendLogger(SingletonMap):
         self.trend = trend
         self.value_setter = value_setter
         self.model_trend_sets = defaultdict(list)
-        self.last_check = (0,0)
+        self.last_check = (0,0) #Trend stores here the last bounds
+        self.last_check_buffers = 0
         self.logger = logger_obj or trend
         self.log_objs = {}
         self.last_args = {}
@@ -309,7 +323,7 @@ class ArchivedTrendLogger(SingletonMap):
                 
                 self._forcedbt = Qt.QPushButton('Force trend update')
                 self._forcedbt.connect(self._forcedbt,Qt.SIGNAL('clicked()'),
-                                          self.refreshCurves)
+                                          self.forceReadings)
                 self.dialog().layout().addWidget(self._forcedbt)
                 
                 self._reloader = QReloadWidget(
@@ -361,14 +375,14 @@ class ArchivedTrendLogger(SingletonMap):
 
     def refreshCurves(self,check_buffers=False):
         names =  self.trend.getCurveNames()
-        self.debug('%s: In refreshCurves(%s,%s) ...'%
+        self.warning('%s: In refreshCurves(%s,%s) ...'%
                      (fn.time2str(),names,check_buffers))
 
         if check_buffers:
             self.checkBuffers()
             
         try:
-            self.forceReadings()
+            self.forceReadings(emit=False)
         except:
             self.warning(traceback.format_exc())
             
@@ -379,6 +393,8 @@ class ArchivedTrendLogger(SingletonMap):
                 c.setVisible(False)
                 c.setYAxis(c.yAxis())
                 c.setVisible(True)
+            else:
+                self.warning('%s curve is hidden'%v)
         return
     
     def checkScales(self):
@@ -407,6 +423,7 @@ class ArchivedTrendLogger(SingletonMap):
                 if self.trend.isPaused(): # A paused trend will not load data
                     self.warning('resume plotting ...')
                     self.trend.setPaused(False)
+                    self.trend._pauseAction.setChecked(False)
 
             self.debug('In checkScales(%s,%s,%s)'%(str(bounds),diff,r))
             self.checkBuffers()
@@ -416,17 +433,22 @@ class ArchivedTrendLogger(SingletonMap):
         finally:
             self.on_check_scales = False
             
-    def forceReadings(self,filters=''):
+    def forceReadings(self,filters='',emit=True):
         for n,ts in self.trend.trendSets.iteritems():
             model = ts.getModel()
             if not filters or fn.clmatch(filters,model):
                 self.warning('forceReadings(%s)' % model)
                 ts.forceReading()
+        if emit:
+            self.trend.emit(Qt.SIGNAL('refreshData'))
 
     def checkBuffers(self,*args):
-        self.warning('CheckBuffers(%s)'%str(self.trend.trendSets.keys()))
-        self.trend.doReplot()
-
+        self.warning('In CheckBuffers(%s)'%str(self.trend.trendSets.keys()))
+        #self.trend.doReplot()
+        t0 = fn.now()
+        if t0 - self.last_check_buffers < 1.:
+            return
+        
         self.show_dialog(not self.dialog()._checked)
         
         for n,ts in self.trend.trendSets.iteritems():
@@ -445,6 +467,21 @@ class ArchivedTrendLogger(SingletonMap):
                 self.warning(traceback.format_exc())
 
         self.trend.doReplot()
+        self.last_check_buffers = fn.now()
+        #d = self.last_check_buffers - t0
+        #if d > 0.2:
+            #self.warning('checkBuffers is too intensive (%f), disable dynscale'%d)
+            #self.stopPlotting()
+        self.warning('Out of CheckBuffers(%s)'%str(self.trend.trendSets.keys()))
+        
+    def stopPlotting(self):
+        self.trend.setXDynScale(False)
+        #self.trend.setPaused(True) #TREND PAUSED DOES NOT REPLOT!?!?
+        self.trend._pauseAction.setChecked(True)
+        #for n,ts in self.trend.trendSets.iteritems():
+            #model = ts.getModel()
+            #logger_obj.warning('Pausing %s polling'%model)
+            #taurus.Attribute(model).deactivatePolling()
         
     def clearBuffers(self,*args):
         self.warning('ArchivedTrendLogger.clearBuffers(%s)'%str(args))
@@ -566,9 +603,9 @@ class DatesWidget(Qt.QWidget): #Qt.QDialog): #QGroupBox):
         
         if hasattr(self._trend,'getArchivedTrendLogger'):
             self.logger = self._trend.getArchivedTrendLogger()
-            self.xReload = Qt.QPushButton("Info")        
-            self.layout().addWidget(QWidgetWithLayout(self,child=[self.xReload]))
-            trend.connect(self.xReload,Qt.SIGNAL("clicked()"),self.logger.show_dialog)
+            self.xInfo = Qt.QPushButton("Info")        
+            self.layout().addWidget(QWidgetWithLayout(self,child=[self.xInfo]))
+            trend.connect(self.xInfo,Qt.SIGNAL("clicked()"),self.logger.show_dialog)
         
         #if parent is trend.legend():
 
