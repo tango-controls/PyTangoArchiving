@@ -114,8 +114,10 @@ class ArchivingTrendWidget(TaurusGroupBox):
 class ArchivingTrend(TaurusTrend):
   
     MENU_ACTIONS =         [
-        ('_datesWidgetOption','Show Dates Widget',(lambda o:o.showDatesWidget())),
-        ('_zoomBackOption','Zoom Back (middle click)',(lambda o:o._zoomBack())),
+        ('_datesWidgetOption','Show Dates Widget','showDatesWidget'),
+         #(lambda o:o.showDatesWidget())),
+        #('_zoomBackOption','Zoom Back (middle click)','_zoomBack'),
+         #(lambda o:o._zoomBack())),
         ('_setAxisFormatOption','Set Y Axis Format',(lambda o:o._showAxisFormatDialog())),
         ('_pausedOption','Pause (P)',(lambda o:o.setPaused(not o.isPaused()))),
         ]
@@ -340,15 +342,19 @@ class ArchivingTrend(TaurusTrend):
     def showDatesWidget(self,show=True):
       try:
         ui = getattr(self,'_datesWidget',None)
-        try:
-          ui.parent()
-        except:
-          ui = None
+        #try:
+            #ui.parent()
+        #except:
+            #self.warning(traceback.format_exc())
+            #ui = None
         if not ui:
-          self._datesWidget = DatesWidget(self,self.legend(),Qt.QVBoxLayout())
+            self._datesWidget = Qt.QDialog()
+            self._datesWidget.setLayout(Qt.QVBoxLayout())
+            dw = DatesWidget(self)#,self.legend(),Qt.QVBoxLayout())
+            self._datesWidget.layout().addWidget(dw)
           
         if show: self._datesWidget.show()
-        else: self._datesWidget.hide()
+        #else: self._datesWidget.hide()
         self.replot()
         return
         #xMin = self.parent.axisScaleDiv(Qwt5.QwtPlot.xBottom).lowerBound()
@@ -531,7 +537,7 @@ def checkTrendBuffers(self,newdata=None,logger=None):
         
     if newdata is not None and self._xBuffer.maxSize()<(len(self._xBuffer)+len(newdata)):
         newsize = int(1.2*(self._xBuffer.maxSize()+len(newdata)))
-        logger.info('reader.updateTrendBuffers(): Resizing xBuffer to %d to allocate archived values'%(newsize))
+        logger.warning('reader.updateTrendBuffers(): Resizing xBuffer to %d to allocate archived values'%(newsize))
         #self.parent().setMaxDataBufferSize(max((newsize,self.parent().getMaxDataBufferSize()))) #<<<<< THIS METHOD DIDN'T WORKED!!!!
         self._xBuffer.setMaxSize(newsize),self._yBuffer.setMaxSize(newsize)
         #logger.info('new sizes : %s , %s'%(self._xBuffer.maxSize(),self._yBuffer.maxSize()))
@@ -613,7 +619,7 @@ def updateTrendBuffers(self,data,logger=None):
     It should also allow to patch non correlative inserts of archived data 
     (inserting instead of extendLeft)
     """
-    print('-'*80)
+    self.warning('In updateTrendBuffers(...)')
     t = []
     try:
         #self.curves_lock.acquire()
@@ -636,7 +642,7 @@ def updateTrendBuffers(self,data,logger=None):
                 raise
             
             newsize = checkTrendBuffers(self,data,logger)
-            logger.debug('reader.updateTrendBuffers(): filling Buffer')
+            logger.warning('reader.updateTrendBuffers(): filling Buffer')
             try:
                 if fromHistoryBuffer:
                     t = numpy.zeros(len(data), dtype=float)
