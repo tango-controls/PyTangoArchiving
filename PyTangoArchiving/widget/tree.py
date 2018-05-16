@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+g!/usr/bin/env python
 
 #############################################################################
 ##
@@ -56,8 +56,8 @@ from taurus.qt.qtgui.container import TaurusWidget
 from taurus.core.util.containers import CaselessList
 from taurus.qt.qtgui.panel.taurusmodellist import TaurusModelList
 
-from PyTangoArchiving.widget.model import *
-from PyTangoArchiving.widget.model import TaurusArchivingDatabase
+from PyTangoArchiving.widget.models import *
+from PyTangoArchiving.widget.models import TaurusArchivingDatabase
 from taurus.core.tango.tangodatabase import (TangoDevInfo,TangoAttrInfo)
 
 
