@@ -95,7 +95,7 @@ class AttributesPanel(PARENT_KLASS):
     _fes = [f for f in get_distinct_domains(fandango.get_database().get_device_exported('fe*')) if fun.matchCl('fe[0-9]',f)]
     
     LABELS = 'Label/Value Device Attribute Alias Archiving Check'.split()
-    SIZES = [500, 150, 90, 90, 90, 40]
+    SIZES = [500, 150, 90, 90, 120, 40]
     STRETCH = [8, 4, 4, 4, 2, 1]
     
     def __init__(self,parent=None,devices=None):
@@ -647,7 +647,7 @@ class ArchivingBrowser(Qt.QWidget):
                 self.treemodel.updateModels.connect(self.trend.addModels)
                 #self.treemodel.connect(self.treemodel,Qt.SIGNAL('updateModels'),self.trend.addModels)      
             else:
-                self.warning('TaurusModelChooser not available!')
+                tracer('TaurusModelChooser not available!')
             
             self.split.addWidget(self.trend)
             self.layout().addWidget(self.split)

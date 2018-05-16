@@ -617,7 +617,7 @@ class DatesWidget(Qt.QWidget): #Qt.QDialog): #QGroupBox):
         
         if hasattr(self._trend,'getArchivedTrendLogger'):
             self.logger = self._trend.getArchivedTrendLogger()
-            self.xInfo = Qt.QPushButton("Info")        
+            self.xInfo = Qt.QPushButton("Expert")        
             self.layout().addWidget(QWidgetWithLayout(self,child=[self.xInfo]))
             trend.connect(self.xInfo,Qt.SIGNAL("clicked()"),self.logger.show_dialog)
         

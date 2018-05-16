@@ -916,10 +916,11 @@ def getArchivedTrendValues(trend_set,model,start_date=0,stop_date=None,
         Qt.QApplication.instance().restoreOverrideCursor()
         decimation = logger_obj.getDecimation()
         if not decimation:
-            if logger_obj.getNonesCheck(): 
-                decimation = fn.arrays.notnone
-            elif decimation is not None and decimate: 
-                decimation = PyTangoArchiving.reader.data_has_changed
+            if decimation is not None: #RAW
+                if logger_obj.getNonesCheck(): 
+                    decimation = fn.arrays.notnone
+                elif decimate: 
+                    decimation = PyTangoArchiving.reader.data_has_changed
             
         if not multiprocess or not isinstance(reader,ReaderProcess):
             Qt.QApplication.instance().setOverrideCursor(
