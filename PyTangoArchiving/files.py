@@ -39,6 +39,7 @@ import fandango.functional as fun
 import PyTangoArchiving
 from PyTangoArchiving.utils import PyTango
 import PyTangoArchiving.utils as utils
+from PyTangoArchiving.common import modes_to_string, modes_to_dict
 
 
 ARCHIVING_CONFIGS =  os.environ.get('ARCHIVING_CONFIGS','/data/Archiving/Config')
@@ -132,7 +133,7 @@ def LoadArchivingConfiguration(filename, schema,launch=False,force=False,stop=Fa
     #Attributes classified by Mode config
     modes = defaultdict(list)    
     for k,v in sorted(config.items()): 
-        mode = utils.modes_to_string(api.check_modes(schema,v[schema.upper()]))
+        mode = modes_to_string(api.check_modes(schema,v[schema.upper()]))
         modes[mode].append(k)
     
     #The active part
@@ -161,7 +162,7 @@ def LoadArchivingConfiguration(filename, schema,launch=False,force=False,stop=Fa
                             if force: failed.extend(attrs)
                             else: raise Exception,'Archiving stop failed for: %s'%(attrs)
                     if launch:
-                        if api.start_archiving(attrs,utils.modes_to_dict(mode),load=False,retries=1):
+                        if api.start_archiving(attrs,modes_to_dict(mode),load=False,retries=1):
                             done.extend(attrs)
                         else:
                             if force: failed.extend(attrs)
@@ -384,7 +385,7 @@ def CheckArchivingConfiguration(filename,schema,api=None,check_modes=False,check
                 print '%s is LOST, no archiver assigned!'%(att)
                 if restart:
                     #Dedicated configuration is not done here!! ... this is just for restarting temporarily unavailable attributes
-                    retriable[utils.modes_to_string(api.check_modes(api.schema,modes))].append(att)
+                    retriable[modes_to_string(api.check_modes(api.schema,modes))].append(att)
             else:
                 #Never archived before
                 STATS['missing'].append(att)
@@ -422,7 +423,7 @@ def CheckArchivingConfiguration(filename,schema,api=None,check_modes=False,check
                 
             if check_conf:
                 mode_to_str = lambda m: (
-                    utils.modes_to_string(api.check_modes(api.schema,
+                    modes_to_string(api.check_modes(api.schema,
                         m if 'MODE_A' not in m and 'MODE_R' not in m else dict((k,v) for k,v in m.items() if k!='MODE_P'),
                         )))
                 m1,m2 = mode_to_str(api.check_modes(api.schema,modes)),mode_to_str(api[att].modes)
@@ -474,13 +475,13 @@ def CheckArchivingConfiguration(filename,schema,api=None,check_modes=False,check
         for att in STATS.get('hung',[]):
             if not api[att].archiver or api[att].archiver not in idles: #Adding not-idle attributes to retriable list
                 modes = attributes[att]
-                retriable[utils.modes_to_string(api.check_modes(api.schema,modes))].append(att)
+                retriable[modes_to_string(api.check_modes(api.schema,modes))].append(att)
         print '%s ---> Restarting %d archiving modes'%(time.ctime(),len(retriable))
         
         for modes,attrs in retriable.items():
             print '%s ---> Restarting %s archiving for %d attributes' % (time.ctime(),modes,len(attrs))
             try: 
-                modes = utils.modes_to_dict(modes)
+                modes = modes_to_dict(modes)
                 targets = [a for a in attrs if not api[a].archiver or api[a].archiver not in idles]
                 if targets: 
                     if not api.start_archiving(targets,modes,load=False):
@@ -494,7 +495,7 @@ def CheckArchivingConfiguration(filename,schema,api=None,check_modes=False,check
    
 def CheckConfigFilesForSchema(schema):
     import PyTangoArchiving as pta
-    tables = pta.utils.get_table_updates()
+    tables = pta.dbs.get_table_updates()
     api = pta.ArchivingAPI(schema)
     csvs = pta.files.GetConfigFiles()
     csvapi = [a for f in csvs for a in pta.ParseCSV(f,schema.upper())]
