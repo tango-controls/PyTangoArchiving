@@ -18,7 +18,7 @@ case $1 in
   echo '  ctarchiving --export [--resolution=X(s)] [--hdb] [--tdb] [--modes] [attributes] ["Y-m-d H:M"] ["Y-m-d H:M"] filename.csv'
   echo "  ctarchiving --search <device/attributes> ; searchs for matching archived attributes, returns configuration"
   echo "  ctarchiving --search2 <device/attributes> ; searchs only for active attributes"
-  echo "  ctarchiving --gui [--range YYYY/MM/DD,XXh] <device/attributes> ; shows Archiving GUI, TaurusFinder"
+  echo "  ctarchiving --gui [--range YYYY/MM/DD_HH:mm,XXh] <device/attributes> ; shows Archiving GUI, TaurusFinder"
   echo "  ctarchiving [attributes] ; shows Archiving GUI, TaurusFinder"
   echo "  ctarchiving --trend <regexps>; shows Archiving trend, without panel"
   ;;
