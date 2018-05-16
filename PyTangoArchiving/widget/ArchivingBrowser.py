@@ -59,6 +59,7 @@ from taurus.qt.qtcore.util.emitter import SingletonWorker
 try:
   from PyTangoArchiving.widget.tree import TaurusModelChooser
 except:
+  traceback.print_exc()
   TaurusModelChooser = None
 
 def get_distinct_domains(l):
@@ -644,7 +645,9 @@ class ArchivingBrowser(Qt.QWidget):
                 self.treemodel = TaurusModelChooser(parent=self.chooser)
                 self.chooser.addTab(self.treemodel,'Tree')
                 self.treemodel.updateModels.connect(self.trend.addModels)
-                #self.treemodel.connect(self.treemodel,Qt.SIGNAL('updateModels'),self.trend.addModels)            
+                #self.treemodel.connect(self.treemodel,Qt.SIGNAL('updateModels'),self.trend.addModels)      
+            else:
+                self.warning('TaurusModelChooser not available!')
             
             self.split.addWidget(self.trend)
             self.layout().addWidget(self.split)
@@ -820,9 +823,15 @@ ModelSearchWidget = ArchivingBrowser
 
 def main(args=None):
     """
-    --range YYYY/MM/DD,XXh
+    --range=YYYY/MM/DD_HH:mm,XXh
     """
     import sys
+    
+    opts = dict(a.split('=',1) for a in args if a.startswith('-'))
+    print(opts)
+    args = [a for a in args if not a.startswith('-')]
+    print(args)    
+    
     #from taurus.qt.qtgui.container import TaurusMainWindow
     tmw = Qt.QMainWindow() #TaurusMainWindow()
     tmw.setWindowTitle('Tango Attribute Search (%s)'%(os.getenv('TANGO_HOST')))
@@ -844,14 +853,13 @@ def main(args=None):
             ])
         toolbar.add_to_main_window(tmw,where=Qt.Qt.BottomToolBarArea)
     tmw.show()
-    opts = dict(a.split('=',1) for a in args if a.startswith('-'))
-    args = [a for a in args if not a.startswith('-')]
+
     if args: 
         table.updateSearch(*args)
 
     if '--range' in opts:
         tracer('Setting trend range to %s' % opts['--range'])
-        table.trend.applyNewDates(opts['--range'].split(','))
+        table.trend.applyNewDates(opts['--range'].replace('_',' ').split(','))
 
     return tmw
     
