@@ -751,7 +751,7 @@ def replaceQtConnection(qobj,signal,callback):
 
 def getArchivedTrendValues(trend_set,model,start_date=0,stop_date=None,
             log='INFO',use_db=True,db_config='',decimate=True,
-            multiprocess=USE_MULTIPROCESS,insert=False):
+            multiprocess=USE_MULTIPROCESS,insert=False,forced=False):
     """
     This method allows to extract the values from the archiving system 
     either using HdbExtractor device servers or MySQL access 
@@ -847,7 +847,10 @@ def getArchivedTrendValues(trend_set,model,start_date=0,stop_date=None,
         logger_obj.setLastArgs(model,*(lasts and lasts[:3] or [])) 
         lasts = logger_obj.last_args[model] #<<< obtain default values corrected
         
-        if all((start_date,stop_date)): #Forcing overriding between 2 dates
+        if forced:
+            start_date,stop_date = bounds
+            
+        elif all((start_date,stop_date)): #Forcing overriding between 2 dates
             start_date,stop_date,zone,area = \
                         start_date,stop_date,ZONES.MIDDLE,1.
         else:
@@ -869,30 +872,31 @@ def getArchivedTrendValues(trend_set,model,start_date=0,stop_date=None,
         #To simplify comparisons
         args = 60*int(start_date/60),60*(1+int(stop_date/60)) 
         
-        #Check GAPS
-        if stop_date-start_date<MIN_WINDOW or area<(.11,.05)[zone==ZONES.MIDDLE]:
-            if dateHasChanged(lasts[:2],args): 
-                logger_obj.debug('In getArchivedTrendValues(%s,%s,%s,%s): '
-                    'Interval too small, Nothing to read'
-                    %(attribute,start_date,stop_date,use_db))
-            logger_obj.setLastArgs(model,args[0],args[1])
-            try:
-                logger_obj.trend.doReplot()
-            except: 
-                traceback.print_exc()
-            return []
-        
-        if lasts and not dateHasChanged(lasts[:2],args) and lasts[2]: 
-            #Data was already retrieved:
-            logger('In getArchivedTrendValues(%s,%s,%s) already retrieved data'
-                    '([%s] at %s) is newer than requested'%(
-                    attribute,args[0],args[1],len(trend_set._xBuffer),lasts))
-                    
-            #Reader keeps last_dates of query; here just keep last arguments                    
-            #logger_obj.setLastArgs(model,args[0],args[1],max(lasts[2],-1))
-            try: logger_obj.trend.doReplot()
-            except: traceback.print_exc()
-            return []
+        if not forced:
+            #Check GAPS
+            if stop_date-start_date<MIN_WINDOW or area<(.11,.05)[zone==ZONES.MIDDLE]:
+                if dateHasChanged(lasts[:2],args): 
+                    logger_obj.debug('In getArchivedTrendValues(%s,%s,%s,%s): '
+                        'Interval too small, Nothing to read'
+                        %(attribute,start_date,stop_date,use_db))
+                logger_obj.setLastArgs(model,args[0],args[1])
+                try:
+                    logger_obj.trend.doReplot()
+                except: 
+                    traceback.print_exc()
+                return []
+            
+            if lasts and not dateHasChanged(lasts[:2],args) and lasts[2]: 
+                #Data was already retrieved:
+                logger('In getArchivedTrendValues(%s,%s,%s) already retrieved data'
+                        '([%s] at %s) is newer than requested'%(
+                        attribute,args[0],args[1],len(trend_set._xBuffer),lasts))
+                        
+                #Reader keeps last_dates of query; here just keep last arguments                    
+                #logger_obj.setLastArgs(model,args[0],args[1],max(lasts[2],-1))
+                try: logger_obj.trend.doReplot()
+                except: traceback.print_exc()
+                return []
     except:
         logger_obj.error('Date parsing failed: %s'%traceback.format_exc())
         return []
@@ -902,10 +906,10 @@ def getArchivedTrendValues(trend_set,model,start_date=0,stop_date=None,
     was_paused = parent.isPaused()
     try:
         logger_obj.warning('-'*40+'\n'*8)
-        logger_obj.warning('In getArchivedTrendValues(%s, %s = %s, %s = %s)(%s): '
+        logger_obj.warning('In getArchivedTrendValues(%s, %s = %s, %s = %s, forced=%s)(%s): '
             'lasts=%s, getting new data (previous[%s]:%s at %s)'%(
             attribute,start_date,fn.time2str(start_date),stop_date,
-            fn.time2str(stop_date),reader.schema,lasts and lasts[0],
+            fn.time2str(stop_date),forced,reader.schema,lasts and lasts[0],
             model,lasts,lasts[-1]))
         logger_obj.debug('prev %s != curr %s' % (lasts,args))
         
@@ -914,7 +918,7 @@ def getArchivedTrendValues(trend_set,model,start_date=0,stop_date=None,
         if not decimation:
             if logger_obj.getNonesCheck(): 
                 decimation = fn.arrays.notnone
-            elif decimate: 
+            elif decimation is not None and decimate: 
                 decimation = PyTangoArchiving.reader.data_has_changed
             
         if not multiprocess or not isinstance(reader,ReaderProcess):

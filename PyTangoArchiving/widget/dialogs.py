@@ -70,6 +70,7 @@ DECIMATION_MODES = [
     ('Minimize Noise',fn.arrays.mindiff),
     ('Maximize Peaks',fn.arrays.maxdiff),
     ('Average Values',fn.arrays.average),
+    ('In Client', False),
     ('RAW',None),        
     ]
 
@@ -80,7 +81,10 @@ def getObjectParent(obj):
     return getattr(obj,'_parent',None) or obj.parent()
         
 def getTrendBounds(trend_set,rough=False):
-    parent = getTrendObject(trend_set)
+    if isinstance(trend_set,TaurusTrend):
+        parent = trend_set
+    else:
+        parent = getTrendObject(trend_set)
     lbound = parent.axisScaleDiv(parent.xBottom).lowerBound()
     ubound = parent.axisScaleDiv(parent.xBottom).upperBound()
     if not rough: ubound = min(time.time(),ubound)
@@ -192,7 +196,7 @@ class QReloadWidget(Qt.QWidget):
 
         self._reloadbutton = Qt.QPushButton('Reload Archiving')
         self.layout().addWidget(self._reloadbutton)
-        self._reloadbutton.connect(self._reloadbutton,Qt.SIGNAL('clicked()'),self.logger.checkBuffers)
+        self._reloadbutton.connect(self._reloadbutton,Qt.SIGNAL('clicked()'),self.logger.resetBuffers)
         self._decimatecombo = Qt.QComboBox()
         self._decimatecombo.addItems([t[0] for t in DECIMATION_MODES])
         self._decimatecombo.setCurrentIndex(0)
@@ -323,7 +327,8 @@ class ArchivedTrendLogger(SingletonMap):
                 
                 self._forcedbt = Qt.QPushButton('Force trend update')
                 self._forcedbt.connect(self._forcedbt,Qt.SIGNAL('clicked()'),
-                                          self.forceReadings)
+                                          #self.forceReadings)
+                                          self.trend.setForcedReadingPeriod)
                 self.dialog().layout().addWidget(self._forcedbt)
                 
                 self._reloader = QReloadWidget(
@@ -441,8 +446,11 @@ class ArchivedTrendLogger(SingletonMap):
                 ts.forceReading()
         if emit:
             self.trend.emit(Qt.SIGNAL('refreshData'))
+            
+    def resetBuffers(self,*args):
+        self.checkBuffers(self,*args,forced=True)
 
-    def checkBuffers(self,*args):
+    def checkBuffers(self,*args,**kwargs):
         self.warning('In CheckBuffers(%s)'%str(self.trend.trendSets.keys()))
         #self.trend.doReplot()
         t0 = fn.now()
@@ -457,11 +465,14 @@ class ArchivedTrendLogger(SingletonMap):
                 if model in self.last_args: self.last_args[model][-1] = 0
                 self.debug('%s buffer has %d values' % 
                     (model, len(getattr(ts,'_xBuffer',[]))))
+                
                 # HOOK ADDED FROM CLIENT SIDE, getArchivedTrendValues
-                self.value_setter(ts,model,insert=True)
+                self.value_setter(ts,model,
+                    **{'insert':True,'forced':kwargs.get('forced')})
+                
                 if not fn.tango.check_attribute(model,readable=True):
                     ## THIS CODE MUST BE HERE, NEEDED FOR DEAD ATTRIBUTES
-                    self.warning('checkBuffers(%s): forcing readings ...' % model)
+                    self.warning('checkBuffers(%s): attribute forced ...' % model)
                     ts.forceReading()
             except: 
                 self.warning(traceback.format_exc())
@@ -570,6 +581,9 @@ class DatesWidget(Qt.QWidget): #Qt.QDialog): #QGroupBox):
         Qt.QWidget.__init__(self,parent or trend)
         #trend.showLegend(True)
         self._trend = trend
+        if not hasattr(trend,'_datesWidget'):
+            trend._datesWidget = self
+            
         self.setLayout(layout())
         self.DEFAULT_START = 'YYYY/MM/DD hh:mm:ss'
         self.setTitle("Show Archiving since ...")
@@ -599,7 +613,7 @@ class DatesWidget(Qt.QWidget): #Qt.QDialog): #QGroupBox):
         self.layout().addWidget(QWidgetWithLayout(self,child=[self.xLabelStart,self.xEditStart]))
         self.layout().addWidget(QWidgetWithLayout(self,child=[self.xLabelRange,self.xRangeCB]))
         self.layout().addWidget(QWidgetWithLayout(self,child=[self.xApply]))
-        trend.connect(self.xApply,Qt.SIGNAL("clicked()"),trend.applyNewDates)
+        trend.connect(self.xApply,Qt.SIGNAL("clicked()"),self.refreshAction)
         
         if hasattr(self._trend,'getArchivedTrendLogger'):
             self.logger = self._trend.getArchivedTrendLogger()
@@ -626,6 +640,17 @@ class DatesWidget(Qt.QWidget): #Qt.QDialog): #QGroupBox):
         
     def setTitle(self,title):
         self.setWindowTitle(title)
+        
+    def refreshAction(self):
+        self._trend.applyNewDates()
+        try:
+            date = str2time(str(self.xEditStart.text()))
+        except:
+            try:
+                date = getTrendBounds(self._trend)[0]
+                self.xEditStart.setText(time2str(date))
+            except:
+                traceback.print_exc()
       
             
 def setCloserTimer(dialog,parent=None,period=3000):
