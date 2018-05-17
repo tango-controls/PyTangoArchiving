@@ -90,6 +90,26 @@ def getTrendBounds(trend_set,rough=False):
     if not rough: ubound = min(time.time(),ubound)
     return [lbound,ubound]
 
+    
+def parseTrendModel(model):
+    """ Attribute Name Parsing, Returns a tango_host,attribute,model tuple """
+    modelobj = model
+    if type(model) not in (str,):
+        try: model = model.getFullName()
+        except: 
+            try: model = model.getModelName()
+            except Exception,e:
+                print e+'\n'+'getArchivedTrendValues():model(%s).getModelName() failed\, using str(model)'%model
+                model = str(model)
+    if '{' not in model: #Excluding "eval-like" models
+        params = utils.parse_tango_model(model,fqdn=True)
+        tango_host,attribute = '%s:%s'%(params['host'],params['port']),'%s/%s'%(params['devicename'],params['attributename'])
+    else:
+        tango_host,attribute='',modelobj.getSimpleName() if hasattr(modelobj,'getSimpleName') else model.split(';')[-1]
+
+    model = fn.tango.get_full_name(model,fqdn=True)
+    return tango_host,attribute,model
+
 class MenuActionAppender(BoundDecorator):
     #self._showArchivingDialogAction = Qt.QAction("Show Archiving Dialog", None)
     #self.trend.connect(self._showArchivingDialogAction, Qt.SIGNAL("triggered()"), self.show_dialog)
@@ -282,7 +302,7 @@ class ArchivedTrendLogger(SingletonMap):
         self.last_check_buffers = 0
         self.logger = logger_obj or trend
         self.log_objs = {}
-        self.last_args = {}
+        self.last_args = fn.CaselessDict() #{}
         self.last_bounds = (0,0,0) ##NOT USED
         self.on_check_scales = False
         self.last_msg = ''
@@ -498,7 +518,7 @@ class ArchivedTrendLogger(SingletonMap):
         
     def clearBuffers(self,*args):
         self.warning('ArchivedTrendLogger.clearBuffers(%s)'%str(args))
-        self.last_args = {}
+        self.last_args = fn.CaselessDict() 
         self.reader.reset()
 
         for rd in self.reader.configs.values():

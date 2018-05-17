@@ -55,10 +55,8 @@ from taurus.qt.qtgui.container import TaurusWidget,TaurusGroupBox
 from PyTangoArchiving.widget.dialogs import (
     DatesWidget, ArchivedTrendLogger, QReloadDialog,
     getTrendObject, getObjectParent, getTrendBounds,
-    MenuActionAppender, DECIMATION_MODES, USE_MULTIPROCESS )
-
-
-
+    parseTrendModel, MenuActionAppender, 
+    DECIMATION_MODES, USE_MULTIPROCESS )
 
 #################################################################################################
 # Methods for enabling archiving values in TauTrends
@@ -543,25 +541,6 @@ def checkTrendBuffers(self,newdata=None,logger=None):
         #logger.info('new sizes : %s , %s'%(self._xBuffer.maxSize(),self._yBuffer.maxSize()))
         
     return self._xBuffer.maxSize()
-    
-def parseTrendModel(model):
-    """ Attribute Name Parsing, Returns a tango_host,attribute,model tuple """
-    modelobj = model
-    if type(model) not in (str,):
-        try: model = model.getFullName()
-        except: 
-            try: model = model.getModelName()
-            except Exception,e:
-                print e+'\n'+'getArchivedTrendValues():model(%s).getModelName() failed\, using str(model)'%model
-                model = str(model)
-    if '{' not in model: #Excluding "eval-like" models
-        params = utils.parse_tango_model(model,fqdn=True)
-        tango_host,attribute = '%s:%s'%(params['host'],params['port']),'%s/%s'%(params['devicename'],params['attributename'])
-    else:
-        tango_host,attribute='',modelobj.getSimpleName() if hasattr(modelobj,'getSimpleName') else model.split(';')[-1]
-
-    model = fn.tango.get_full_name(model,fqdn=True)
-    return tango_host,attribute,model
 
 def getTrendGaps(trend,trend_set,bounds=None):
     """fins maximum gap in the shown part of the trend_set buffer and returns:
