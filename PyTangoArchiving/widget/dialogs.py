@@ -96,7 +96,7 @@ class MenuActionAppender(BoundDecorator):
     #TaurusTrend._canvasContextMenu = MenuActionAppender(self._showArchivingDialogAction)(TaurusTrend._canvasContextMenu)
     
     ACTIONS = [
-          ('_showArchivingDialogAction',"Show Archiving Dialog",'show_dialog',tuple()),
+          ('_showArchivingDialogAction',"Archiving Expert Dialog",'show_dialog',tuple()),
           ('_reloadArchiving',"Reload Archiving",'refreshCurves',(True,)), #'checkBuffers'),
           ]
     
@@ -299,7 +299,9 @@ class ArchivedTrendLogger(SingletonMap):
             schema=self.schema,config=db_config,tango_host=tango_host,logger=self)
         try:
             axis = self.trend.axisWidget(self.trend.xBottom)
-            #self.trend.connect(axis,Qt.SIGNAL("scaleDivChanged ()"),lambda s=self:s.dialog()._checked or s.show_dialog()) #a new axis change will show archiving dialog
+            #self.trend.connect(axis,Qt.SIGNAL("scaleDivChanged ()"),
+            #  lambda s=self:s.dialog()._checked or s.show_dialog()) 
+            ## a new axis change will show archiving dialog
             self.trend.connect(axis,Qt.SIGNAL("scaleDivChanged ()"),self.checkScales)
             self.trend.connect(self.trend,Qt.SIGNAL("refreshData"),self.refreshCurves)
             

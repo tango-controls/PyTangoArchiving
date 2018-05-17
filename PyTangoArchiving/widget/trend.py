@@ -174,7 +174,7 @@ class ArchivingTrend(TaurusTrend):
                 qgetint = Qt.QInputDialog.getInteger
             msec,ok = qgetint(self, 'New forced reading period', 
                 'Enter the new period for forced reading (in ms).\n Enter "0" for disabling', 
-                max(0,msec), 0, 604800000, 100)
+                max((0,msec,3000)), 0, 604800000, 100)
             if not ok: 
                 return
             if msec == 0: 
