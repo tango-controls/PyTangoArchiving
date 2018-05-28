@@ -482,7 +482,8 @@ class HDBpp(ArchivingDB,SingletonMap):
         ids = self.Query(q)
         self.debug(str((q,ids)))
         if not ids: 
-            return []
+            return None,None,''
+        
         aid,tid = ids[0]
         table = self.Query("select data_type from att_conf_data_type "\
             +"where att_conf_data_type_id = %s"%tid)[0][0]
@@ -596,6 +597,11 @@ class HDBpp(ArchivingDB,SingletonMap):
             aid,tid,table = table
         else:
             aid,tid,table = self.get_attr_id_type_table(table)
+            
+        if not all((aid,tid,table)):
+            self.warning('%s is not archived' % table)
+            return []
+            
         human = kwargs.get('asHistoryBuffer',human)
             
         what = 'UNIX_TIMESTAMP(data_time)' if unixtime else 'data_time'

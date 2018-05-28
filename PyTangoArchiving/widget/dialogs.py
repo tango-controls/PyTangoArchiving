@@ -188,7 +188,7 @@ class QArchivedTrendInfo(Qt.QDialog):
             model = ts.getModel()
             modes = self.reader.is_attribute_archived(model)
             buff = getattr(ts,'_xBuffer',[])
-            if not len(buff): buff = [0]
+            if buff is None or not len(buff): buff = [0]
             models.append((model,modes,len(buff),buff[0],buff[-1]))
             
         self.panel.setText('\n'.join(sorted(

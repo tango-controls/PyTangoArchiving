@@ -435,7 +435,7 @@ class ArchivingBrowser(Qt.QWidget):
         servfilter,devfilter,attrfilter = servfilter.replace(' ','*').strip(),devfilter.replace(' ','*'),attrfilter.replace(' ','*')
         attrfilter = attrfilter or 'state'
         devfilter = devfilter or attrfilter
-        archive = self.archivecheck.isChecked()
+        archive = self.dbcheck.isChecked()
         all_devs = self.all_devices if not archive else self.archdevs
         all_devs = [d for d in all_devs if not any(d.startswith(e) for e in exclude) or any(d.startswith(e) and fun.matchCl(e,devfilter) for e in exclude)]
         if servfilter.strip('.*'):
@@ -471,7 +471,7 @@ class ArchivingBrowser(Qt.QWidget):
         if False and not len(devs) and not archive:
             #Devices do not actually exist, but may exist in archiving ...
             #Option disabled, was mostly useless
-            self.archivecheck.setChecked(True)
+            self.dbcheck.setChecked(True)
             return self.load_attributes(servfilter,devfilter,attrfilter,warn=False)
         
         if len(devs)>self.MAX_DEVICES and warn:
@@ -492,20 +492,33 @@ class ArchivingBrowser(Qt.QWidget):
                     tcs = [t for t in dp.get_attribute_list()]
                 else:
                     tcs = [a.split('/')[-1] for a in self.archattrs if a.startswith(d+'/')]
+
                 matches = [t for t in tcs if fandango.searchCl(attrfilter,t,extend=True)]
+
                 for t in sorted(tcs):
-                    if not self.archivecheck.isChecked() or not matches: label = dp.get_attribute_config(t).label
-                    else: label = t
+                    if not self.dbcheck.isChecked() or not matches: 
+                        label = dp.get_attribute_config(t).label
+                    else: 
+                        label = t
+                        
                     if t in matches or fandango.searchCl(attrfilter,label,extend=True):
-                        if d in self.alias_devs: alias = self.alias_devs[d]
+                        if self.archivecheck.isChecked() \
+                                and not self.reader.is_attribute_archived(d+'/'+t):
+                            continue
+                        
+                        if d in self.alias_devs: 
+                            alias = self.alias_devs[d]
                         else:
                             try: alias = str(self.tango.get_alias(d))
                             except: alias = ''
+                            
                         self.matching_attributes['%s/%s'%(d,t)] = (d,alias,t,label)
+                        
                         if warn and len(self.matching_attributes)>self.MAX_ATTRIBUTES:
                             Qt.QMessageBox.warning(self, "Warning" , 
                                 "Your search (%s,%s) matches too many attributes!!! (%d); please refine your search\n\n%s\n..."%(
                                 devfilter,attrfilter,len(self.matching_attributes),'\n'.join(sorted(self.matching_attributes.keys())[:30])))
+                                
                             return {}
             except:
                 print('load_attributes(%s,%s,%s => %s) failed!'%(servfilter,devfilter,attrfilter,d))
@@ -555,8 +568,10 @@ class ArchivingBrowser(Qt.QWidget):
         self.AttributeFilter = fandango.qt.Dropable(Qt.QLineEdit)()
         self.AttributeFilter.setSupportedMimeTypes([fandango.qt.TAURUS_ATTR_MIME_TYPE,fandango.qt.TEXT_MIME_TYPE])
         self.update = Qt.QPushButton('Update')
-        self.archivecheck = Qt.QCheckBox("Show archived attributes only")
-        self.archivecheck.setChecked(True)
+        self.archivecheck = Qt.QCheckBox("Only archived")
+        self.archivecheck.setChecked(False)
+        self.dbcheck = Qt.QCheckBox("DB cache")
+        self.dbcheck.setChecked(False)
 
         self.searchbar.layout().addWidget(Qt.QLabel(
             'Enter Device and Attribute filters using wildcards '
@@ -565,7 +580,8 @@ class ArchivingBrowser(Qt.QWidget):
         [self.searchbar.layout().addWidget(o,x,y,h,w) for o,x,y,h,w in (
             (Qt.QLabel("Device or Alias:"),4,0,1,1),(self.DeviceFilter,4,1,1,4),
             (Qt.QLabel("Attribute:"),4,5,1,1),(self.AttributeFilter,4,6,1,4),
-            (self.update,4,10,1,1),(self.archivecheck,4,11,1,2),
+            (self.update,4,10,1,1),(self.archivecheck,4,11,1,1),
+            (self.dbcheck,4,12,1,1),
             )]
         
         if SHOW_OPTIONS:
