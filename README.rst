@@ -13,7 +13,7 @@ All of them can be obtained from www.tango-controls.org
 Examples and usage of PyTangoArchiving can be found here:
 
 * https://github.com/sergirubio/PyTangoArchiving/blob/master/doc/PyTangoArchiving_UserGuide.rst
-* http://www.tango-controls.org/resources/howto/pytangoarchiving
+* http://tango-controls.readthedocs.io/en/latest/tutorials-and-howtos/how-tos/how-to-pytangoarchiving.html
 
 The old tags and branches are available in sourceforge: 
 
