@@ -42,7 +42,8 @@ from taurus.qt.qtgui.application import TaurusApplication
 from taurus.qt.qtgui.container import TaurusWidget
 from taurus.qt.qtgui.button import TaurusLauncherButton
 from taurus.qt.qtgui.panel import TaurusValue,TaurusForm,DefaultTaurusValueCheckBox
-from PyTangoArchiving.widget.taurusattributechooser import TaurusAttributeChooser as AttrChooser
+#from PyTangoArchiving.widget.taurusattributechooser import TaurusAttributeChooser as AttrChooser
+from taurus.qt.qtgui.panel.taurusmodelchooser import TaurusModelChooser as AttrChooser
 from taurus.qt.qtgui.input import TaurusValueLineEdit
 from taurus.qt.qtgui.table import TaurusValuesTable
 from taurus.qt.qtgui.plot import TaurusPlot

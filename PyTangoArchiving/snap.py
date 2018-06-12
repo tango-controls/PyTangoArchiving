@@ -71,7 +71,8 @@ class SnapAPI(Logger,Singleton):
 
     __instantiated__ = 0
 
-    def __init__(self,user='browser',passwd='browser',api=None,SINGLETON=True,load=True):
+    #def __init__(self,user='browser',passwd='browser',api=None,SINGLETON=True,load=True):
+    def __init__(self,user='snaparchiver',passwd='snaparchiver',api=None,SINGLETON=True,load=True):
         """ The SnapAPI is a Singleton object; is instantiated only one time
         @param[in] api An ArchivingAPI object is required.
         """
@@ -97,7 +98,7 @@ class SnapAPI(Logger,Singleton):
             passwd=self.api.tango.get_class_property('SnapArchiver',['DbPassword'])['DbPassword'][0]
             print 'Connecting to %s as %s ...' % (host,user)
             self.set_db_config(api,host,user,passwd)
-          
+
             try:
                 if load: self.load_contexts()
             except:
@@ -113,6 +114,7 @@ class SnapAPI(Logger,Singleton):
 
     def set_db_config(self,api,host,user,passwd):
         self.db=SnapDB(api,host=host,user=user,passwd=passwd)
+        print 'Done'
 
     ## @name Get methods
     # @{
@@ -657,7 +659,7 @@ class SnapDB(FriendlyDB,Singleton):
         """SnapDB Singleton creator
         @param api it links the SnapDB object to its associated SnapAPI (unneeded?)
         """
-        print 'Creating SnapDB object ... (%s,%s,%s,%s,%s)' % (api,host,user,passwd,db_name)
+        print 'Creating SnapDB object ... (%s,%s,%s,%s,%s)' % ('',host,user,passwd,db_name)
         self._api=api if api else None
         FriendlyDB.__init__(self,db_name,host or (api and api.arch_host) or 'localhost',user,passwd)
         assert hasattr(self,'db'),'SnapDB_UnableToCreateConnection'

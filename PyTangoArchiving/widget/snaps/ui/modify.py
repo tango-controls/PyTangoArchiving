@@ -2,6 +2,7 @@ import taurus, sys, traceback
 from taurus.external.qt import Qt, QtCore, QtGui
 from PyTangoArchiving import SnapAPI
 from PyTangoArchiving.widget.taurusattributechooser import TaurusAttributeChooser
+#from taurus.qt.qtgui.panel.taurusmodelchooser import TaurusModelChooser as TaurusAttributeChooser
 
 class ContextEditUi(object):
     def setupUi(self, Form):
