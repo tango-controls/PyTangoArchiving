@@ -35,6 +35,7 @@ import PyTango
 import sys,time
 import fandango
 import fandango.functional as fn
+import fandango.tango as ft
 import PyTangoArchiving
 import traceback
 from fandango.objects import Cached
@@ -92,92 +93,101 @@ class PyExtractor(PyTango.Device_4Impl):
         return argin
 
     def read_dyn_attr(self,attr):
-        #attr.set_value(1.0)
-        aname,values = attr.get_name(),[]
-        attribute = self.tag2attr(aname)
-        print time.ctime()+'In read_dyn_attr(%s)'%aname
-        print(self.counter)
-
+        
         try:
-            req,atformat,attype,data = self.AttrData[attribute]
-        except Exception,e:
-            print('Unable to read %s: key = %s ; cache = %s' % (attr,attribute,self.AttrData.keys()))
+            #attr.set_value(1.0)
+            aname,values = attr.get_name(),[]
+            attribute = self.tag2attr(aname)
+            print time.ctime()+'In read_dyn_attr(%s)'%aname
+            print(self.counter)
+
+            try:
+                req,atformat,attype,data = self.AttrData[attribute]
+            except Exception,e:
+                print('Unable to read %s: key = %s ; cache = %s' % (attr,attribute,self.AttrData.keys()))
+                traceback.print_exc()
+                raise e
+
+            conv = self.bool2float if attype is PyTango.DevBoolean \
+            else (float if attype is PyTango.DevDouble
+                else str)
+            
+            if aname.endswith('_r'):
+                if atformat is PyTango.SpectrumAttr:
+                    values = [conv(v[1] or 0.) for v in data]
+                else:
+                    values = [map(conv,v[1]) for v in data]
+                if values: print time.ctime()+'In read_dyn_attr(%s): %s[%d]:%s...%s'%(aname,type(values[0]),len(values),values[0],values[-1])
+                else: print '\tno values'
+                attr.set_value(values,len(values))
+                
+            elif aname.endswith('_l'):
+                print('%s: %s' % (aname,data))
+                if data[-1:]:
+                    value = conv(data[-1][1])
+                    date =  float(data[-1][0] or 0.)
+                    q = ft.AttrQuality.ATTR_VALID
+                else:
+                    value = None
+                    date = fn.now()
+                    q = ft.AttrQuality.ATTR_INVALID
+
+                print( time.ctime()+'In read_dyn_attr(%s): (%s,%s,%s)' 
+                    % ( aname, value, date, q ) )
+                attr.set_value_date_quality((value or 0.),date,q)
+                
+            elif aname.endswith('_w'): 
+                if atformat is PyTango.SpectrumAttr:
+                    values = [conv(v[2] or 0.) for v in data]
+                else:
+                    values = [map(conv,v[2]) for v in data]
+                if values: print time.ctime()+'In read_dyn_attr(%s): %s[%d]:%s...%s'%(aname,type(values[0]),len(values),values[0],values[-1])
+                else: print '\tno values'
+                attr.set_value(values,len(values))
+                
+            elif aname.endswith('_t'): 
+                values = [float(v[0] or 0.) for v in data]
+                if values: print time.ctime()+'In read_dyn_attr(%s): %s[%d]:%s...%s'%(aname,type(values[0]),len(values),values[0],values[-1])
+                else: print '\tno values'
+                attr.set_value(values,len(values))
+                
+            elif aname.endswith('_d'): 
+                values = [fn.time2str(float(v[0] or 0.)) for v in data]
+                if values: print time.ctime()+'In read_dyn_attr(%s): %s[%d]:%s...%s'%(aname,type(values[0]),len(values),values[0],values[-1])
+                else: print '\tno values'
+                attr.set_value(values,len(values))            
+                
+            elif aname.endswith('_ld'): 
+                lv = [fn.time2str(float(v[0] or 0.)) for v in data[-1:]]
+                if lv: 
+                    print(time.ctime()+'In read_dyn_attr(%s): %s[%d]:%s...%s'
+                            %(aname,type(lv[0]),len(lv),lv[0],lv[-1]))
+                else: print '\tno values'
+                attr.set_value(lv[-1])
+                
+            else:
+                if atformat == PyTango.SpectrumAttr:
+                    if attype == PyTango.DevString:
+                        values = [(fn.time2str(d[0]),str(d[1])) for d in data]
+                    else:
+                        values = [(d[0],conv(d[1])) for d in data]
+                else:
+                    if attype is PyTango.DevString:
+                        values = [[fn.time2str(d[0])]+map(str,d[1]) for d in data]
+                    else:
+                        values = [[d[0]]+map(conv,d[1]) for d in data]
+                
+                if values: 
+                    print time.ctime()+'In read_dyn_attr(%s): %s[%d]:%s...%s'%(aname,type(values[0]),len(values),values[0],values[-1])
+                else: 
+                    print '\tno values'
+                attr.set_value(values,len(values))
+                
+            print '\treturned %d values'%len(values)
+            
+        except Exception as e:
             traceback.print_exc()
             raise e
-
-        conv = self.bool2float if attype is PyTango.DevBoolean \
-          else (float if attype is PyTango.DevDouble
-              else str)
-        
-        if aname.endswith('_r'):
-            if atformat is PyTango.SpectrumAttr:
-                values = [conv(v[1] or 0.) for v in data]
-            else:
-                values = [map(conv,v[1]) for v in data]
-            if values: print time.ctime()+'In read_dyn_attr(%s): %s[%d]:%s...%s'%(aname,type(values[0]),len(values),values[0],values[-1])
-            else: print '\tno values'
-            attr.set_value(values,len(values))
-            
-        elif aname.endswith('_l'):
-            if data[-1:]:
-                value = conv(data[-1:][1])
-                date =  float(data[-1:][0] or 0.)
-                q = ft.AttrQuality.ATTR_VALID
-            else:
-                value = None
-                date = ft.now()
-                q = ft.AttrQuality.ATTR_INVALID
-
-            print( time.ctime()+'In read_dyn_attr(%s): (%s,%s,%s)' 
-                  % ( aname, value, date, quality ) )
-            attr.set_value_date_quality((value or 0.),date,quality)
-            
-        elif aname.endswith('_w'): 
-            if atformat is PyTango.SpectrumAttr:
-                values = [conv(v[2] or 0.) for v in data]
-            else:
-                values = [map(conv,v[2]) for v in data]
-            if values: print time.ctime()+'In read_dyn_attr(%s): %s[%d]:%s...%s'%(aname,type(values[0]),len(values),values[0],values[-1])
-            else: print '\tno values'
-            attr.set_value(values,len(values))
-            
-        elif aname.endswith('_t'): 
-            values = [float(v[0] or 0.) for v in data]
-            if values: print time.ctime()+'In read_dyn_attr(%s): %s[%d]:%s...%s'%(aname,type(values[0]),len(values),values[0],values[-1])
-            else: print '\tno values'
-            attr.set_value(values,len(values))
-            
-        elif aname.endswith('_d'): 
-            values = [fn.time2str(float(v[0] or 0.)) for v in data]
-            if values: print time.ctime()+'In read_dyn_attr(%s): %s[%d]:%s...%s'%(aname,type(values[0]),len(values),values[0],values[-1])
-            else: print '\tno values'
-            attr.set_value(values,len(values))            
-            
-        elif aname.endswith('_ld'): 
-            lv = [fn.time2str(float(v[0] or 0.)) for v in data[-1:]]
-            if lv: 
-                print(time.ctime()+'In read_dyn_attr(%s): %s[%d]:%s...%s'
-                        %(aname,type(lv[0]),len(lv),lv[0],lv[-1]))
-            else: print '\tno values'
-            attr.set_value(lv[-1])
-            
-        else:
-            if atformat == PyTango.SpectrumAttr:
-              if attype == PyTango.DevString:
-                values = [(fn.time2str(d[0]),str(d[1])) for d in data]
-              else:
-                values = [(d[0],conv(d[1])) for d in data]
-            else:
-              if attype is PyTango.DevString:
-                values = [[fn.time2str(d[0])]+map(str,d[1]) for d in data]
-              else:
-                values = [[d[0]]+map(conv,d[1]) for d in data]
-              
-            if values: print time.ctime()+'In read_dyn_attr(%s): %s[%d]:%s...%s'%(aname,type(values[0]),len(values),values[0],values[-1])
-            else: print '\tno values'
-            attr.set_value(values,len(values))
-            
-        print '\treturned %d values'%len(values)
         
     def is_dyn_attr_allowed(self,attr,req_type=None):
         return True #self.IsDataReady(attr.name)
@@ -222,12 +232,15 @@ class PyExtractor(PyTango.Device_4Impl):
                 PyTango.SpectrumAttr(aname+'_d',PyTango.DevString, writable,MAXDIM),
                 self.read_dyn_attr,None,self.is_dyn_attr_allowed)
             
+            #ARRAY
             self.add_attribute(atformat(aname+'_r',attype, writable,*dims),
                                self.read_dyn_attr,None,self.is_dyn_attr_allowed)
             
+            #LAST VALUE
             self.add_attribute(PyTango.Attr(aname+'_l',attype,PyTango.AttrWriteType.READ),
                                self.read_dyn_attr,None,self.is_dyn_attr_allowed)   
             
+            #LAST DATE
             self.add_attribute(
                 PyTango.Attr(aname+'_ld',PyTango.DevString,PyTango.AttrWriteType.READ),
                                self.read_dyn_attr,None,self.is_dyn_attr_allowed)              
