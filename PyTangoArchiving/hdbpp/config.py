@@ -90,6 +90,7 @@ class HDBpp(ArchivingDB,SingletonMap):
         try:
             self.get_manager()
         except:
+            traceback.print_exc()
             print('Unable to get manager')
             
     def get_db_config(self,manager='', db_name=''):
@@ -131,7 +132,8 @@ class HDBpp(ArchivingDB,SingletonMap):
                     self.manager = m
                     break
                     
-        return get_device(self.manager) if self.manager else None
+        dp = get_device(self.manager) if self.manager else None
+        return dp.ping() and dp
       
     @Cached(depth=10,expire=60.)
     def get_archived_attributes(self,search=''):
