@@ -401,7 +401,7 @@ def start_attributes_for_archivers(target,attr_regexp='',event_conf={},
                     if not overwrite and db in rd.is_attribute_archived(a):
                         print('%s already archived in %s' % (a,db))
                         continue
-                    events = ft.check_attribute_events(attr,ft.EventType.ARCHIVE_EVENT)
+                    events = ft.check_attribute_events(a,ft.EventType.ARCHIVE_EVENT)
                     ep = events.get(ft.EventType.ARCHIVE_EVENT,False)
                     if ep is True:
                         if 'polling' in mode: 
