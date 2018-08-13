@@ -6,7 +6,20 @@ PyTangoArchiving allows to:
 * Increase the capabilities of configuration and diagnostic.
 * Import/Export .csv and .xml files between the archiving and the database.
 
-PyTangoArchiving dependences are PyTango, Fandango and Soleil's Archiving or HDB++.
+PyTangoArchiving requires a MySQL python binding installed, either python-mysql or mysqlclient
+
+    https://pypi.org/project/mysqlclient/#description
+    https://github.com/PyMySQL/mysqlclient-python
+    https://mysqlclient.readthedocs.io
+
+With Python3 only mysqlclient will be supported, the steps to install it (on Debian) are:
+
+    sudo aptitude remove python-mysqldb
+    sudo aptitude install python-pip
+    sudo aptitude install libmariadbclient-dev
+    sudo pip install mysqlclient
+
+Other PyTangoArchiving dependences are PyTango, Fandango and Soleil's Archiving or HDB++.
 
 All of them can be obtained from www.tango-controls.org
 
