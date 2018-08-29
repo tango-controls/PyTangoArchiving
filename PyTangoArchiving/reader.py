@@ -261,7 +261,8 @@ class Reader(Object,SingletonMap):
                  multihost=False,alias_file=''):
         '''@param config must be an string like user:passwd@host'''
         if not logger:
-            self.log = Logger('%s.Reader'%schema,format='%(levelname)-8s %(asctime)s %(name)s: %(message)s')
+            self.log = Logger('%s.Reader'%schema,
+                format='%(levelname)-8s %(asctime)s %(name)s: %(message)s')
             self.log.setLogLevel(log)
         else: 
             self.log = logger
@@ -270,7 +271,8 @@ class Reader(Object,SingletonMap):
         if schema is None: schema = db
         if schema is not None and db=='*': db = schema
         if any(s in ('*','all') for s in (db,schema)): db,schema = '*','*'
-        self.log.debug('In PyTangoArchiving.Reader.__init__(%s)' % (schema or db or '...'))        
+        self.log.debug('In PyTangoArchiving.Reader.__init__(%s)' 
+                       % (schema or db or '...'))        
         self.db_name = db
         self._last_db = ''
         self.dbs = {}
@@ -286,90 +288,99 @@ class Reader(Object,SingletonMap):
         self.attr_extracted = {}
         self.cache = {}
         self.is_hdbpp = False
-        props = self.tango.get_property('PyTangoArchiving',[self.db_name,'DbConfig'])
-        self.default = props.get(self.db_name) or props.get('DbConfig')
+        
+        props = self.tango.get_property('PyTangoArchiving',
+                                        [self.db_name,'DbConfig'])
+        self.default = props.get(self.db_name) or props.get('DbConfig')            
         
         
         #Initializing Database connection
-        if self.db_name and self.db_name!='*':
-            try:
-                if not config:
-                    try: config = '\n'.join(self.tango.get_class_property('%sextractor'%self.schema,['DbConfig'])['DbConfig'] or [''])
-                    except: config = ''
-                    if not config and self.default: config = '\n'.join(self.default)
-                if config:
-                    self.configs.update( (0 if '<' not in c else str2epoch(c.split('<')[0]),c.split('<')[-1]) for c in config.split() )
-                    
-                if not config and self.db_name in Schemas.keys() and self.schema not in ('hdb','tdb'):
-                    raise 'NotImplemented!, Use generic Reader() instead'
+        if '*' in (self.db_name,self.schema):
+            self.init_universal()
+        else: 
+            self.init_for_schema(self.schema or self.db_name,config,servers)
+            
+        try:
+            alias_file = alias_file or utils.get_alias_file()       
+            self.alias = alias_file and read_alias_file(alias_file)
+        except Exception,e: 
+            self.log.warning('Unable to read alias file %s: %s'%(alias_file,e))
 
-                #print(self.db_name,schema,config)
-                if any(a.lower() in s for s in map(str,(self.db_name,schema,config)) for a in ('hdbpp','hdb++','hdblite')):
-                    self.is_hdbpp = True
-                    c = sorted(self.configs.items())[-1][-1]
-                    self.db_name = c.split('/')[-1] if '/' in c else db_name
-                    self.log.debug("Created HDB++ reader")
-                else:
-                    self.log.debug("Created '%s' reader"%self.db_name)
-                #print self.configs
-            except:
-                #self.log.error(traceback.format_exc())
-                self.log.warning('Unable to connect to MySQL, using Java %sExtractor devices'%self.schema.upper())
+        #Initializing the state machine        
+        self.reset() 
+        
+    @fandango.Catched
+    def init_for_schema(self,schema,config='',servers=[]):
+        
+        if not config:
+            try: 
+                config = '\n'.join(self.tango.get_class_property(
+                    '%sextractor'%self.schema,['DbConfig'])['DbConfig'] or [''])
+            except: config = ''
+            if not config and self.default: 
+                config = '\n'.join(self.default)
+            
+        if config:
+            self.configs.update( (0 if '<' not in c 
+                else str2epoch(c.split('<')[0]),c.split('<')[-1]) 
+                for c in config.split() )
+            
+        if not config and self.db_name in Schemas.keys() \
+                and self.schema not in ('hdb','tdb'):
+            raise 'NotImplemented!, Use generic Reader() instead'
 
+        # THIS METHOD OF CHECKING HDB++ IS FLAWED!! (and unused) @TODO
+        if any(a.lower() in s for s in map(str,(self.db_name,schema,config)) 
+               for a in ('hdbpp','hdb++','hdblite')):
+            self.is_hdbpp = True
+            c = sorted(self.configs.items())[-1][-1]
+            self.db_name = c.split('/')[-1] if '/' in c else db_name
+            self.log.debug("Created HDB++ reader")
         else:
-            self.log.debug("Creating 'universal' reader")
-            rd = getArchivingReader()
-            #Hdb++ classes will be scanned when searching for HDB
-            tclasses = map(str.lower,fandango.get_database().get_class_list('*'))
-            for s in Schemas.SCHEMAS:
-                if (s in self.DefaultSchemas 
-                      and any(c.startswith(s.lower()) for c in tclasses)):
-                  self.configs[s] = Reader(s,logger=logger)
-
-                else:
-                  sch = Schemas.getSchema(s,logger=self.log)
-                  if sch: 
-                      self.configs[sch.get('schema')] = sch.get('reader')
-
-            self.log.debug("... created")
+            self.log.debug("Created '%s' reader"%self.db_name)
         
         if self.schema.lower() == 'tdb': 
             #RetentionPeriod must be updated for all generic readers
             try:
-                prop = self.tango.get_class_property('TdbArchiver',['RetentionPeriod'])['RetentionPeriod']
+                prop = self.tango.get_class_property('TdbArchiver',
+                                ['RetentionPeriod'])['RetentionPeriod']
                 prop = prop[0] if prop else 'days/3'
-                Reader.RetentionPeriod = max((Reader.RetentionPeriod,eval('1./(%s)'%prop,{'days':1./(3600*24)})))
+                Reader.RetentionPeriod = max((Reader.RetentionPeriod,
+                                eval('1./(%s)'%prop,{'days':1./(3600*24)})))
             except Exception,e: 
-                self.log.warning('Unable to parse TdbArchiver.RetentionPeriod: %s'%e)
+                self.log.warning('Error on RetentionPeriod: %s'%e)
             
-        if self.schema!='*':
-            if self.get_database() is None:
-                #Initializing archiver extractors proxies
-                from fandango.servers import ServersDict
-                self.servers = servers or ServersDict(logger=self.log)
-                #self.servers.log.setLogLevel(log)
-                if self.tango_host == os.getenv('TANGO_HOST'):
-                    self.servers.load_by_name('%sextractor'%schema)
-                    self.extractors = self.servers.get_class_devices(['TdbExtractor','HdbExtractor'][schema=='hdb'])
-                else:
-                    self.extractors = list(self.tango.get_device_exported('*%sextractor*'%self.schema))
-            
-        if not alias_file:
-            if self.schema == '*':
-                alias_file = get_free_property('PyTangoArchiving','AliasFile')
+        #Initializing archiver extractors proxies
+        if self.get_database() is None:
+            from fandango.servers import ServersDict
+            self.servers = servers or ServersDict(logger=self.log)
+            #self.servers.log.setLogLevel(log)
+            if self.tango_host == os.getenv('TANGO_HOST'):
+                self.servers.load_by_name('%sextractor'%schema)
+                self.extractors = self.servers.get_class_devices(
+                    ['TdbExtractor','HdbExtractor'][schema=='hdb'])
             else:
-                alias_file = get_class_property('%sextractor'%self.schema,'AliasFile')
-                
-        if alias_file:
-            if fun.isSequence(alias_file): 
-                alias_file = alias_file[0] or ''
-            try:
-                self.alias = read_alias_file(alias_file)
-            except Exception,e: 
-                    self.log.warning('Unable to read alias file %s: %s'%(alias_file,e))
+                self.extractors = list(self.tango.get_device_exported(
+                    '*%sextractor*'%self.schema))        
+        
+    def init_universal(self):
 
-        #Initializing the state machine        
-        self.reset() 
+        self.log.debug("Reader.init_universal(%s)"%','.join(Schemas.SCHEMAS))
+        rd = getArchivingReader()
+        #Hdb++ classes will be scanned when searching for HDB
+        tclasses = map(str.lower,fandango.get_database().get_class_list('*'))
+        for s in Schemas.SCHEMAS:
+            if (s in self.DefaultSchemas 
+                    and any(c.startswith(s.lower()) for c in tclasses)):
+                self.configs[s] = Reader(s,logger=logger)
+
+            else:
+                sch = Schemas.getSchema(s,logger=self.log)
+                if sch: 
+                    self.configs[sch.get('schema')] = sch.get('reader')
+
+        self.log.debug("... created")        
+        
         
     def __del__(self):
         for k in self.dbs.keys()[:]:
@@ -1425,13 +1436,14 @@ class ReaderProcess(Logger,SingletonMap): #,Object,SingletonMap):
         self.tango_host = tango_host or os.getenv('TANGO_HOST')
         self.tango = PyTango.Database(*self.tango_host.split(':'))
 
-        if not alias_file:
-            try: alias_file = (self.tango.get_class_property('%sextractor'%schema,['AliasFile'])['AliasFile'] or [''])[0]
-            except: alias_file = ''
+        try:
+            alias_file = alias_file or utils.get_alias_file()       
+            self.alias = alias_file and read_alias_file(alias_file)
+        except Exception,e: 
+            self.log.warning('Unable to read alias file %s: %s'%(alias_file,e))
 
         if schema is not None and db=='*': db = schema
         if any(s in ('*','all') for s in (db,schema)): db,schema = '*','*'
-        self.alias = read_alias_file(alias_file)
         self.state = PyTango.DevState.INIT
         self.schema = schema
         

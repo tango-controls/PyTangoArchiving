@@ -127,6 +127,20 @@ class CatchedAndLogged(fandango.objects.Decorator):
         
 ###############################################################################        
     
+def get_alias_file(schema = ''):
+    from fandango.tango import get_free_property,get_class_property
+    if not schema or schema in ('*',''):
+        alias_file = get_free_property('PyTangoArchiving','AliasFile')
+    else:
+        alias_file = get_class_property('%sextractor'%schema,'AliasFile')
+        if isSequence(alias_file) and len(alias_file):
+            alias_file = alias_file[0]
+        if not alias_file:
+            alias_file = get_alias_file()
+
+    return alias_file
+    
+    
 def read_alias_file(alias_file,trace=False):
     # Reading the Alias file
     # The format of the file will be:

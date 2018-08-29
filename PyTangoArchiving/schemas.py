@@ -57,10 +57,12 @@ class Schemas(object):
     @classmethod
     def load(k,tango='',prop=''):
         tangodb = fandango.tango.get_database(tango)
-        schemas = prop or tangodb.get_property('PyTangoArchiving','Schemas')['Schemas']
+        schemas = prop or tangodb.get_property(
+            'PyTangoArchiving','Schemas')['Schemas']
         if not schemas:
           schemas = ['tdb','hdb']
           tangodb.put_property('PyTangoArchiving',{'Schemas':schemas})
+        print('Loading schemas from Tango Db ... (%s)'%','.join(schemas)) 
         [k.getSchema(schema,tango,write=True) for schema in schemas]
         return k.SCHEMAS
     
@@ -141,7 +143,7 @@ class Schemas(object):
           now = time.time()
           start = fun.notNone(start,now-1)
           end = fun.notNone(end,now)
-          k.LOCALS.update({'attribute':attribute,
+          k.LOCALS.update({'attribute':attribute.lower(),
                 'match':clmatch,'clmatch':clmatch,
                 'start':start,'end':end,'now':now,
                 'reader':schema.get('reader',schema.get('api')),

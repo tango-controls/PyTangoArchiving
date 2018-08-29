@@ -206,7 +206,8 @@ class ArchivingAPI(CommonAPI):
     
     def is_attribute_archived(self,attribute):
         attribute = '/'.join(attribute.split('/')[-4:])
-        return (attribute.lower() in [a.lower() for a in self.get_archived_attributes()])    
+        #return (attribute.lower() in [a.lower() for a in self.get_archived_attributes()])    
+        return bool(self[attribute].archiver)
         
     def get_attribute_archivers(self,attribute_list=None,load=False):
         '''

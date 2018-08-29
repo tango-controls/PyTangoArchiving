@@ -175,28 +175,6 @@ def check_attribute_in_all_dbs(attr_regexp,reader = None,
             result.append((a,s,v and len(v)))
     return result
 
-def get_class_archiving(target):
-    """ 
-    target: device or class
-    Reads Class.Archiving property and parses it as:
-    Attribute,Polling,Abs change,Rel change,Periodic
-    """
-    if '/' in target:
-        target = fn.tango.get_device_info(target).dev_class
-    config = fn.tango.get_class_property(target,'Archiving')
-    attrs = dict(t.split(',',1) for t in config)
-    for a,v in attrs.items():
-        try:
-            v = map(float,v.split(','))
-            attrs[a] = {'polling':int(v[0])}
-            attrs[a]['arch_abs_event'] = v[1] or None
-            attrs[a]['arch_rel_event'] = v[2] or None
-            attrs[a]['arch_per_event'] = v[3] or None
-        except:
-            pass
-    return attrs
-
-
 def get_archivers_for_attributes(attrs=[],archs='archiving/es/*'):
     """
     This method returns matching archivers for a list of attributes
@@ -287,7 +265,7 @@ def get_current_conf(attr):
 
 def start_archiving_for_attributes(attrs,*args,**kwargs):
     """
-    def start_archiving(self,attribute,archiver,period=0,
+    from start_archiving(self,attribute,archiver,period=0,
                       rel_event=None,per_event=300000,abs_event=None,
                       code_event=False, ttl=None, start=False):
 
@@ -296,6 +274,9 @@ def start_archiving_for_attributes(attrs,*args,**kwargs):
     archs = get_archivers_for_attributes(attrs)
     dbs = get_hdbpp_databases(archs.keys())
     done = []
+    
+    if not args and not kwargs:
+        kwargs['code_event'] = True
     
     for db,devs in dbs.items():
         api = PyTangoArchiving.Schemas.getApi(db)
@@ -306,6 +287,9 @@ def start_archiving_for_attributes(attrs,*args,**kwargs):
             for t in ts:
                 api.start_archiving(t,d,*args,**kwargs)            
                 done.append(fn.tango.get_full_name(t))
+
+            if not kwargs.get('start'):
+                fn.get_device(d).Start()
 
     if len(done)!=len(attrs):
         print('No hdbpp database match for: %s' % str(
@@ -336,8 +320,30 @@ def get_last_values_for_attributes(attrs,*args,**kwargs):
     return result
 
 
+def get_class_archiving(target):
+    """ 
+    target: device or class
+    Reads Class.Archiving property and parses it as:
+    Attribute,Polling,Abs change,Rel change,Periodic
+    """
+    if '/' in target:
+        target = fn.tango.get_device_info(target).dev_class
+    config = fn.tango.get_class_property(target,'Archiving')
+    attrs = dict(t.split(',',1) for t in config)
+    for a,v in attrs.items():
+        try:
+            v = map(float,v.split(','))
+            attrs[a] = {'polling':int(v[0])}
+            attrs[a]['arch_abs_event'] = v[1] or None
+            attrs[a]['arch_rel_event'] = v[2] or None
+            attrs[a]['arch_per_event'] = v[3] or None
+        except:
+            pass
+    return attrs
+
 def start_attributes_for_archivers(target,attr_regexp='',event_conf={},
-            load=False, by_class=False, min_polling = 100, overwrite = False, check = True):
+            load=False, by_class=False, min_polling = 100, overwrite = False, 
+            check = True):
     """
     Target may be an attribute list or a device regular expression
     if by_class = True, config will be loaded from Tango class properties
