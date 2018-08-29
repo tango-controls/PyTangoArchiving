@@ -63,7 +63,7 @@ from common import getSingletonAPI as getCommonAPI
 from schemas import Schemas
 from archiving import ArchivingAPI,ArchivedAttribute
 from utils import check_attribute
-from check import check_archiving_performance
+from check import check_archiving_schema
 from files import GetConfigFiles,LoadArchivingConfiguration,CheckArchivingConfiguration,ParseCSV,StopArchivingConfiguration
 
 __all__=['reader','archiving','utils','files','common']

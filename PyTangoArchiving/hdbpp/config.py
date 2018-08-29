@@ -70,7 +70,6 @@ class HDBpp(ArchivingDB,SingletonMap):
                 sch = Schemas.getSchema(db_name)
                 if sch:
                     print('HDBpp(): Loading from Schemas')
-                    print(sch)
                     db_name = sch.get('dbname',sch.get('db_name'))
                     host = host or sch.get('host')
                     user = user or sch.get('user')
@@ -133,7 +132,7 @@ class HDBpp(ArchivingDB,SingletonMap):
                     break
                     
         dp = get_device(self.manager) if self.manager else None
-        return dp.ping() and dp
+        return check_device(dp) and dp
       
     @Cached(depth=10,expire=60.)
     def get_archived_attributes(self,search=''):
@@ -215,22 +214,38 @@ class HDBpp(ArchivingDB,SingletonMap):
                     return k
         return None
     
-    def start_servers(self,host=''):
+    def start_servers(self,host='',restart=True):
         import fandango.servers
         if not self.manager: self.get_manager()
         astor = fandango.servers.Astor(self.manager)
-        astor.start_servers(host=(host or self.db_host))
+        if restart:
+            astor.stop_servers()
+            time.sleep(10.)
+        print('Starting manager ...')
+        astor.start_servers(host=(host or self.host))
         time.sleep(1.)
-        astor.load_from_devs_list(self.get_archivers())
-        astor.start_servers(host=(host or self.db_host))
         
-    def start_devices(self,regexp = '*', force = False, do_init = False):
-        devs = fn.tango.get_class_devices('HdbEventSubscriber')
+        astor = fandango.servers.Astor()
+        devs = self.get_archivers()
+        astor.load_from_devs_list(devs)
+        if restart:
+            astor.stop_servers()
+            time.sleep(10.)
+        print('Starting archivers ...')
+        astor.start_servers(host=(host or self.host))
+        time.sleep(3.)
+        self.start_devices(force=True)
+        
+    def start_devices(self,regexp = '*', force = False, 
+                      do_init = False, do_restart = False):
+        #devs = fn.tango.get_class_devices('HdbEventSubscriber')
+        devs = self.get_archivers()
         if regexp:
             devs = fn.filtersmart(devs,regexp)
         off = sorted(set(d for d in devs if not fn.check_device(d)))
 
-        if off:
+        if off and do_restart:
+            print('Restarting %s Archiving Servers ...'%self.db_name)
             astor = fn.Astor()
             astor.load_from_devs_list(list(off))
             astor.stop_servers()
@@ -245,6 +260,7 @@ class HDBpp(ArchivingDB,SingletonMap):
                     dp.init()
                 if force or dp.attributenumber != dp.attributestartednumber:
                     off.append(d)
+                    print('%s.Start()' % d)
                     dp.start()
             except Exception,e:
                 self.warning('start_archivers(%s) failed: %s' % (d,e))
@@ -379,7 +395,7 @@ class HDBpp(ArchivingDB,SingletonMap):
           if start:
               try:
                 arch = archiver # self.get_attribute_archiver(attribute)
-                self.warning('%s.Start()' % (arch))
+                self.info('%s.Start()' % (arch))
                 fn.get_device(arch).Start()
               except:
                 traceback.print_exc()
@@ -400,14 +416,14 @@ class HDBpp(ArchivingDB,SingletonMap):
     def is_attribute_archived(self,attribute,active=None,cached=True):
         # @TODO active argument not implemented
         model = parse_tango_model(attribute,fqdn=True)
-        if cached:
+        d = self.get_manager()
+        if d and cached:
             self.get_archived_attributes()
             if any(m in self.attributes for m in (attribute,model.fullname,model.normalname)):
                 return model.fullname
             else:
                 return False
-        else:
-            d = self.get_manager()
+        elif d:
             attributes = d.AttributeSearch(model.fullname)
             a = [a for a in attributes if a.lower().endswith(attribute.lower())]
             if len(attributes)>1: 
@@ -416,6 +432,9 @@ class HDBpp(ArchivingDB,SingletonMap):
                 return attributes[0]
             else:
                 return False
+        else:
+            return any(a.lower().endswith('/'+attribute.lower())
+                                          for a in self.get_attributes())
           
     def start_archiving(self,attribute,archiver,period=0,
                       rel_event=None,per_event=300000,abs_event=None,
@@ -593,7 +612,7 @@ class HDBpp(ArchivingDB,SingletonMap):
         start_date and stop_date must be in a format valid for SQL
         """
         t0 = time.time()
-        self.warning('HDBpp.get_attribute_values(%s,%s,%s,%s,decimate=%s,%s)'
+        self.debug('HDBpp.get_attribute_values(%s,%s,%s,%s,decimate=%s,%s)'
               %(table,start_date,stop_date,N,decimate,kwargs))
         if fn.isSequence(table):
             aid,tid,table = table
@@ -668,7 +687,7 @@ class HDBpp(ArchivingDB,SingletonMap):
                 #for k,l in result:
                     #print((k,l and len(l)))
                 result = result[-N:]
-            self.warning('array arranged [%d] in %f s'
+            self.debug('array arranged [%d] in %f s'
                          % (len(result),time.time()-t0))
             t0 = time.time()
           
@@ -690,7 +709,7 @@ class HDBpp(ArchivingDB,SingletonMap):
             #for i,t in enumerate(result):
                 #result[i] = ([float(t[0])]+t[1:])
         
-        self.warning('timestamp arranged [%d] in %f s'
+        self.debug('timestamp arranged [%d] in %f s'
                      % (len(result),time.time()-t0))
         t0 = time.time()
             
@@ -719,7 +738,7 @@ class HDBpp(ArchivingDB,SingletonMap):
             # why?
             self.getCursor(klass=MySQLdb.cursors.SSCursor)
 
-        self.warning('result arranged [%d]'%len(result))            
+        self.debug('result arranged [%d]'%len(result))            
         return result
         
     def get_attributes_values(self,tables='',start_date=None,stop_date=None,
@@ -743,3 +762,46 @@ class HDBpp(ArchivingDB,SingletonMap):
         r = self.Query('select count(*) from %s where att_conf_id = %s'
                           % ( table, aid) + where)
         return r[0][0] if r else 0
+    
+    def check_attributes(self,attrs = '', load = False, t0 = 0):
+        
+        db,t0,result,vals = self,t0 or fn.now(),{},{}
+        print('Checking %s' % str(db))
+
+        if fn.isMapping(attrs):
+            attrs,vals = attrs.keys(),attrs
+            if isinstance(vals.values()[0],dict):
+                vals = dict((k,v.values()[0]) for k,v in vals.items())
+        else:
+            if fn.isString(attrs):
+                attrs = fn.filtersmart(db.get_attributes(),attrs)
+                load = True
+
+        if load:
+            [vals.update(db.load_last_values(a)) for a in attrs]
+
+        print('\t%d attributes'%len(attrs))
+        result['attrs'] = attrs
+        result['vals'] = vals
+        result['novals'] = [a for a,v in vals.items() if not v]
+        result['nones'],result['down'],result['lost'] = [],[],[]
+        for a,v in vals.items():
+            if not v or [1] is None:
+                if not fn.read_attribute(a): #USE read not check!!
+                    result['down'].append(a)
+                else:
+                    result['novals' if not v else 'nones'].append(a)
+            elif v[0] < (t0 - 7200):
+                result['lost'].append(a)
+        
+        print('\t%d attributes have no values'%len(result['novals']))
+        print('\t%d attributes are not readable'%len(result['down']))
+        print('\t%d attributes are not updated'%len(result['lost']))
+        print('\t%d attributes have None values'%len(result['nones']))
+        
+        return result
+    
+    
+    
+    
+    
