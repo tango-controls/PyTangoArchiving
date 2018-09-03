@@ -303,9 +303,20 @@ class ArchivingTrend(TaurusTrend):
           else:
             if t0<0: t0 = time.time()+t0
             t0,t1 = t0,t0+t1
-            
+            try:
+                if t1 > time.time() + 600:
+                    #If asked range goes into the future it is corrected
+                    r = t1-t0
+                    t1 = time.time() + 600
+                    t0 = t1 - r
+                    ui.xEditStart.setText(time2str(t0))
+            except:
+                traceback.print_exc()
+                
         if t1-t0 > 365*86400:
-          v = Qt.QMessageBox.warning(self,'Warning!','Reading an interval so big may hung your PC!!',Qt.QMessageBox.Ok|Qt.QMessageBox.Cancel)
+          v = Qt.QMessageBox.warning(self,'Warning!',
+            'Reading an interval so big may hung your PC!!',
+            Qt.QMessageBox.Ok|Qt.QMessageBox.Cancel)
           
           if t0 < 1000 or v == Qt.QMessageBox.Cancel:
             return
@@ -314,6 +325,9 @@ class ArchivingTrend(TaurusTrend):
             
           logger.warning('applyNewDates(%s,%s)'%(fn.time2str(t0),fn.time2str(t1)))
           self.setAxisScale(Qwt5.QwtPlot.xBottom, t0, t1)
+          self.setXDynScale(t1 < time.time()) #%It causes weird effects
+          self.setPaused(t1 < time.time())
+          
           #Set Axis Scale already triggers Check Buffers!!!!
           
           #hosts = [fn.get_tango_host(m,fqdn=True) for m in self.getModel()]
