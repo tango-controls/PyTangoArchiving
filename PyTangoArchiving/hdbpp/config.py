@@ -373,7 +373,7 @@ class HDBpp(ArchivingDB,SingletonMap):
           if per_event not in (None,-1):
             d.write_attribute('SetPeriodEvent',per_event)
 
-          if not any((abs_event,rel_event)):
+          if not any((abs_event,rel_event,code_event)):
             if re.search("short|long",data_type.lower()):
               abs_event = 1
             elif not re.search("bool|string",data_type.lower()):
@@ -762,6 +762,32 @@ class HDBpp(ArchivingDB,SingletonMap):
         r = self.Query('select count(*) from %s where att_conf_id = %s'
                           % ( table, aid) + where)
         return r[0][0] if r else 0
+    
+    def get_failed_attributes(self,t=7200):
+        vals = self.load_last_values(self.get_attributes())
+        nones = [k for k,v in vals.items() 
+                    if (not v or v[1] is None)]
+        nones = [k for k in nones if fn.read_attribute(k) is not None]
+        lost = [k for k,v in vals.items() 
+                if k not in nones and v[0] < fn.now()-t]
+        lost = [k for k in lost if fn.read_attribute(k) is not None]
+        failed = nones+lost
+        return sorted(failed)
+    
+    def restart_attribute(self,attr):
+        d = self.get_attribute_archiver(attr)
+        print('%s.restart_attribute(%s)' % (d,attr))
+        dp = fn.get_device(d,keep=True)
+        dp.AttributeStop(attr)
+        fn.wait(.1)
+        dp.AttributeStart(attr)
+        
+    def restart_attributes(self,attributes=None):
+        if attributes is None:
+            attributes = self.get_failed_attributes()
+
+        for a in sorted(attributes):
+            self.restart_attribute(a)
     
     def check_attributes(self,attrs = '', load = False, t0 = 0):
         
