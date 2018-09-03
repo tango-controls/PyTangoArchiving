@@ -296,7 +296,7 @@ class Reader(Object,SingletonMap):
         
         #Initializing Database connection
         if '*' in (self.db_name,self.schema):
-            self.init_universal()
+            self.init_universal(logger)
         else: 
             self.init_for_schema(self.schema or self.db_name,config,servers)
             
@@ -363,7 +363,7 @@ class Reader(Object,SingletonMap):
                 self.extractors = list(self.tango.get_device_exported(
                     '*%sextractor*'%self.schema))        
         
-    def init_universal(self):
+    def init_universal(self,logger):
 
         self.log.debug("Reader.init_universal(%s)"%','.join(Schemas.SCHEMAS))
         rd = getArchivingReader()
