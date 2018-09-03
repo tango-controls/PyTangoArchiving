@@ -788,6 +788,8 @@ class HDBpp(ArchivingDB,SingletonMap):
 
         for a in sorted(attributes):
             self.restart_attribute(a)
+            
+        print('%d attributes restarted' % len(attributes))
     
     def check_attributes(self,attrs = '', load = False, t0 = 0):
         
