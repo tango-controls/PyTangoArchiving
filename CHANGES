@@ -6,12 +6,48 @@
 @TODO Rename     widgetArchivingBrowser.ModelSearchWidget to widget.browser.ArchivingBrowser
 @TODO: rename ArchivingBrowser to browser
 
+8.4.0
+
+    Solve date refresh issues on ArchivingBrowser
+    Add methods for check/restart of HDB++ attributes
+    Solve bugs for loading multi-schema properties into Reader
+    Add check.py for schema checking, improve checks on HDB++
+    Add script for mysql dumps
+    update dependencies
+    Solve bugs in last value attribute, add try/except
+    solve bug on starting multiple attributes
+    Add exceptions on failing manager
+    Merge pull request #7 from jcmarrucho/master
+    Fix PyTangoArchiving documentation link
+    solve exceptions in dialogs, add DB cache check
+    solve bugs on model parsing for tables
+
+8.3.1 update dialogs and refresh options
+	solve import bug on pta.widget.tree
+
+    8.2.x New Browser layout with Tree (in Taurus 4)
+    solve import bug on pta.widget.tree
+    solve bug on loading range argument
+    Forced refresh with raw decimation
+    Refactor Browser panel to solve resizing and add tree selection
+    Enable PyTangoArchiving.AliasFile on Reader(*).get_attributes
+    Solve bug on alias translation with full names
+    added new info and update buttons for refresh
+    embed config dialog in ctarchiving
+    solve tango host fqdn errors, add Advanced button
+    dialog methods moved from trend to widget.dialogs
+    8.1, Improved plotting, removed redundant checkScale calls,
+    Add get_last_values/start_archiving_for_attributes for multi-archiving module
+    Reorganization of helper methods in utils/common/dbs
+    Last and LastDate attributes added to PyExtractor
+
 8.0.0 Trends solved issues on loading/refreshing data
 
 Added backtracking when N<0
 
 7.9.3 HDB++ multi module and new api access
 
+Added new Schema API, properties and docs
 dict-like methods moved to CommonAPI (snap bug)
 AddToTrend action^Cdded to context menu
 PyTangoArchiving.api() now allows access to all declared Schemas
