@@ -12,6 +12,10 @@ Usage:
     or
     
     check_archiving_schema schema [action=start_devices]
+    
+    or just save to pickle file
+    
+    check_archiving_schema schema action=save filename=/tmp/schema.pck
 
 """
 
@@ -107,26 +111,26 @@ def check_archiving_schema(
         print('\nLoading last values from %s file\n' % values)
         values = fn.json2dict(values)        
 
-    elif not use_index or is_hpp:
+    else: #if not use_index or is_hpp:
         print('\nGetting last values ...\n')
         for a in tattrs:
             values[a] = api.load_last_values(a)
         
-    else:
-        print('\nGetting updated tables from database ...\n')
-        tups = pta.utils.get_table_updates(schema)
-        # Some tables do not update MySQL index tables
-        t0 = [a for a in tarch if a in tattrs and not tups[api[a].table]]
-        check.update((t,check_attribute(a,readable=True)) for t in t0 if not check.get(t))
-        t0 = [t for t in t0 if check[t]]
-        print('%d/%d archived attributes have indexes not updated ...'%(len(t0),len(tarch)))
-        if t0 and len(t0)<100: 
-            vs = api.load_last_values(t0);
-            tups.update((api[t].table,api[t].last_date) for t in t0)
+    #else:
+        #print('\nGetting updated tables from database ...\n')
+        #tups = api.db.get_table_updates()
+        ## Some tables do not update MySQL index tables
+        #t0 = [a for a in archived if a in tattrs and not tups[api[a].table]]
+        #check.update((t,check_attribute(a,readable=True)) for t in t0 if not check.get(t))
+        #t0 = [t for t in t0 if check[t]]
+        #print('%d/%d archived attributes have indexes not updated ...'%(len(t0),len(archived)))
+        #if t0 and len(t0)<100: 
+            #vs = api.load_last_values(t0);
+            #tups.update((api[t].table,api[t].last_date) for t in t0)
 
-        for a in tattrs:
-            if a in tups:
-                values[a] = [tups[api[a].table],0]
+        #for a in tattrs:
+            #if a in tups:
+                #values[a] = [tups[api[a].table],0]
             
     for k,v in values.items():
         if (len(v) if isSequence(v) else v):
@@ -367,10 +371,11 @@ def check_archiving_schema(
         
     return result 
 
-def save_schema_values(schema, filename=None):
+def save_schema_values(schema, filename='', folder=''):
     t0 = fn.now()
     print('Saving %s attribute values' % schema)
     filename = filename or '%s_values.pck' % schema
+    if folder: filename = '/'.join(folder,filename)
     api = pta.api(schema)
     attrs = api.keys() if hasattr(api,'keys') else api.get_attributes()
     print('%d attributes in %s' % (len(attrs),schema))
@@ -399,7 +404,9 @@ if __name__ == '__main__':
             pta.api(args['schema']).start_servers(restart=True)
             print('done') 
         if args.get('action') == 'save':
-            save_schema_values(args['schema'])
+            save_schema_values(args['schema'],
+                    filename=args.get('filename',''),
+                    folder=args.get('folder',''))
         else:
             try:
                 args = dict((k,v) for k,v in args.items() 
