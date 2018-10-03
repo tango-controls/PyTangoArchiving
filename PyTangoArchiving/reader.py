@@ -650,10 +650,25 @@ class Reader(Object,SingletonMap):
                     return alias if alias in cache else False
                 else:
                     raise Exception('multihost aliases not implemented!')
+                
+    def load_last_values(self,attribute,schema=None):
+        """ Returns the last values stored for each schema """
+        result = dict()
+        if schema is None:
+            schemas = self.is_attribute_archived(attribute)
+        else:
+            schemas = fandango.toList(schema)
+        for s in schemas:
+            api = Schemas.getApi(s)
+            vs = api.load_last_values(attribute)
+            vs = vs.values() if hasattr(vs,'values') else vs
+            result[s] = vs and vs[0]
+        return result
+        
         
     def get_last_attribute_dates(self,attribute):
         """ 
-        This method returns the last start/stop dates 
+        This method returns the last cached start/stop dates 
         returned for an attribute.
         """
         if expandEvalAttribute(attribute):
