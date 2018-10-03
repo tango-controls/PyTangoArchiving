@@ -83,14 +83,30 @@ class HDBpp(ArchivingDB,SingletonMap):
 
         self.port = port
         self.archivers = []
-        self.attributes = []
+        self.attributes = fn.defaultdict(fn.Struct)
         self.dedicated = {}
         ArchivingDB.__init__(self,db_name,host,user,passwd,)
         try:
             self.get_manager()
+            self.get_attributes()
         except:
             traceback.print_exc()
             print('Unable to get manager')
+            
+    def keys(self):
+        return self.attributes.keys()
+    
+    def values(self):
+        return self.attributes.values()
+    
+    def items(self,key):
+        return self.attributes.items()
+    
+    def __getitem__(self,key):
+        return self.attributes[key]
+    
+    def __iter__(self):
+        return self.attributes.__iter__()
             
     def get_db_config(self,manager='', db_name=''):
         if not manager:
@@ -138,15 +154,19 @@ class HDBpp(ArchivingDB,SingletonMap):
     def get_archived_attributes(self,search=''):
         attrs = []
         archs = self.get_manager().ArchiverList
-        map(attrs.extend,
-            self.get_archivers_attributes(
-            archs,full=False,from_db=False).values())
-        if search == '': self.attributes = attrs
+        self.get_archivers_attributes(archs,full=False,from_db=False)
+        for d,dattrs in self.dedicated.items():
+            for a in dattrs:
+                self.attributes[a].archiver = d
+                if not search or fn.clsearch(search,a):
+                    attrs.append(a)
         return attrs
+    
         ## DB API
         ##r = sorted(str(a).lower().replace('tango://','') 
-        ##THIS METHOD RETURNS ONLY 1000 ATTRIBUTES!!!
-        #r = sorted(parse_tango_model(a,fqdn=True).normalname #for a in self.get_manager().AttributeSearch(search))
+        ##THIS METHOD RETURNS ONLY 1000 ATTRIBUTES AS MUCH!!!
+        #r = sorted(parse_tango_model(a,fqdn=True).normalname 
+        #for a in self.get_manager().AttributeSearch(search))
     
     @Cached(depth=2,expire=60.)
     def get_attributes(self,active=None):
@@ -468,7 +488,7 @@ class HDBpp(ArchivingDB,SingletonMap):
 
     def get_attribute_ID(self,attr):
         # returns only 1 ID
-        return self.get_attribute_IDs(attr,as_dict=0)[0][0]
+        return self.get_attributes_IDs(attr,as_dict=0)[0][1]
       
     def get_attributes_IDs(self,name='%',as_dict=1):
         # returns all matching IDs
@@ -481,8 +501,9 @@ class HDBpp(ArchivingDB,SingletonMap):
       
     def get_attribute_names(self,active=False):
         if not active:
-            return [a[0].lower() for a 
+            [self.attributes[a[0].lower()] for a 
                 in self.Query('select att_name from att_conf')]
+            return self.attributes.keys()
         else:
             return self.get_archived_attributes()
     
@@ -491,23 +512,28 @@ class HDBpp(ArchivingDB,SingletonMap):
         return {'ID':aid, 'MODE_E':True}
       
     def get_table_name(self,attr):
-        return get_attr_id_type_table(attr)
+        return get_attr_id_type_table(attr)[-1]
       
     def get_attr_id_type_table(self,attr):
         if fn.isNumber(attr):
             where = 'att_conf_id = %s'%attr
         else:
             where = "att_name like '%s'"%get_search_model(attr)
-        q = "select att_conf_id,att_conf_data_type_id from att_conf where %s"\
-                %where
+        q = "select att_name,att_conf_id,att_conf_data_type_id from att_conf"\
+            " where %s"%where
         ids = self.Query(q)
         self.debug(str((q,ids)))
         if not ids: 
             return None,None,''
         
-        aid,tid = ids[0]
+        attr,aid,tid = ids[0]
         table = self.Query("select data_type from att_conf_data_type "\
             +"where att_conf_data_type_id = %s"%tid)[0][0]
+
+        self.attributes[attr].id = aid
+        self.attributes[attr].type = table
+        self.attributes[attr].table = 'att_'+table
+        self.attributes[attr].modes = {'MODE_E':True}
         return aid,tid,'att_'+table
       
     def set_attr_event_config(self,attr,polling=0,abs_event=0,
@@ -774,13 +800,20 @@ class HDBpp(ArchivingDB,SingletonMap):
         failed = nones+lost
         return sorted(failed)
     
-    def restart_attribute(self,attr):
-        d = self.get_attribute_archiver(attr)
-        print('%s.restart_attribute(%s)' % (d,attr))
-        dp = fn.get_device(d,keep=True)
-        dp.AttributeStop(attr)
-        fn.wait(.1)
-        dp.AttributeStart(attr)
+    def restart_attribute(self,attr, d=''):
+        try:
+            d = self.get_attribute_archiver(attr)
+            print('%s.restart_attribute(%s)' % (d,attr))
+            dp = fn.get_device(d,keep=True)
+
+            if not fn.check_device(dp):
+                self.start_devices('(.*/)?'+d,do_restart=True)
+                
+            dp.AttributeStop(attr)
+            fn.wait(.1)
+            dp.AttributeStart(attr)
+        except:
+            print('%s.AttributeStart(%s) failed!'%(d,attr))
         
     def restart_attributes(self,attributes=None):
         if attributes is None:
@@ -796,7 +829,7 @@ class HDBpp(ArchivingDB,SingletonMap):
         db,t0,result,vals = self,t0 or fn.now(),{},{}
         print('Checking %s' % str(db))
 
-        if fn.isMapping(attrs):
+        if fn.isDictionary(attrs):
             attrs,vals = attrs.keys(),attrs
             if isinstance(vals.values()[0],dict):
                 vals = dict((k,v.values()[0]) for k,v in vals.items())
