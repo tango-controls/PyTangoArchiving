@@ -76,7 +76,12 @@ class ArchivingDB(FriendlyDB):
         return 'att_%05d'%ID if ID<10000 else 'att_%06d'%ID
         
     def get_attribute_ID(self,name):
-        return fandango.first(self.get_attributes_IDs(name).values())
+        #return fandango.first(self.get_attributes_IDs(name).values())
+        try:
+            return self.get_attributes_IDs(name).values()[0]
+        except Exception as e:
+            print(name,e)
+            raise e
     
     def get_attributes_IDs(self,name=''):
         q =  "select full_name,ID from adt"+(" where full_name like '%s'"%name if name else '')
