@@ -182,7 +182,11 @@ class SchemaManager(Device):
                 # Time is compared against last update, current or read time
                 t = min((t or fn.now(),fn.ctime2time(r.time)))
                 v = self.get_last_value(a,v)
-                if v[0] < t-3600:
+                try: 
+                    diff = v[1]!=rv
+                except: 
+                    diff = 1
+                if v[0] < t-3600 and diff:
                     # Last value much older than current data
                     self.attr_lost.append(a)
                 elif v[1] is None:
@@ -518,7 +522,7 @@ class SchemaManager(Device):
                 else ('HdbEventSubscriber',1)
             
         self.arch_on, self.arch_off = [],[]
-        self.archivers = map(fn.get_full_name,self.api.get_archivers())
+        self.archivers = map(fn.tango.get_full_name,self.api.get_archivers())
         for d in sorted(self.archivers):
             if fn.check_device(d) not in (None,PyTango.DevState.FAULT):
                 self.arch_on.append(d)
