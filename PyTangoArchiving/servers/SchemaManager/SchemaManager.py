@@ -14,7 +14,7 @@ SchemaManager
 On = Currently Archived
 Off = Archived in the past
 
-From AttributesOn:
+From AttributeOnList:
 
 Ok = Have values updated, different from None
 Lost = Values are not updated
@@ -33,9 +33,19 @@ from PyTango import AttrQuality, DispLevel, DevState
 from PyTango import AttrWriteType, PipeWriteType
 # Additional import
 # PROTECTED REGION ID(SchemaManager.additionnal_import) ENABLED START #
-import pickle, traceback, re, os
+import pickle, traceback, re, os, signal, time
 import fandango as fn
 import PyTangoArchiving as pyta
+
+@fn.Cached(depth=10000,expire=600,catched=True)
+def check_attribute_value(attribute):
+    #check_attribute may return AttrValue, Exception or None if not found
+    return fn.tango.check_attribute(attribute)
+
+@fn.Cached(depth=10000,expire=600,catched=True)
+def check_attribute_events(attribute):
+    return bool(fn.tango.check_attribute_events(attribute))
+    
 # PROTECTED REGION END #    //  SchemaManager.additionnal_import
 
 __all__ = ["SchemaManager", "main"]
@@ -48,7 +58,7 @@ class SchemaManager(Device):
     On = Currently Archived
     Off = Archived in the past
     
-    From AttributesOn:
+    From AttributeOnList:
     
     Ok = Have values updated, different from None
     Lost = Values are not updated
@@ -67,10 +77,18 @@ class SchemaManager(Device):
         All registers used by Mappings are by default added as keys.
         For each key it will execute a ReadHoldingRegisters modbus command,
         """
-        def read_method(attr,comm=self.get_last_value),
+        self.info_stream('initThreadDict()')
+        def read_method(attr,comm=self.get_last_value,
                         log=self.debug_stream):
             try:
-                result = comm(attr)
+                #Cache renewal, avoid unnecessary queries
+                if not check_attribute_value(attr):
+                    result = Exception('Unreadable!')
+                elif self.is_hpp and not check_attribute_events(attr):
+                    result = Exception('NoEvents!')
+                else:
+                    result = comm(attr)
+                    
                 return result
             except PyTango.DevFailed,e:
                 print('Exception in ThreadDict.read_method!!!'
@@ -81,17 +99,18 @@ class SchemaManager(Device):
                 # Arrays shouldnt be readable if communication doesn't work!
                 return [] 
             
-        self.threadDict = fandango.ThreadDict(
+        self.threadDict = fn.ThreadDict(
             read_method = read_method, timewait=0.1) #trace=True)
-        
-        [self.threadDict.append(a,value=[]) for a in self.attr_on]
-        
+
+        signal.signal(signal.SIGINT, self.threadDict.stop)
+        signal.signal(signal.SIGTERM, self.threadDict.stop)
         self.threadDict.start()
         self.info_stream('out of initThreadDict()')
+        return self.threadDict
 
-                        
     def get_last_value(self,attribute,value=-1):
         if value == -1:
+            self.debug_stream('load_last_values(%s)' % attribute)
             value = self.api.load_last_values(attribute)
         if hasattr(value,'values'): 
             value = value.values()[0]
@@ -128,35 +147,40 @@ class SchemaManager(Device):
                 self.push_change_event('State')
                 self.info_stream('%s => %s'%(s,ns))
                 
-            s = '%s status is %s' % (self.schema, ns)
-            for a in ('ArchiversOn','ArchiversOff','Attributes',
-                    'AttributesOn','AttributesOff','AttributesOk',
-                    'AttributesNok','AttributesLost','AttributesWrong',):
+            s = '%s status is %s, updated at %s' % (
+                self.schema, ns, fn.time2str(self.update_time))
+            for a in ('ArchiverOnList','ArchiverOffList','AttributeList',
+                    'AttributeOnList','AttributeOffList','AttributeOkList',
+                    'AttributeNokList','AttributeLostList','AttributeWrongList',
+                    'AttributeNoevList'):
                 try:
                     v = str(len(getattr(self,'read_%s'%a)()))
                 except Exception,e:
                     v = str(e)
-                s+='\n%s: %s' % (a,v)
+                s+='\n%s = %s' % (a,v)
             self.set_status(s)        
             self.push_change_event('Status')
         except:
             self.error_stream(fn.except2str())
     
-    def check_attribute_value(self,a,v):
+    def check_attribute_ok(self,a,v,t=0):
         """
-        arguments are attribute name and last value from db
+        arguments are attribute name and last value from db, plus ref. time
         """
-        r = fn.check_attribute(a)
-        t,rv = getattr(r,'time',None),getattr(r,'value',None)
+        r = check_attribute_value(a)
+        rv = getattr(r,'value',None)
         if isinstance(rv,(type(None),Exception)):
             # Attribute not readable
             self.attr_nok.append(a)
+        elif self.is_hpp and not check_attribute_events(a):
+            self.attr_nevs.append(a)
         else:
             if v is None or fn.isSequence(v) and not len(v):
                 # Attribute has no values in DB
                 self.attr_lost.append(a)
             else:
-                t = fn.ctime2time(r.time)
+                # Time is compared against last update, current or read time
+                t = min((t or fn.now(),fn.ctime2time(r.time)))
                 v = self.get_last_value(a,v)
                 if v[0] < t-3600:
                     # Last value much older than current data
@@ -187,61 +211,70 @@ class SchemaManager(Device):
         dtype='str',
     )
 
+    CacheTime = device_property(
+        dtype='int', default_value=600
+    )
+
     # ----------
     # Attributes
     # ----------
 
-    Attributes = attribute(
+    AttributeList = attribute(
         dtype=('str',),
         max_dim_x=65536,
     )
 
-    AttributesOk = attribute(
+    AttributeOkList = attribute(
         dtype=('str',),
         max_dim_x=65536,
     )
 
-    AttributesNok = attribute(
+    AttributeNokList = attribute(
         dtype=('str',),
         max_dim_x=65536,
     )
 
-    AttributesOn = attribute(
+    AttributeOnList = attribute(
         dtype=('str',),
         max_dim_x=65536,
     )
 
-    AttributesOff = attribute(
+    AttributeOffList = attribute(
         dtype=('str',),
         max_dim_x=65536,
     )
 
-    Archivers = attribute(
+    ArchiverList = attribute(
         dtype=('str',),
         max_dim_x=65536,
     )
 
-    ArchiversOn = attribute(
+    ArchiverOnList = attribute(
         dtype=('str',),
         max_dim_x=65536,
     )
 
-    ArchiversOff = attribute(
+    ArchiverOffList = attribute(
         dtype=('str',),
         max_dim_x=65536,
     )
 
-    AttributesValues = attribute(
+    AttributeValues = attribute(
         dtype=('str',),
         max_dim_x=65536,
     )
 
-    AttributesWrong = attribute(
+    AttributeWrongList = attribute(
         dtype=('str',),
         max_dim_x=65536,
     )
 
-    AttributesLost = attribute(
+    AttributeLostList = attribute(
+        dtype=('str',),
+        max_dim_x=65536,
+    )
+
+    AttributeNoevList = attribute(
         dtype=('str',),
         max_dim_x=65536,
     )
@@ -252,21 +285,25 @@ class SchemaManager(Device):
 
     def init_device(self):
         Device.init_device(self)
-        self.set_change_event("AttributesOk", True, False)
-        self.set_change_event("AttributesNok", True, False)
-        self.set_change_event("AttributesOn", True, False)
-        self.set_change_event("AttributesOff", True, False)
-        self.set_change_event("Archivers", True, False)
-        self.set_change_event("ArchiversOn", True, False)
-        self.set_change_event("ArchiversOff", True, False)
-        self.set_change_event("AttributesValues", True, False)
-        self.set_change_event("AttributesWrong", True, False)
-        self.set_change_event("AttributesLost", True, False)
+        self.set_change_event("AttributeOkList", True, False)
+        self.set_change_event("AttributeNokList", True, False)
+        self.set_change_event("AttributeOnList", True, False)
+        self.set_change_event("AttributeOffList", True, False)
+        self.set_change_event("ArchiverList", True, False)
+        self.set_change_event("ArchiverOnList", True, False)
+        self.set_change_event("ArchiverOffList", True, False)
+        self.set_change_event("AttributeValues", True, False)
+        self.set_change_event("AttributeWrongList", True, False)
+        self.set_change_event("AttributeLostList", True, False)
+        self.set_change_event("AttributeNoevList", True, False)
         # PROTECTED REGION ID(SchemaManager.init_device) ENABLED START #
+        check_attribute_value.expire = self.CacheTime
+        check_attribute_events.expire = self.CacheTime
         self.schema = self.Schemas[0]
         self.api = pyta.api(self.schema)
         self.klass = ''
         self.is_hpp = None
+        self.update_time = 0
         self.attributes = []
         self.values = {}
         self.arch_on = []
@@ -278,6 +315,8 @@ class SchemaManager(Device):
         self.attr_nok = []        
         self.attr_err = []
         self.UpdateArchivers()
+        self.threadDict = self.initThreadDict() if self.Threaded else None
+
         # PROTECTED REGION END #    //  SchemaManager.init_device
 
     def always_executed_hook(self):
@@ -293,13 +332,11 @@ class SchemaManager(Device):
             print('-'*80)
             print("[Device delete_device method] for %s"%self.get_name())
             self.set_state(PyTango.DevState.INIT)
-            self.threadDict.stop()
-            print('waiting ...')
-            t0 = time.time()
-            #Waiting longer times does not avoid segfault (sigh)
-            threading.Event().wait(3.) 
-            print(time.time()-t0)
-            print(self.threadDict.alive())
+            if self.threadDict and self.threadDict.alive():
+                self.threadDict.stop()
+                print('waiting ...')
+                #Waiting longer times does not avoid segfault (sigh)
+                fn.wait(3.) 
         except: 
             traceback.print_exc()
         print('-'*80)
@@ -309,60 +346,65 @@ class SchemaManager(Device):
     # Attributes methods
     # ------------------
 
-    def read_Attributes(self):
-        # PROTECTED REGION ID(SchemaManager.Attributes_read) ENABLED START #
+    def read_AttributeList(self):
+        # PROTECTED REGION ID(SchemaManager.AttributeList_read) ENABLED START #
         return self.attributes
-        # PROTECTED REGION END #    //  SchemaManager.Attributes_read
+        # PROTECTED REGION END #    //  SchemaManager.AttributeList_read
 
-    def read_AttributesOk(self):
-        # PROTECTED REGION ID(SchemaManager.AttributesOk_read) ENABLED START #
+    def read_AttributeOkList(self):
+        # PROTECTED REGION ID(SchemaManager.AttributeOkList_read) ENABLED START #
         return self.attr_ok
-        # PROTECTED REGION END #    //  SchemaManager.AttributesOk_read
+        # PROTECTED REGION END #    //  SchemaManager.AttributeOkList_read
 
-    def read_AttributesNok(self):
-        # PROTECTED REGION ID(SchemaManager.AttributesNok_read) ENABLED START #
+    def read_AttributeNokList(self):
+        # PROTECTED REGION ID(SchemaManager.AttributeNokList_read) ENABLED START #
         return self.attr_nok
-        # PROTECTED REGION END #    //  SchemaManager.AttributesNok_read
+        # PROTECTED REGION END #    //  SchemaManager.AttributeNokList_read
 
-    def read_AttributesOn(self):
-        # PROTECTED REGION ID(SchemaManager.AttributesOn_read) ENABLED START #
+    def read_AttributeOnList(self):
+        # PROTECTED REGION ID(SchemaManager.AttributeOnList_read) ENABLED START #
         return self.attr_on
-        # PROTECTED REGION END #    //  SchemaManager.AttributesOn_read
+        # PROTECTED REGION END #    //  SchemaManager.AttributeOnList_read
 
-    def read_AttributesOff(self):
-        # PROTECTED REGION ID(SchemaManager.AttributesOff_read) ENABLED START #
+    def read_AttributeOffList(self):
+        # PROTECTED REGION ID(SchemaManager.AttributeOffList_read) ENABLED START #
         return self.attr_off
-        # PROTECTED REGION END #    //  SchemaManager.AttributesOff_read
+        # PROTECTED REGION END #    //  SchemaManager.AttributeOffList_read
 
-    def read_Archivers(self):
-        # PROTECTED REGION ID(SchemaManager.Archivers_read) ENABLED START #
+    def read_ArchiverList(self):
+        # PROTECTED REGION ID(SchemaManager.ArchiverList_read) ENABLED START #
         return self.archivers
-        # PROTECTED REGION END #    //  SchemaManager.Archivers_read
+        # PROTECTED REGION END #    //  SchemaManager.ArchiverList_read
 
-    def read_ArchiversOn(self):
-        # PROTECTED REGION ID(SchemaManager.ArchiversOn_read) ENABLED START #
+    def read_ArchiverOnList(self):
+        # PROTECTED REGION ID(SchemaManager.ArchiverOnList_read) ENABLED START #
         return self.arch_on
-        # PROTECTED REGION END #    //  SchemaManager.ArchiversOn_read
+        # PROTECTED REGION END #    //  SchemaManager.ArchiverOnList_read
 
-    def read_ArchiversOff(self):
-        # PROTECTED REGION ID(SchemaManager.ArchiversOff_read) ENABLED START #
+    def read_ArchiverOffList(self):
+        # PROTECTED REGION ID(SchemaManager.ArchiverOffList_read) ENABLED START #
         return self.arch_off
-        # PROTECTED REGION END #    //  SchemaManager.ArchiversOff_read
+        # PROTECTED REGION END #    //  SchemaManager.ArchiverOffList_read
 
-    def read_AttributesValues(self):
-        # PROTECTED REGION ID(SchemaManager.AttributesValues_read) ENABLED START #
-        return sorted('%s:%s' % (k,v) for k,v in self.values.items())
-        # PROTECTED REGION END #    //  SchemaManager.AttributesValues_read
+    def read_AttributeValues(self):
+        # PROTECTED REGION ID(SchemaManager.AttributeValues_read) ENABLED START #
+        return sorted('%s=%s' % (k,v) for k,v in self.values.items())
+        # PROTECTED REGION END #    //  SchemaManager.AttributeValues_read
 
-    def read_AttributesWrong(self):
-        # PROTECTED REGION ID(SchemaManager.AttributesWrong_read) ENABLED START #
+    def read_AttributeWrongList(self):
+        # PROTECTED REGION ID(SchemaManager.AttributeWrongList_read) ENABLED START #
         return self.attr_err
-        # PROTECTED REGION END #    //  SchemaManager.AttributesWrong_read
+        # PROTECTED REGION END #    //  SchemaManager.AttributeWrongList_read
 
-    def read_AttributesLost(self):
-        # PROTECTED REGION ID(SchemaManager.AttributesLost_read) ENABLED START #
+    def read_AttributeLostList(self):
+        # PROTECTED REGION ID(SchemaManager.AttributeLostList_read) ENABLED START #
         return self.attr_lost
-        # PROTECTED REGION END #    //  SchemaManager.AttributesLost_read
+        # PROTECTED REGION END #    //  SchemaManager.AttributeLostList_read
+
+    def read_AttributeNoevList(self):
+        # PROTECTED REGION ID(SchemaManager.AttributeNoevList_read) ENABLED START #
+        return self.attr_nevs
+        # PROTECTED REGION END #    //  SchemaManager.AttributeNoevList_read
 
 
     # --------
@@ -381,8 +423,13 @@ class SchemaManager(Device):
             self.attr_on = sorted(self.api.get_archived_attributes())
             self.attr_off = [a for a in self.attributes 
                              if a not in self.attr_on]
-            for a in ['Attributes','AttributesOn','AttributesOff']:
+
+            for a in ['AttributeList','AttributeOnList','AttributeOffList']:
                 self.push_change_event(a,getattr(self,'read_%s'%a)())
+
+            if self.Threaded:
+                [self.threadDict.append(a,value=[]) for a in self.attr_on]
+                
             self.state_machine()
             self.info_stream(self.get_status())
         except:
@@ -397,8 +444,9 @@ class SchemaManager(Device):
         # PROTECTED REGION ID(SchemaManager.UpdateValues) ENABLED START #
         try:
 
-            t0 = fn.now()
+            t0 = t1 = fn.now()
             self.info_stream('UpdateValues()')
+            
             if (self.ValuesFile or '').strip():
                 self.info_stream('Load values from: %s ...' % self.ValuesFile)
                 if self.ValuesFile.endswith('json'):
@@ -406,9 +454,16 @@ class SchemaManager(Device):
                 else:
                     with open(self.ValuesFile) as f:
                         self.values = pickle.load(f)
+                        
+                self.values = dict((a,self.get_last_value(a,v)) 
+                                   for a,v in self.values.items())
+                t1 = max(v[0] for v in self.values.values() if v)
+                self.info_stream('reference time is %s' % fn.time2str(t1))
 
             elif self.Threaded:
-                pass
+                self.info_stream('Loading values from thread cache ...')
+                self.values = dict((a,v) for a,v in self.threadDict.items()
+                    if self.threadDict._updates.get(a,0))
             else:
                 self.info_stream('Loading values from db ...')
                 self.values = self.api.load_last_values(self.attr_on)
@@ -422,17 +477,25 @@ class SchemaManager(Device):
             self.attr_err = []
             for a,v in sorted(self.values.items()):
                 try:
-                    self.check_attribute_value(a,v)
+                    a = fn.tango.get_full_name(a)
+                    if self.Threaded:
+                        t1 = self.threadDict._updates.get(a,0)
+                    self.check_attribute_ok(a,v,t=t1)
                 except Exception as e:
                     self.attr_err.append(a)
                     traceback.print_exc()
                     m = str("%s: %s: %s" % (a, str(v), str(e)))
-                    self.error_stream(m)
+                    #self.error_stream(m)
+                    print('*'*80)
+                    print(fn.time2str()+' '+self.get_name()+'.ERROR!:'+m)
                     fn.wait(1e-6)
                     
-            for a in ['AttributesValues','AttributesOk','AttributesNok',
-                    'AttributesWrong','AttributesLost']:
-                self.push_change_event(a,getattr(self,'read_%s'%a)())       
+            for a in ['AttributeValues','AttributeOkList','AttributeNokList',
+                    'AttributeWrongList','AttributeLostList',
+                    'AttributeNoevList']:
+                self.push_change_event(a,getattr(self,'read_%s'%a)())
+                
+            self.update_time = fn.now()
             self.state_machine()
             self.info_stream(self.get_status())
             self.info_stream('UpdateValues() took %f seconds' % (fn.now()-t0))
@@ -455,7 +518,7 @@ class SchemaManager(Device):
                 else ('HdbEventSubscriber',1)
             
         self.arch_on, self.arch_off = [],[]
-        self.archivers = self.api.get_archivers()
+        self.archivers = map(fn.get_full_name,self.api.get_archivers())
         for d in sorted(self.archivers):
             if fn.check_device(d) not in (None,PyTango.DevState.FAULT):
                 self.arch_on.append(d)

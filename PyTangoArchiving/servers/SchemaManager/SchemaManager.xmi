@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="ASCII"?>
 <pogoDsl:PogoSystem xmi:version="2.0" xmlns:xmi="http://www.omg.org/XMI" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:pogoDsl="http://www.esrf.fr/tango/pogo/PogoDsl">
   <classes name="SchemaManager" pogoRevision="9.4">
-    <description description="SchemaManager&#xA;&#xA;On = Currently Archived&#xA;Off = Archived in the past&#xA;&#xA;From AttributesOn:&#xA;&#xA;Ok = Have values updated, different from None&#xA;Lost = Values are not updated&#xA;Nok = Value is not readable (None in DB)&#xA;Err = Value is readable but None in DB!?" title="SchemaManager" sourcePath="/homelocal/srubio/local/PyTangoArchiving/servers/SchemaManager" language="PythonHL" filestogenerate="XMI   file,Code files,Protected Regions" license="LGPL" copyright="www.tango-controls.org" hasMandatoryProperty="true" hasConcreteProperty="true" hasAbstractCommand="false" hasAbstractAttribute="false">
+    <description description="SchemaManager&#xA;&#xA;On = Currently Archived&#xA;Off = Archived in the past&#xA;&#xA;From AttributeOnList:&#xA;&#xA;Ok = Have values updated, different from None&#xA;Lost = Values are not updated&#xA;Nok = Value is not readable (None in DB)&#xA;Err = Value is readable but None in DB!?" title="SchemaManager" sourcePath="/homenfs/srubio/PROJECTS/Archiving/SOURCES/PyTangoArchiving.git/PyTangoArchiving/servers/SchemaManager" language="PythonHL" filestogenerate="XMI   file,Code files,Protected Regions" license="LGPL" copyright="www.tango-controls.org" hasMandatoryProperty="true" hasConcreteProperty="true" hasAbstractCommand="false" hasAbstractAttribute="false">
       <inheritances classname="Device_Impl" sourcePath=""/>
       <identification contact="at cells.es - srubio" author="srubio" emailDomain="cells.es" classFamily="Archiving" siteSpecific="" platform="All Platforms" bus="Tango" manufacturer="none" reference=""/>
     </description>
@@ -17,6 +17,11 @@
     <deviceProperties name="ValuesFile" description="JSON file to be used to read Last Archived Values">
       <type xsi:type="pogoDsl:StringType"/>
       <status abstract="false" inherited="false" concrete="true" concreteHere="true"/>
+    </deviceProperties>
+    <deviceProperties name="CacheTime" description="Cache time for attribute readings, in seconds">
+      <type xsi:type="pogoDsl:IntType"/>
+      <status abstract="false" inherited="false" concrete="true" concreteHere="true"/>
+      <DefaultPropValue>600</DefaultPropValue>
     </deviceProperties>
     <commands name="State" description="This command gets the device state (stored in its device_state data member) and returns it to the caller." execMethod="dev_state" displayLevel="OPERATOR" polledPeriod="0">
       <argin description="none">
@@ -72,7 +77,7 @@
       </argout>
       <status abstract="false" inherited="false" concrete="true" concreteHere="true"/>
     </commands>
-    <attributes name="Attributes" attType="Spectrum" rwType="READ" displayLevel="OPERATOR" polledPeriod="0" maxX="65536" maxY="" allocReadMember="true" isDynamic="false">
+    <attributes name="AttributeList" attType="Spectrum" rwType="READ" displayLevel="OPERATOR" polledPeriod="0" maxX="65536" maxY="" allocReadMember="true" isDynamic="false">
       <dataType xsi:type="pogoDsl:StringType"/>
       <changeEvent fire="false" libCheckCriteria="false"/>
       <archiveEvent fire="false" libCheckCriteria="false"/>
@@ -80,7 +85,7 @@
       <status abstract="false" inherited="false" concrete="true" concreteHere="true"/>
       <properties description="" label="" unit="" standardUnit="" displayUnit="" format="" maxValue="" minValue="" maxAlarm="" minAlarm="" maxWarning="" minWarning="" deltaTime="" deltaValue=""/>
     </attributes>
-    <attributes name="AttributesOk" attType="Spectrum" rwType="READ" displayLevel="OPERATOR" polledPeriod="0" maxX="65536" maxY="" allocReadMember="true" isDynamic="false">
+    <attributes name="AttributeOkList" attType="Spectrum" rwType="READ" displayLevel="OPERATOR" polledPeriod="0" maxX="65536" maxY="" allocReadMember="true" isDynamic="false">
       <dataType xsi:type="pogoDsl:StringType"/>
       <changeEvent fire="true" libCheckCriteria="false"/>
       <archiveEvent fire="false" libCheckCriteria="false"/>
@@ -88,7 +93,7 @@
       <status abstract="false" inherited="false" concrete="true" concreteHere="true"/>
       <properties description="" label="" unit="" standardUnit="" displayUnit="" format="" maxValue="" minValue="" maxAlarm="" minAlarm="" maxWarning="" minWarning="" deltaTime="" deltaValue=""/>
     </attributes>
-    <attributes name="AttributesNok" attType="Spectrum" rwType="READ" displayLevel="OPERATOR" polledPeriod="0" maxX="65536" maxY="" allocReadMember="true" isDynamic="false">
+    <attributes name="AttributeNokList" attType="Spectrum" rwType="READ" displayLevel="OPERATOR" polledPeriod="0" maxX="65536" maxY="" allocReadMember="true" isDynamic="false">
       <dataType xsi:type="pogoDsl:StringType"/>
       <changeEvent fire="true" libCheckCriteria="false"/>
       <archiveEvent fire="false" libCheckCriteria="false"/>
@@ -96,7 +101,7 @@
       <status abstract="false" inherited="false" concrete="true" concreteHere="true"/>
       <properties description="" label="" unit="" standardUnit="" displayUnit="" format="" maxValue="" minValue="" maxAlarm="" minAlarm="" maxWarning="" minWarning="" deltaTime="" deltaValue=""/>
     </attributes>
-    <attributes name="AttributesOn" attType="Spectrum" rwType="READ" displayLevel="OPERATOR" polledPeriod="0" maxX="65536" maxY="" allocReadMember="true" isDynamic="false">
+    <attributes name="AttributeOnList" attType="Spectrum" rwType="READ" displayLevel="OPERATOR" polledPeriod="0" maxX="65536" maxY="" allocReadMember="true" isDynamic="false">
       <dataType xsi:type="pogoDsl:StringType"/>
       <changeEvent fire="true" libCheckCriteria="false"/>
       <archiveEvent fire="false" libCheckCriteria="false"/>
@@ -104,7 +109,7 @@
       <status abstract="false" inherited="false" concrete="true" concreteHere="true"/>
       <properties description="" label="" unit="" standardUnit="" displayUnit="" format="" maxValue="" minValue="" maxAlarm="" minAlarm="" maxWarning="" minWarning="" deltaTime="" deltaValue=""/>
     </attributes>
-    <attributes name="AttributesOff" attType="Spectrum" rwType="READ" displayLevel="OPERATOR" polledPeriod="0" maxX="65536" maxY="" allocReadMember="true" isDynamic="false">
+    <attributes name="AttributeOffList" attType="Spectrum" rwType="READ" displayLevel="OPERATOR" polledPeriod="0" maxX="65536" maxY="" allocReadMember="true" isDynamic="false">
       <dataType xsi:type="pogoDsl:StringType"/>
       <changeEvent fire="true" libCheckCriteria="false"/>
       <archiveEvent fire="false" libCheckCriteria="false"/>
@@ -112,7 +117,7 @@
       <status abstract="false" inherited="false" concrete="true" concreteHere="true"/>
       <properties description="" label="" unit="" standardUnit="" displayUnit="" format="" maxValue="" minValue="" maxAlarm="" minAlarm="" maxWarning="" minWarning="" deltaTime="" deltaValue=""/>
     </attributes>
-    <attributes name="Archivers" attType="Spectrum" rwType="READ" displayLevel="OPERATOR" polledPeriod="0" maxX="65536" maxY="" allocReadMember="true" isDynamic="false">
+    <attributes name="ArchiverList" attType="Spectrum" rwType="READ" displayLevel="OPERATOR" polledPeriod="0" maxX="65536" maxY="" allocReadMember="true" isDynamic="false">
       <dataType xsi:type="pogoDsl:StringType"/>
       <changeEvent fire="true" libCheckCriteria="false"/>
       <archiveEvent fire="false" libCheckCriteria="false"/>
@@ -120,7 +125,7 @@
       <status abstract="false" inherited="false" concrete="true" concreteHere="true"/>
       <properties description="" label="" unit="" standardUnit="" displayUnit="" format="" maxValue="" minValue="" maxAlarm="" minAlarm="" maxWarning="" minWarning="" deltaTime="" deltaValue=""/>
     </attributes>
-    <attributes name="ArchiversOn" attType="Spectrum" rwType="READ" displayLevel="OPERATOR" polledPeriod="0" maxX="65536" maxY="" allocReadMember="true" isDynamic="false">
+    <attributes name="ArchiverOnList" attType="Spectrum" rwType="READ" displayLevel="OPERATOR" polledPeriod="0" maxX="65536" maxY="" allocReadMember="true" isDynamic="false">
       <dataType xsi:type="pogoDsl:StringType"/>
       <changeEvent fire="true" libCheckCriteria="false"/>
       <archiveEvent fire="false" libCheckCriteria="false"/>
@@ -128,7 +133,7 @@
       <status abstract="false" inherited="false" concrete="true" concreteHere="true"/>
       <properties description="" label="" unit="" standardUnit="" displayUnit="" format="" maxValue="" minValue="" maxAlarm="" minAlarm="" maxWarning="" minWarning="" deltaTime="" deltaValue=""/>
     </attributes>
-    <attributes name="ArchiversOff" attType="Spectrum" rwType="READ" displayLevel="OPERATOR" polledPeriod="0" maxX="65536" maxY="" allocReadMember="true" isDynamic="false">
+    <attributes name="ArchiverOffList" attType="Spectrum" rwType="READ" displayLevel="OPERATOR" polledPeriod="0" maxX="65536" maxY="" allocReadMember="true" isDynamic="false">
       <dataType xsi:type="pogoDsl:StringType"/>
       <changeEvent fire="true" libCheckCriteria="false"/>
       <archiveEvent fire="false" libCheckCriteria="false"/>
@@ -136,7 +141,7 @@
       <status abstract="false" inherited="false" concrete="true" concreteHere="true"/>
       <properties description="" label="" unit="" standardUnit="" displayUnit="" format="" maxValue="" minValue="" maxAlarm="" minAlarm="" maxWarning="" minWarning="" deltaTime="" deltaValue=""/>
     </attributes>
-    <attributes name="AttributesValues" attType="Spectrum" rwType="READ" displayLevel="OPERATOR" polledPeriod="0" maxX="65536" maxY="" allocReadMember="true" isDynamic="false">
+    <attributes name="AttributeValues" attType="Spectrum" rwType="READ" displayLevel="OPERATOR" polledPeriod="0" maxX="65536" maxY="" allocReadMember="true" isDynamic="false">
       <dataType xsi:type="pogoDsl:StringType"/>
       <changeEvent fire="true" libCheckCriteria="false"/>
       <archiveEvent fire="false" libCheckCriteria="false"/>
@@ -144,7 +149,7 @@
       <status abstract="false" inherited="false" concrete="true" concreteHere="true"/>
       <properties description="" label="" unit="" standardUnit="" displayUnit="" format="" maxValue="" minValue="" maxAlarm="" minAlarm="" maxWarning="" minWarning="" deltaTime="" deltaValue=""/>
     </attributes>
-    <attributes name="AttributesWrong" attType="Spectrum" rwType="READ" displayLevel="OPERATOR" polledPeriod="0" maxX="65536" maxY="" allocReadMember="true" isDynamic="false">
+    <attributes name="AttributeWrongList" attType="Spectrum" rwType="READ" displayLevel="OPERATOR" polledPeriod="0" maxX="65536" maxY="" allocReadMember="true" isDynamic="false">
       <dataType xsi:type="pogoDsl:StringType"/>
       <changeEvent fire="true" libCheckCriteria="false"/>
       <archiveEvent fire="false" libCheckCriteria="false"/>
@@ -152,7 +157,15 @@
       <status abstract="false" inherited="false" concrete="true" concreteHere="true"/>
       <properties description="" label="" unit="" standardUnit="" displayUnit="" format="" maxValue="" minValue="" maxAlarm="" minAlarm="" maxWarning="" minWarning="" deltaTime="" deltaValue=""/>
     </attributes>
-    <attributes name="AttributesLost" attType="Spectrum" rwType="READ" displayLevel="OPERATOR" polledPeriod="0" maxX="65536" maxY="" allocReadMember="true" isDynamic="false">
+    <attributes name="AttributeLostList" attType="Spectrum" rwType="READ" displayLevel="OPERATOR" polledPeriod="0" maxX="65536" maxY="" allocReadMember="true" isDynamic="false">
+      <dataType xsi:type="pogoDsl:StringType"/>
+      <changeEvent fire="true" libCheckCriteria="false"/>
+      <archiveEvent fire="false" libCheckCriteria="false"/>
+      <dataReadyEvent fire="false" libCheckCriteria="true"/>
+      <status abstract="false" inherited="false" concrete="true" concreteHere="true"/>
+      <properties description="" label="" unit="" standardUnit="" displayUnit="" format="" maxValue="" minValue="" maxAlarm="" minAlarm="" maxWarning="" minWarning="" deltaTime="" deltaValue=""/>
+    </attributes>
+    <attributes name="AttributeNoevList" attType="Spectrum" rwType="READ" displayLevel="OPERATOR" polledPeriod="0" maxX="65536" maxY="" allocReadMember="true" isDynamic="false">
       <dataType xsi:type="pogoDsl:StringType"/>
       <changeEvent fire="true" libCheckCriteria="false"/>
       <archiveEvent fire="false" libCheckCriteria="false"/>
