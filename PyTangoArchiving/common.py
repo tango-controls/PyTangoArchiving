@@ -100,10 +100,18 @@ class CommonAPI(Object,fandango.SingletonMap):
           self.load_servers()
           
     ## The ArchivingAPI is an iterator through archived attributes
-    def __getitem__(self,k): return self.attributes.__getitem__(k)
-    def __contains__(self,k): return self.attributes.__contains__(k)
-    def get(self,k): return self.attributes.get(k)
-    def has_key(self,k): return self.attributes.has_key(k)
+    def __getitem__(self,k): 
+        k = k if k.count('/')<=3 else fandango.tango.get_normal_name(k)
+        return self.attributes.__getitem__(k)
+    def __contains__(self,k): 
+        k = k if k.count('/')<=3 else fandango.tango.get_normal_name(k)
+        return self.attributes.__contains__(k)
+    def get(self,k): 
+        k = k if k.count('/')<=3 else fandango.tango.get_normal_name(k)
+        return self.attributes.get(k)
+    def has_key(self,k): 
+        k = k if k.count('/')<=3 else fandango.tango.get_normal_name(k)
+        return self.attributes.has_key(k)
     #[setattr(self,method,lambda k,meth=method:getattr(self.attributes,meth)(k)) for method in ('__getitem__','__contains__','get','has_key')]
     def __iter__(self): return self.attributes.__iter__()
     def iteritems(self): return self.attributes.iteritems()
