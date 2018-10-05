@@ -34,7 +34,8 @@ ALBA Synchrotron Control Group
 <ul><li>Integrate Hdb and Snap archiving with other python/PyTango tools.
 </li></ul><ul><li>Start/Stop Archiving devices in the appropiated order.
 </li></ul><ul><li>Increase the capabilities of configuration and diagnostic.
-</li></ul><ul><li>Import/Export .csv and .xml files between the archiving and the database.
+</li></ul><ul><li>Import/Export .csv and .xml files between the archiving and 
+    the database.
 
 """
 
@@ -64,7 +65,8 @@ from schemas import Schemas
 from archiving import ArchivingAPI,ArchivedAttribute
 from utils import check_attribute
 from check import check_archiving_schema
-from files import GetConfigFiles,LoadArchivingConfiguration,CheckArchivingConfiguration,ParseCSV,StopArchivingConfiguration
+from files import GetConfigFiles,LoadArchivingConfiguration,\
+    CheckArchivingConfiguration,ParseCSV,StopArchivingConfiguration
 
 __all__=['reader','archiving','utils','files','common']
 
@@ -78,7 +80,8 @@ except:
 try:
    import hdbpp
    from hdbpp import HDBpp, multi
-   from hdbpp.multi import start_archiving_for_attributes, get_last_values_for_attributes
+   from hdbpp.multi import start_archiving_for_attributes, \
+       get_last_values_for_attributes
   
 except:
    print('Unable to import hdbpp') 
@@ -95,8 +98,10 @@ Some interesting queries;
 select ID,full_name from adt;
 select ID,archiver,start_date,stop_date from amt;
 select ID,full_name,data_type,writable from adt;
-select full_name,archiver,start_date,stop_date from adt,amt where adt.ID=amt.ID order by full_name;
- select adt.ID,full_name,archiver,start_date,stop_date from adt,amt where adt.ID=amt.ID order by full_name,start_date;
+select full_name,archiver,start_date,stop_date from adt,amt 
+    where adt.ID=amt.ID order by full_name;
+select adt.ID,full_name,archiver,start_date,stop_date from adt,amt 
+    where adt.ID=amt.ID order by full_name,start_date;
 
 : db=MySQLdb.connect(db='hdb',host='alba02',passwd='browser',user='browser')
 
@@ -116,7 +121,8 @@ GetAttCountFilterType
 GetArchivingMode
 GetAttCountAll
 GetAttCountFilterFormat
-GetAttDefinitionData : It allows to get all the fields from the adt table, including the Data type
+GetAttDefinitionData : It allows to get all the fields from the adt table, 
+    including the Data type
 GetAttId
 GetAttNameAll
 
@@ -132,44 +138,53 @@ attributes:
 Methods from ArchivingManager:
 5 - ArchivingStartHdb
 
-    * Description: Start an historic archiving of several attributes, with a mode.
+    * Description: Start an historic archiving of several attributes, with mode.
        
     * Argin:
       DEVVAR_STRINGARRAY : Archiving arguments...
 
               o The first part :
                     + argin[0] = the load balancing type of the archiving
-                      "1", if all the attribute are archived together in the same TdbArchiver device,
+                      "1", if all the attribute are archived together in the 
+                      same TdbArchiver device,
                       "0" otherwise.
                     + argin[1] = the number of attributes to archive
-                    + argin[2] to argin [2 + argin[1] - 1] = the name of each attribute 
+                    + argin[2] to argin [2 + argin[1] - 1] = the name of each 
+                    attribute 
               o The second part (the Mode part) :
-                Let us note "index" the last index used (for example, at this point, index = 2]).
+                Let us note "index" the last index used (for example, at this 
+                point, index = 2]).
                     + If the Mode is composed of a Periodical Mode
                       argin[index+ 1] = MODE_P
                       argin[index+ 2] = the period of the periodic mode in (ms)
                       index = index + 2
                     + If the Mode is composed of an Absolute Mode
                       argin[index+ 1] = MODE_A
-                      argin[index+ 2] = the frequency of the absolute mode in (ms)
+                      argin[index+ 2] = the frequency of the absolute mode
+                      in (ms)
                       argin[index+ 3] = the delta value max when decreasing
                       argin[index+ 4] = the delta value max when increasing
                       index = index + 4
                     + If the Mode is composed of a Relative Mode
                       argin[index+ 1] = MODE_R
-                      argin[index+ 2] = the frequency of the relative mode in (ms)
-                      argin[index+ 3] = the decreasing variation associated to this mode
-                      argin[index+ 4] = the increasing variation associated to this mode
+                      argin[index+ 2] = the frequency of the relative mode
+                      in (ms)
+                      argin[index+ 3] = the decreasing variation associated to 
+                      this mode
+                      argin[index+ 4] = the increasing variation associated to 
+                      this mode
                       index = index + 4
                     + If the Mode is composed of an Threshold Mode
                       argin[index+ 1] = MODE_T
-                      argin[index+ 2] = the frequency of the threshold mode in (ms)
+                      argin[index+ 2] = the frequency of the threshold mode 
+                      in (ms)
                       argin[index+ 3] = the smallest value (min) when decreasing
                       argin[index+ 4] = the biggest value (max) when increasing
                       index = index + 4
                     + If the Mode is composed of a On Calculation Mode
                       argin[index+ 1] = MODE_C
-                      argin[index+ 2] = the frequency of the on calculation mode in (ms)
+                      argin[index+ 2] = the frequency of the on calculation mode 
+                      in (ms)
                       argin[index+ 3] = the number of values taken into account
                       argin[index+ 4] = the type associated to this mode
                       argin[index+ 5] = Not used at the moment
@@ -184,7 +199,8 @@ Methods from ArchivingManager:
 
 15 - GetStatusHdb
 
-    * Description: For each attribute of the given list, get the status of the device in charge of its historical archiving
+    * Description: For each attribute of the given list, get the status of 
+    the device in charge of its historical archiving
        
     * Argin:
       DEVVAR_STRINGARRAY : The attribute list.
@@ -209,7 +225,9 @@ Methods from ArchivingManager:
     * Argout:
       DEVVAR_STRINGARRAY : The applied mode...
 
-              o Let us note "index" the last index used (for example, at this point, index = 0]). If the Mode is composed of a Periodical Mode
+              o Let us note "index" the last index used (for example, at 
+              this point, index = 0]). If the Mode is composed 
+              of a Periodical Mode
                 argout[index] = MODE_P
                 argout[index + 1] = the period of the periodic mode in (ms)
                 index = index + 2
@@ -222,8 +240,10 @@ Methods from ArchivingManager:
               o If the Mode is composed of a Relative Mode
                 argout[index] = MODE_R
                 argout[index+ 1] = the frequency of the relative mode in (ms)
-                argout[index+ 2] = the decreasing variation associated to this mode
-                argout[index+ 3] = the increasing variation associated to this mode
+                argout[index+ 2] = the decreasing variation associated to 
+                this mode
+                argout[index+ 3] = the increasing variation associated to 
+                this mode
                 index = index + 4
               o If the Mode is composed of an Threshold Mode
                 argout[index] = MODE_T
@@ -233,7 +253,8 @@ Methods from ArchivingManager:
                 index = index + 4
               o If the Mode is composed of a On Calculation Mode
                 argout[index] = MODE_C
-                argout[index+ 1] = the frequency of the on calculation mode in (ms)
+                argout[index+ 1] = the frequency of the on calculation mode 
+                in (ms)
                 argout[index+ 2] = the number of values taken into account
                 argout[index+ 3] = the type associated to this mode
                 argout[index+ 4] = Not used at the moment
