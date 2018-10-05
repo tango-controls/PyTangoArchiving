@@ -37,8 +37,8 @@ import fandango.functional as fun
 
 from fandango.dicts import CaselessDict, SortedDict
 from fandango.linos import check_process,get_memory
-from fandango.tango import ( get_tango_host,parse_tango_model,
-    get_free_property,get_class_property,get_device_property)
+from fandango.tango import ( get_tango_host,parse_tango_model, get_full_name,
+    get_normal_name, get_free_property,get_class_property,get_device_property)
 
 from PyTangoArchiving.utils import * #PyTango, patch_booleans
 import PyTangoArchiving.utils as utils
@@ -301,7 +301,7 @@ class Reader(Object,SingletonMap):
             self.init_for_schema(self.schema or self.db_name,config,servers)
             
         try:
-            alias_file = alias_file or utils.get_alias_file()       
+            alias_file = alias_file or get_alias_file()       
             self.alias = alias_file and read_alias_file(alias_file)
         except Exception,e: 
             self.log.warning('Unable to read alias file %s: %s'%(alias_file,e))
@@ -396,6 +396,7 @@ class Reader(Object,SingletonMap):
         self.available_attributes = []
         self.current_attributes = []
         self.failed_attributes = []
+        self.attr_schemas = fandango.defaultdict(list)
         self.cache.clear()
         if self.extractors or self.dbs or self.configs:
             self.state = PyTango.DevState.INIT
@@ -474,13 +475,16 @@ class Reader(Object,SingletonMap):
         if (check and not self.check_state()) or not self.extractors:
             self.log.warning('get_extractor(): Archiving seems not available')
             return None
-        #First tries to get the previously used extractor, if it is not available then searches for a new one ....
+        
+        # First tries to get the previously used extractor, if it 
+        # is not available then searches for a new one ....
         if attribute and attribute in self.attr_extracted:
             extractor = self.servers.proxies[self.attr_extracted[attribute]]
             try:
                 extractor.ping()
                 extractor.set_timeout_millis(self.timeout)
             except Exception,e: extractor = None
+            
         if not extractor:
             remaining = self.extractors[:]
             while remaining: #for i in range(len(self.extractors)):
@@ -494,6 +498,7 @@ class Reader(Object,SingletonMap):
                     break
                 except Exception,e: 
                     self.log.debug(traceback.format_exc())
+                    
         self.state = PyTango.DevState.ON if extractor else PyTango.DevState.FAULT
         return extractor    
         
@@ -502,54 +507,105 @@ class Reader(Object,SingletonMap):
         """ Queries the database for the current list of archived attributes."""
         self.log.debug('get_attributes(%s)'%active)
         t0 = now()
-        #Try Unified Reader
-        if self.db_name=='*':
-            attrs = []
-            for c,x in self.configs.items():
-                try:
-                    for i,a in enumerate(x.get_attributes(active=active)):
-                        m = parse_tango_model(a)
-                        attrs.append((m.simplename,m.model)[self.multihost])
-                    self.log.debug('\t%s: %s'%(c,i+1))
-                except:
-                    self.log.debug(traceback.format_exc())
-                    
-            attrs.extend(self.alias)
-            return sorted(set(attrs))
-        
+
         if self.available_attributes and self.current_attributes \
                 and time.time()<(self.updated+self.CacheTime):
             return (self.available_attributes,self.current_attributes)[active]
 
         self.log.debug('%s: In Reader(%s).get_attributes(): '
             'last update was at %s'%(time.ctime(),self.schema,self.updated))
+        self.log.debug('multihost = %s' % self.multihost)
+        
+        get_model = self.get_attribute_model
+        get_models = lambda l: sorted(set(map(get_model,l)))
+        
+        self.available_attributes, self.current_attributes = [],[]
+        
+        #Try Unified Reader
+        if self.db_name=='*':    
+            for c,x in self.configs.items():
+                self.log.debug('Getting %s attributes' % c)
+                for act in (True,False):
+                    try:
+                        attrs = x.get_attributes(active=act)
+                        self.log.debug('%d' % len(attrs))
+                        self.log.debug('parse models')
+                        attrs = map(self.get_attribute_model,attrs)
+                        self.log.debug('%d' % len(attrs))
+                        self.log.debug('union')
+                        if act:
+                            self.current_attributes.extend(attrs)
+                            self.log.debug('%d' % len(self.current_attributes))
+                        else:
+                            self.available_attributes.extend(attrs)
+                            self.log.debug('%d' % len(self.available_attributes))
+                            self.log.debug('update schemas')
+                            [self.attr_schemas[a].append(c) for a in attrs]
+                    except:
+                        self.log.warning('Unable to get %s attributes:\n %s' 
+                            % (c, traceback.format_exc()))
+                        
+                self.log.debug('%d' % len(self.available_attributes))
+                self.log.debug(self.available_attributes and self.available_attributes[0])
+                self.log.debug(self.available_attributes and self.available_attributes[-1])
+                
+            self.log.debug('sorting')
+            self.available_attributes = sorted(set(self.available_attributes))
+            self.current_attributes = sorted(set(self.current_attributes))                
+        else:
+            if self.get_database(): #Using a database Query
+                t1 = now()
+                self.log.debug('query')
+                avs = self.get_database().get_attribute_names(active=False)
+                currs = self.get_database().get_attribute_names(active=True)
+                self.log.debug('models')
+                self.available_attributes = map(get_model,avs)
+                self.current_attributes = map(get_model,currs)
 
-        if self.get_database(): #Using a database Query
-            t1 = now()
-            self.available_attributes = \
-                self.get_database().get_attribute_names(active=False)
-            self.current_attributes = \
-                self.get_database().get_attribute_names(active=True)
+            elif self.extractors: #Using extractors
+                attrs = self.__extractorCommand(self.get_extractor(), 
+                                            'GetCurrentArchivedAtt')
+                self.current_attributes = map(get_model,attrs)
+                self.available_attributes = self.current_attributes
+                
+            self.log.debug('schemas')
+            for a in self.available_attributes:
+                self.attr_schemas[a] = [self.schema]
 
-        elif self.extractors: #Using extractors
-            self.current_attributes = self.available_attributes = \
-                self.__extractorCommand(self.get_extractor(), 
-                                        'GetCurrentArchivedAtt')
+        self.log.debug('Updating %d aliases' % len(self.alias))
+        for a,m in self.alias.items():
+            a,m = get_model(a),get_model(m)
+            if m in self.current_attributes:
+                self.current_attributes.append(get_model(a))
+            if m in self.available_attributes:
+                self.available_attributes.append(get_model(a))
+                self.attr_schemas[a].extend([s for s in self.attr_schemas[m] 
+                        if s not in self.attr_schemas[a]])
             
-        t1 = now()
-        self.available_attributes = [(m.simplename,m.model)[self.multihost]
-            for m in (parse_tango_model(a) for a in self.available_attributes)]
-        self.current_attributes = [(m.simplename,m.model)[self.multihost]
-            for m in (parse_tango_model(a) for a in self.current_attributes)]
-        self.log.debug('parse models: + %f s' % (now()-t1))
-        
+        self.log.debug('sorting')
+        self.available_attributes = sorted(set(self.available_attributes))
+        self.current_attributes = sorted(set(self.current_attributes))
         self.updated = now()
-        
         self.log.debug('In Reader(%s).get_attributes(): '
-                    '%s attributes available in the database (+%ds)'
-                    % (self.schema,len(self.available_attributes),self.updated-t0))
+            '%s attributes available in the database (+%ds)'
+            % (self.schema,len(self.available_attributes),self.updated-t0))
         
         return (self.available_attributes,self.current_attributes)[active]
+    
+    #@Cached(depth=10000,expire=86400)
+    def get_attribute_model(self,attribute):
+        """
+        Returns normal/full name depending on multihost mode
+        """
+        #return (get_normal_name,get_full_name)[self.multihost](attribute)
+        attribute = attribute.lower()
+        if not self.multihost and attribute.count('/')>=3:
+            return '/'.join(attribute.split('/')[-4:])
+        if self.multihost and attribute.count(':')==2:
+            return attribute
+        #self.log.debug('parsing(%s)' % attribute)
+        m = parse_tango_model(attribute)
+        return (m.simplename,m.fullname)[self.multihost]
 
     @Cached(depth=10000,expire=60.)        
     def get_attribute_alias(self,model):
@@ -557,23 +613,19 @@ class Reader(Object,SingletonMap):
             attribute = str(model)
             attribute = (expandEvalAttribute(attribute) or [attribute])[0]
             
-            #Try Unified Reader
-            if self.db_name=='*':
-                return self.configs[('tdb' if self.configs['tdb'].is_attribute_archived(attribute) else 'hdb')].get_attribute_alias(attribute)
-            
             #Check if attribute has an alias
             self.get_attributes()
             attribute = attribute.lower()
             if attribute in self.current_attributes:
                 return attribute
             elif attribute in self.alias:
-                alias = self.alias.get(attribute)
-                #self.log.debug('In PyTangoArchiving.Reader: using alias %s for %s'%(alias,attribute))
-                attribute,alias = alias,attribute #Needed to record last read values for both alias and real name
+                attribute = self.alias.get(attribute)
             elif attribute:
                 attribute = utils.translate_attribute_alias(attribute)
                 if attribute != str(model):
-                    attribute,alias = self.get_attribute_alias(attribute),attribute
+                    attribute,alias = \
+                        self.get_attribute_alias(attribute),attribute
+
         except Exception,e:
              print('Unable to find alias for %s: %s'%(model,str(e)[:40]))
         return attribute
@@ -608,21 +660,23 @@ class Reader(Object,SingletonMap):
                        for a in expandEvalAttribute(attribute))
 
         self.get_attributes() #Updated cached lists
-        model = parse_tango_model(attribute)
+        attr = self.get_attribute_model(attribute)
         
         if self.db_name=='*':
             # Universal reader
-            pref = self.get_preferred_schema(attribute)
+            pref = self.get_preferred_schema(attr)
             if preferent and pref not in (None,'*'): 
                 return [pref]
+            elif len(self.attr_schemas[attr]):
+                return self.attr_schemas[attr]
             else:
                 sch = []
                 for a,c in self.configs.items():
                     if a == self.db_name: continue
                     try:
                         if (c and (a not in Schemas.keys() or
-                                Schemas.checkSchema(a,attribute)) 
-                            and c.is_attribute_archived(attribute,active)):
+                                Schemas.checkSchema(a,attr)) 
+                            and c.is_attribute_archived(attr,active)):
                             sch.append(a)
                     except: 
                         self.log.warning('%s archiving not available'%a)
@@ -635,7 +689,6 @@ class Reader(Object,SingletonMap):
         else:
             # Schema reader
             # first remove array indexes
-            attr = (model.simplename,model.model)[self.multihost]
             if (attr in (self.current_attributes if active 
                     else self.available_attributes)):
                 return attr
@@ -643,13 +696,15 @@ class Reader(Object,SingletonMap):
             else: #Reloading attribute lists
                 alias = self.get_attribute_alias(attr)
                 alias = parse_tango_model(alias)
-                if alias.tango_host == self.tango_host:
-                    alias = alias.simplename
-                    cache = (self.current_attributes if active 
-                        else self.available_attributes)
-                    return alias if alias in cache else False
-                else:
-                    raise Exception('multihost aliases not implemented!')
+                assert alias.tango_host == self.tango_host, \
+                    Exception('multihost aliases not implemented!')
+                alias = alias.simplename
+                cache = (self.current_attributes if active 
+                    else self.available_attributes)
+                if self.get_attribute_model(alias) in cache:
+                    return True
+                
+        return False
                 
     def load_last_values(self,attribute,schema=None):
         """ Returns the last values stored for each schema """
@@ -1452,7 +1507,7 @@ class ReaderProcess(Logger,SingletonMap): #,Object,SingletonMap):
         self.tango = PyTango.Database(*self.tango_host.split(':'))
 
         try:
-            alias_file = alias_file or utils.get_alias_file()       
+            alias_file = alias_file or get_alias_file()       
             self.alias = alias_file and read_alias_file(alias_file)
         except Exception,e: 
             self.log.warning('Unable to read alias file %s: %s'%(alias_file,e))

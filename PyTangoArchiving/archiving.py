@@ -979,6 +979,7 @@ class ArchivingAPI(CommonAPI):
             ## assigned = It gets all existing archivers for this host
             existing = map(str.lower,filter(lambda s:bool(re.match('.*/.*/'+host+'[\-0-9]+',s)),archivers))
             ## Filtering the attribute list to remove all attributes already archived in *HOST* archivers
+            self.log.info('existing archivers> %s' % str(existing))
             for archiver in existing:
                 assigned[archiver] = self.get_archiver_reserved_attributes(archiver)
                 self.log.info('%s is already archiving %s attributes'%(archiver,len(assigned[archiver])))
