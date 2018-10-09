@@ -371,6 +371,63 @@ def check_archiving_schema(
         
     return result 
 
+import PyTangoArchiving as pta, fandango as fn
+
+def check_db_schema(schema,tref = None):
+    
+    r = fn.Struct()
+    r.api = api = pta.api(schema)
+    r.tref = fn.notNone(tref,fn.now()-3600)
+    
+    r.attrs = api.keys()
+    r.on = api.get_archived_attributes()
+    r.off = [a for a in r.attrs if a not in r.on]
+    if schema=='tdb':
+        ups = api.db.get_table_updates()
+        r.vals = dict((k,(ups[api[k].table],None)) for k in r.on)
+    else:
+        r.vals = dict(fn.kmap(api.load_last_values,r.on))
+        r.vals = dict((k,v and v.values()[0]) for k,v in r.vals.items())
+
+    # Get all updated attributes
+    r.ok = [a for a,v in r.vals.items() if v and v[0] > r.tref]
+    # Try to read not-updated attributes
+    r.check = dict((a,fn.check_attribute(a)) for a in r.on if a not in r.ok)
+    r.nok, r.stall, r.noev, r.lost, r.evs = [],[],[],[],{}
+    # Method to compare numpy values
+    fbool = lambda x: all(x) if fn.isSequence(x) else bool(x)
+    
+    for a,v in r.check.items():
+        # Get current value/timestamp
+        vv,t = getattr(v,'value',v),getattr(v,'time',0)
+        t = t and fn.ctime2time(t)
+        
+        if isinstance(vv,(type(None),Exception)):
+            # attribute is not readable
+            r.nok.append(a)
+        elif r.vals[a] and 0<t<=r.vals[a][0]:
+            # attribute timestamp doesnt change
+            r.stall.append(a)
+        elif r.vals[a] and fbool(vv==r.vals[a][1]):
+            # attribute value doesnt change
+            r.stall.append(a)
+        else:
+            r.evs[a] = fn.tango.check_attribute_events(a)
+            if not r.evs[a]:
+                # attribute doesnt send events
+                r.noev.append(a)
+            else:
+                # archiving failure (events or polling)
+                r.lost.append(a)
+                
+    # SUMMARY
+    print(schema)
+    for k in 'attrs on off ok nok noev stall lost'.split():
+        print('\t%s:\t:%d' % (k,len(r.get(k))))
+                
+    return r
+
+
 def save_schema_values(schema, filename='', folder=''):
     t0 = fn.now()
     print('Saving %s attribute values' % schema)
