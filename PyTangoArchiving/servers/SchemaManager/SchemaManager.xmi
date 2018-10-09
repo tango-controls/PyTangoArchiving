@@ -5,7 +5,7 @@
       <inheritances classname="Device_Impl" sourcePath=""/>
       <identification contact="at cells.es - srubio" author="srubio" emailDomain="cells.es" classFamily="Archiving" siteSpecific="" platform="All Platforms" bus="Tango" manufacturer="none" reference=""/>
     </description>
-    <deviceProperties name="Schemas" mandatory="true" description="">
+    <deviceProperties name="Schemas" description="">
       <type xsi:type="pogoDsl:StringVectorType"/>
       <status abstract="false" inherited="false" concrete="true" concreteHere="true"/>
     </deviceProperties>
@@ -166,6 +166,14 @@
       <properties description="" label="" unit="" standardUnit="" displayUnit="" format="" maxValue="" minValue="" maxAlarm="" minAlarm="" maxWarning="" minWarning="" deltaTime="" deltaValue=""/>
     </attributes>
     <attributes name="AttributeNoevList" attType="Spectrum" rwType="READ" displayLevel="OPERATOR" polledPeriod="0" maxX="65536" maxY="" allocReadMember="true" isDynamic="false">
+      <dataType xsi:type="pogoDsl:StringType"/>
+      <changeEvent fire="true" libCheckCriteria="false"/>
+      <archiveEvent fire="false" libCheckCriteria="false"/>
+      <dataReadyEvent fire="false" libCheckCriteria="true"/>
+      <status abstract="false" inherited="false" concrete="true" concreteHere="true"/>
+      <properties description="" label="" unit="" standardUnit="" displayUnit="" format="" maxValue="" minValue="" maxAlarm="" minAlarm="" maxWarning="" minWarning="" deltaTime="" deltaValue=""/>
+    </attributes>
+    <attributes name="AttributeStalledList" attType="Spectrum" rwType="READ" displayLevel="OPERATOR" polledPeriod="0" maxX="65536" maxY="" allocReadMember="true" isDynamic="false">
       <dataType xsi:type="pogoDsl:StringType"/>
       <changeEvent fire="true" libCheckCriteria="false"/>
       <archiveEvent fire="false" libCheckCriteria="false"/>

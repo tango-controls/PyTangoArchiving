@@ -152,7 +152,7 @@ class SchemaManager(Device):
             for a in ('ArchiverOnList','ArchiverOffList','AttributeList',
                     'AttributeOnList','AttributeOffList','AttributeOkList',
                     'AttributeNokList','AttributeLostList','AttributeWrongList',
-                    'AttributeNoevList'):
+                    'AttributeNoevList','AttributeStalledList'):
                 try:
                     v = str(len(getattr(self,'read_%s'%a)()))
                 except Exception,e:
@@ -186,9 +186,13 @@ class SchemaManager(Device):
                     diff = v[1]!=rv
                 except: 
                     diff = 1
-                if v[0] < t-3600 and diff:
-                    # Last value much older than current data
-                    self.attr_lost.append(a)
+                if v[0] < t-3600:
+                    if any(diff) if fn.isSequence(diff) else bool(diff):
+                        # Last value much older than current data
+                        self.attr_lost.append(a)
+                    else:
+                        self.attr_stall.append(a)
+                        self.attr_ok.append(a)
                 elif v[1] is None:
                     # Value is readable but not from DB
                     self.attr_err.append(a)
@@ -204,7 +208,6 @@ class SchemaManager(Device):
 
     Schemas = device_property(
         dtype=('str',),
-        mandatory=True
     )
 
     Threaded = device_property(
@@ -283,6 +286,11 @@ class SchemaManager(Device):
         max_dim_x=65536,
     )
 
+    AttributeStalledList = attribute(
+        dtype=('str',),
+        max_dim_x=65536,
+    )
+
     # ---------------
     # General methods
     # ---------------
@@ -300,6 +308,7 @@ class SchemaManager(Device):
         self.set_change_event("AttributeWrongList", True, False)
         self.set_change_event("AttributeLostList", True, False)
         self.set_change_event("AttributeNoevList", True, False)
+        self.set_change_event("AttributeStalledList", True, False)
         # PROTECTED REGION ID(SchemaManager.init_device) ENABLED START #
         check_attribute_value.expire = self.CacheTime
         check_attribute_events.expire = self.CacheTime
@@ -318,6 +327,8 @@ class SchemaManager(Device):
         self.attr_lost = []
         self.attr_nok = []        
         self.attr_err = []
+        self.attr_nevs = []
+        self.attr_stall = []
         self.UpdateArchivers()
         self.threadDict = self.initThreadDict() if self.Threaded else None
 
@@ -410,6 +421,11 @@ class SchemaManager(Device):
         return self.attr_nevs
         # PROTECTED REGION END #    //  SchemaManager.AttributeNoevList_read
 
+    def read_AttributeStalledList(self):
+        # PROTECTED REGION ID(SchemaManager.AttributeStalledList_read) ENABLED START #
+        return self.attr_stall
+        # PROTECTED REGION END #    //  SchemaManager.AttributeStalledList_read
+
 
     # --------
     # Commands
@@ -427,7 +443,7 @@ class SchemaManager(Device):
             self.attr_on = sorted(self.api.get_archived_attributes())
             self.attr_off = [a for a in self.attributes 
                              if a not in self.attr_on]
-
+            self.info_stream('pushing_events')
             for a in ['AttributeList','AttributeOnList','AttributeOffList']:
                 self.push_change_event(a,getattr(self,'read_%s'%a)())
 
@@ -462,6 +478,7 @@ class SchemaManager(Device):
                 self.values = dict((a,self.get_last_value(a,v)) 
                                    for a,v in self.values.items())
                 t1 = max(v[0] for v in self.values.values() if v)
+                t1 = min((t1,fn.now()))
                 self.info_stream('reference time is %s' % fn.time2str(t1))
 
             elif self.Threaded:
@@ -496,7 +513,7 @@ class SchemaManager(Device):
                     
             for a in ['AttributeValues','AttributeOkList','AttributeNokList',
                     'AttributeWrongList','AttributeLostList',
-                    'AttributeNoevList']:
+                    'AttributeNoevList','AttributeStalledList']:
                 self.push_change_event(a,getattr(self,'read_%s'%a)())
                 
             self.update_time = fn.now()
