@@ -94,18 +94,37 @@ class HDBpp(ArchivingDB,SingletonMap):
             print('Unable to get manager')
             
     def keys(self):
+        if not self.attributes:
+            self.get_attributes()
         return self.attributes.keys()
     
+    def has_key(self,k):
+        self.keys();
+        k = fn.tango.get_full_name(k).lower()
+        return k in self.attributes
+    
+    def __contains__(self,k):
+        return self.has_key(k)
+    
+    def __len__(self):
+        self.keys();
+        return len(self.attributes)
+    
     def values(self):
+        self.keys();       
         return self.attributes.values()
     
     def items(self,key):
+        self.keys();       
         return self.attributes.items()
     
     def __getitem__(self,key):
+        self.keys();
+        key = fn.tango.get_full_name(key).lower()
         return self.attributes[key]
     
     def __iter__(self):
+        self.keys();
         return self.attributes.__iter__()
             
     def get_db_config(self,manager='', db_name=''):
@@ -147,13 +166,15 @@ class HDBpp(ArchivingDB,SingletonMap):
                     self.manager = m
                     break
                     
-        dp = get_device(self.manager) if self.manager else None
+        dp = get_device(self.manager,keep=True) if self.manager else None
         return check_device(dp) and dp
       
     @Cached(depth=10,expire=60.)
     def get_archived_attributes(self,search=''):
+        #print('get_archived_attributes(%s)'%str(search))
         attrs = []
-        archs = self.get_manager().ArchiverList
+        archs = get_device_property(self.manager,'ArchiverList') 
+            #self.get_manager().ArchiverList
         self.get_archivers_attributes(archs,full=False,from_db=False)
         for d,dattrs in self.dedicated.items():
             for a in dattrs:
@@ -203,6 +224,7 @@ class HDBpp(ArchivingDB,SingletonMap):
       
     @Cached(expire=60.)
     def get_archivers_attributes(self,archs=None,from_db=True,full=False):
+        #print('get_archivers_attributes(%s)' % str(archs))
         archs = archs or self.get_archivers()
         dedicated = fn.defaultdict(list)
         if from_db:
@@ -603,13 +625,17 @@ class HDBpp(ArchivingDB,SingletonMap):
                 "and (data_time %% 5) < 2;"%(s,fn.time2str(h+3600)))
 
       
-    def get_last_attribute_values(self,table,n=1,check_table=False):
-        vals = self.get_attribute_values(table,N=n,human=True,desc=True)
-        if len(vals) and abs(n)==1: return vals[0]
-        else: return vals
+    def get_last_attribute_values(self,table,n=1,
+                                  check_table=False,epoch=None):
+        vals = self.get_attribute_values(
+            table,N=n,human=True,desc=True,stop_date=epoch)
+        if len(vals) and abs(n)==1: 
+            return vals[0]
+        else: 
+            return vals
     
-    def load_last_values(self,attributes,n=1):
-        return dict((a,self.get_last_attribute_values(a,n=n)) 
+    def load_last_values(self,attributes,n=1,epoch=None):
+        return dict((a,self.get_last_attribute_values(a,n=n,epoch=None)) 
                     for a in fn.toList(attributes))
         
     __test__['get_last_attribute_values'] = \

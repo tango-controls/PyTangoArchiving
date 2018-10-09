@@ -92,7 +92,8 @@ def isAttributeArchived(attribute,reader=None,schema=''):
       except:
         value = False
 
-      (reader.available_attributes if value else reader.failed_attributes).append(attribute)
+      (reader.available_attributes if value else reader.failed_attributes
+            ).append(attribute)
       return value
 
     except:
@@ -103,6 +104,8 @@ def getArchivingReader(attr_list=None,start_date=0,stop_date=0,
                        hdb=None,tdb=None,logger=None,tango='',schema=''): 
     """
     It returns the most suitable reader for a list of attributes
+    
+    It is done counting the fail/errors per schema
     """
     attr_list = fun.toList(attr_list or [])
     try:
@@ -111,8 +114,10 @@ def getArchivingReader(attr_list=None,start_date=0,stop_date=0,
       schemas = ['hdb','tdb']
       
     pref = set(Reader.get_preferred_schema(a) for a in attr_list)    
-    if any(pref): schemas = dict(s for s in schemas.items() if s[0] in pref)
-    if schema: schemas = dict(s for s in schemas.items() if schema in s[0])
+    if any(pref): #schema set by history dialog
+        schemas = dict(s for s in schemas.items() if s[0] in pref)
+    if schema: #schema passed by user
+        schemas = dict(s for s in schemas.items() if schema in s[0])
       
     if not attr_list: return None
 
@@ -124,6 +129,7 @@ def getArchivingReader(attr_list=None,start_date=0,stop_date=0,
     log('getArchivingReader(%s): %s'%(attr_list,schemas.keys()))
     a,failed = '',fandango.defaultdict(int)
     
+    #By default, it iterates over sorted Schemas.SCHEMAS
     for name in schemas:
       try:
         data = Schemas.getSchema(name,tango=tango,logger=log)
@@ -134,7 +140,8 @@ def getArchivingReader(attr_list=None,start_date=0,stop_date=0,
           if not data.get('reader'):
             data['reader'] = tdb or Reader('tdb',tango_host=tango,logger=logger)
           if not data.get('check'):
-            data['check'] = 'now-reader.RetentionPeriod < start < now-reader.ExportPeriod'
+            data['check'] = 'now-reader.RetentionPeriod < start '\
+                                                '< now-reader.ExportPeriod'
 
         if 'hdb' in (name,data.get('schema'),data.get('dbname')):
           if not data.get('reader'):
@@ -164,9 +171,10 @@ def getArchivingReader(attr_list=None,start_date=0,stop_date=0,
     #Return the best match
     failed = sorted((c,n) for n,c in failed.items())
     if failed and failed[0][0]!=len(attr_list):
-      rd = data[failed[0][1]].get('reader')
-      if log: log('getArchivingReader(): Using %s'%failed[0][1])
-      return rd
+        rd = data[failed[0][1]].get('reader')
+        if log: 
+            log('getArchivingReader(): Using %s'%failed[0][1])
+        return rd
     return None
     
     ##@TODO: OLD CODE, TO BE REMOVED IN NEXT RELEASE
@@ -540,7 +548,8 @@ class Reader(Object,SingletonMap):
                             self.available_attributes.extend(attrs)
                             self.log.debug('%d' % len(self.available_attributes))
                             self.log.debug('update schemas')
-                            [self.attr_schemas[a].append(c) for a in attrs]
+                            [self.attr_schemas[a].append(c) for a in attrs
+                             if c not in self.attr_schemas[a]]
                     except:
                         self.log.warning('Unable to get %s attributes:\n %s' 
                             % (c, traceback.format_exc()))
@@ -572,15 +581,17 @@ class Reader(Object,SingletonMap):
             for a in self.available_attributes:
                 self.attr_schemas[a] = [self.schema]
 
-        self.log.debug('Updating %d aliases' % len(self.alias))
-        for a,m in self.alias.items():
-            a,m = get_model(a),get_model(m)
-            if m in self.current_attributes:
-                self.current_attributes.append(get_model(a))
-            if m in self.available_attributes:
-                self.available_attributes.append(get_model(a))
-                self.attr_schemas[a].extend([s for s in self.attr_schemas[m] 
-                        if s not in self.attr_schemas[a]])
+        #This match is already done by isAttributeArchived and it interferres
+        #with get_attribute_alias()
+        #self.log.debug('Updating %d aliases' % len(self.alias))
+        #for a,m in self.alias.items():
+            #a,m = get_model(a),get_model(m)
+            #if m in self.current_attributes:
+                #self.current_attributes.append(get_model(a))
+            #if m in self.available_attributes:
+                #self.available_attributes.append(get_model(a))
+                #self.attr_schemas[a] = [s for s in Schemas.SCHEMAS if a in
+                    #(self.attr_schemas[a]+self.attr_schemas[m])]
             
         self.log.debug('sorting')
         self.available_attributes = sorted(set(self.available_attributes))
@@ -609,11 +620,10 @@ class Reader(Object,SingletonMap):
 
     @Cached(depth=10000,expire=60.)        
     def get_attribute_alias(self,model):
+        #Check if attribute has an alias
         try:
             attribute = str(model)
             attribute = (expandEvalAttribute(attribute) or [attribute])[0]
-            
-            #Check if attribute has an alias
             self.get_attributes()
             attribute = attribute.lower()
             if attribute in self.current_attributes:
@@ -660,6 +670,7 @@ class Reader(Object,SingletonMap):
                        for a in expandEvalAttribute(attribute))
 
         self.get_attributes() #Updated cached lists
+        attr = self.get_attribute_alias(attribute)
         attr = self.get_attribute_model(attribute)
         
         if self.db_name=='*':
@@ -706,7 +717,7 @@ class Reader(Object,SingletonMap):
                 
         return False
                 
-    def load_last_values(self,attribute,schema=None):
+    def load_last_values(self,attribute,schema=None,epoch=None):
         """ Returns the last values stored for each schema """
         result = dict()
         if schema is None:
@@ -839,7 +850,8 @@ class Reader(Object,SingletonMap):
                 return values     
         
         ######################################################################    
-        # Evaluating Taurus Formulas : it overrides the whole get_attribute process
+        # Evaluating Taurus Formulas : 
+        #   it overrides the whole get_attribute process
         
         if expandEvalAttribute(attribute):
             
@@ -1005,7 +1017,7 @@ class Reader(Object,SingletonMap):
             data_type = float
             data_format = PyTango.AttrDataFormat.SCALAR
 
-        ###############################################################
+        #######################################################################
         # QUERYING THE DATABASE 
         #@TODO: This retrying should be moved down to ArchivingDB class instead
         retries,t0,s0,s1 = 0,time.time(),start_date,stop_date
