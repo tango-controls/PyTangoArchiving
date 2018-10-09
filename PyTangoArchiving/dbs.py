@@ -29,6 +29,7 @@ import traceback,time
 import MySQLdb,sys
 
 import fandango
+import fandango as fn
 from fandango.objects import Object
 from fandango.log import Logger
 import PyTangoArchiving.utils as utils
@@ -310,6 +311,75 @@ def get_table_updates(api='hdb'):
     updates = db.Query('select table_name,update_time from information_schema.tables where table_schema like "%s"'%api.schema)
     updates = dict((a,fun.date2time(t) if t else 0) for a,t in updates)    
     return updates
+
+def get_partitions_from_query(db, q):
+    eq = 'explain partitions '+q
+    c = db.Query(eq,export=False)
+    i = (i for i,r in enumerate(c.description) if 'partitions' in str(r)).next()
+    r = c.fetchone()[i]
+    c.close()
+    return r
+
+def decimate_db_table_by_time(db,table,att_id,tstart,tend,period=1,
+        id_column="att_conf_id",time_column='data_time',min_to_delete=3,
+        optimize = False):
+    """
+    This simplified method will remove all values in a table that are nearer than a given period
+    It doesnt analyze values, it just gets the last value within the interval
+    
+    It is the most suitable for hdb++ and arrays
+    
+    Partition optimization and repair should be called afterwards
+    
+    https://dev.mysql.com/doc/refman/5.6/en/partitioning-maintenance.html
+    
+    ALTER TABLE t1 REBUILD PARTITION p0, p1;
+    ALTER TABLE t1 OPTIMIZE PARTITION p0, p1;
+    ALTER TABLE t1 REPAIR PARTITION p0,p1;
+    """
+    t0 = fn.now()
+    s0 = db.getTableSize(table)
+    if fn.isNumber(tstart):
+        tstart,tend = fn.time2str(tstart),fn.time2str(tend)
+    q = "select distinct CAST(UNIX_TIMESTAMP(%s) AS DOUBLE) from %s where %s = %s and %s between '%s' and '%s'" % (
+        time_column, table, id_column, att_id, time_column, tstart, tend)
+    partitions = get_partitions_from_query(db,q)
+    print('Query: '+q)
+    print('table size is %s, partitions affected: %s' % (s0, partitions))
+    vals = db.Query(q)
+    t1 = fn.now()
+    print('query took %d seconds, %d rows returned' % ((t1-t0), len(vals)))
+    if not vals: 
+        return
+    goods,p = [vals[0][0]],vals[0][0]
+    for i,v in enumerate(vals):
+        v = v[0]
+        if v > period+goods[-1] and p!=goods[-1]:
+            goods.append(p)
+        p = v
+        
+    print(fn.now()-t1)
+    print('%d rows to delete, %d to preserve' % (len(vals)-len(goods), len(goods))) 
+    for i in range(len(goods)-1):
+        s,e = goods[i],goods[i+1]
+        s,e = fn.time2str(s,us=True),fn.time2str(e,us=True)
+        dq = "delete from %s where %s = %s and %s > '%s' and %s < '%s'" % (
+            table, id_column, att_id, time_column, s, time_column, e)
+        if not i%1000: print(dq)
+        db.Query(dq)
+        
+    t2 = fn.now()
+    s1 = db.getTableSize(table)
+    print('deleting %d rows took %d seconds' % (s0-s1, t2-t1))
+    if optimize:# or (goods[-1] - goods[0]) > 86400*5:
+        rq = 'alter table %s optimize partition %s' % (table,partitions)
+        print(rq)
+        db.Query(rq)
+        print('Optimizing took %d seconds' % (fn.now()-t2))
+        
+    return s1-s0
+    
+    
 
 def decimate_db_table(db,table,host='',user='',passwd='',start=0,end=0,period=300,iteration=1000,condition='',cols=None,us=True,test=False, repeated = False):
     """ 
