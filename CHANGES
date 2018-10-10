@@ -3,8 +3,16 @@
 @todo taurustrend.ArchivingSchema proposal!!:  add HistoryBuffer, ArchivingConfig, SnapComments as tooltip, ...
 
 @TODO Snap.CreateNewContext do not work in Tango8 (when triggered from Panic)
-@TODO Rename     widgetArchivingBrowser.ModelSearchWidget to widget.browser.ArchivingBrowser
+@TODO Rename widgetArchivingBrowser.ModelSearchWidget to widget.browser.ArchivingBrowser
 @TODO: rename ArchivingBrowser to browser
+
+8.5.0
+
+    Add SchemaManager device server for monitoring attribute availability
+    Accelerate Reader.get_attributes/is_attribute_archived/load_last_values
+    Add dict-like methods to hdb++
+    Add check.check_db_schema for fast schema checking
+    
 
 8.4.0
 
@@ -25,7 +33,7 @@
 8.3.1 update dialogs and refresh options
 	solve import bug on pta.widget.tree
 
-    8.2.x New Browser layout with Tree (in Taurus 4)
+8.2.x New Browser layout with Tree (in Taurus 4)
     solve import bug on pta.widget.tree
     solve bug on loading range argument
     Forced refresh with raw decimation
@@ -36,7 +44,8 @@
     embed config dialog in ctarchiving
     solve tango host fqdn errors, add Advanced button
     dialog methods moved from trend to widget.dialogs
-    8.1, Improved plotting, removed redundant checkScale calls,
+
+8.1, Improved plotting, removed redundant checkScale calls,
     Add get_last_values/start_archiving_for_attributes for multi-archiving module
     Reorganization of helper methods in utils/common/dbs
     Last and LastDate attributes added to PyExtractor
