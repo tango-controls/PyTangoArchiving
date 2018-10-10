@@ -646,12 +646,23 @@ class Reader(Object,SingletonMap):
         attribute = self.get_attribute_alias(attribute)
         attribute = re.sub('\[([0-9]+)\]','',attribute.lower())
         if force or attribute not in self.modes:
-            if self.db_name!='*':
+            if self.db_name in ('hdb','tdb'):
                 self.modes[attribute] = dict((translate_attribute_modes(k),v) 
-                    for k,v in self.get_database().get_attribute_modes(attribute,asDict=True).items()
-                    if k in DB_MODES or k.lower() in ('archiver','id'))
+                    for k,v in 
+                        self.get_database().get_attribute_modes(
+                            attribute,asDict=True).items()
+                        if k in DB_MODES or k.lower() in ('archiver','id'))
             else:
-                self.modes[attribute] = dict((a,self.configs[a].get_attribute_modes(attribute,force)) for a in ('hdb','tdb') if a in self.configs)
+                self.modes[attribute] = {}
+                schemas = self.is_attribute_archived(attribute)
+                for s in schemas:
+                    c = self.configs[s]
+                    try:
+                        m = c.get_attribute_modes(attribute,force)
+                    except:
+                        m = {}
+                    self.modes[attribute][s] = m
+                    
         return self.modes[attribute]
     
     @Cached(depth=10000,expire=60.)

@@ -529,9 +529,14 @@ class HDBpp(ArchivingDB,SingletonMap):
         else:
             return self.get_archived_attributes()
     
-    def get_attribute_modes(self,attr):
+    @Cached(depth=10000,expire=60.)
+    def get_attribute_modes(self,attr,force=None):
+        """ force argument provided just for compatibility, replaced by cache
+        """
         aid,tid,table = self.get_attr_id_type_table(attr)
-        return {'ID':aid, 'MODE_E':True}
+        r = {'ID':aid, 'MODE_E':fn.tango.get_attribute_events(attr)}
+        r['archiver'] = self.get_attribute_archiver(attr)
+        return r
       
     def get_table_name(self,attr):
         return get_attr_id_type_table(attr)[-1]
