@@ -46,7 +46,7 @@ import PyTangoArchiving.utils as utils
 from PyTangoArchiving.dbs import ArchivingDB, get_table_name
 from PyTangoArchiving.common import DB_MODES, translate_attribute_modes
 from PyTangoArchiving.schemas import Schemas
-import MySQLdb,MySQLdb.cursors
+import MySQLdb,MySQLdb.cursors,datetime
 
 __test__ = {}
 
@@ -731,7 +731,11 @@ class Reader(Object,SingletonMap):
     def load_last_values(self,attribute,schema=None,epoch=None):
         """ Returns the last values stored for each schema """
         result = dict()
-        if schema is None:
+        if fandango.isSequence(attribute):
+            for attr in attribute:
+                result[attr] = self.load_last_values(attr,schema,epoch)
+            return result
+        elif schema is None:
             schemas = self.is_attribute_archived(attribute)
         else:
             schemas = fandango.toList(schema)
@@ -739,7 +743,11 @@ class Reader(Object,SingletonMap):
             api = Schemas.getApi(s)
             vs = api.load_last_values(attribute)
             vs = vs.values() if hasattr(vs,'values') else vs
-            result[s] = vs and vs[0]
+            r = vs and vs[0]
+            if r and isinstance(r[0],datetime.datetime):
+                r = [fun.date2time(r[0]),r[1],(r[2:3] or [None])[0],
+                     fun.date2str(r[0])]
+            result[s] = r
         return result
         
         
