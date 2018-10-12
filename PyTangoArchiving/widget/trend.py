@@ -162,8 +162,9 @@ class ArchivingTrend(TaurusTrend):
     
         .. seealso: :meth:`TaurusTrendSet.setForcedReadingPeriod`
         '''
-        print('*'*1200)
-        print('setForcedReadingPeriod(%s,%s)' % (msec,tsetnames))
+        self.warning('*'*1200)
+        self.warning('setForcedReadingPeriod(%s,%s)' % (msec,tsetnames))
+        
         if msec is None:
             msec = self._forcedReadingPeriod
             try: #API changed in QInputDialog since Qt4.4
@@ -171,7 +172,8 @@ class ArchivingTrend(TaurusTrend):
             except AttributeError:
                 qgetint = Qt.QInputDialog.getInteger
             msec,ok = qgetint(self, 'New forced reading period', 
-                'Enter the new period for forced reading (in ms).\n Enter "0" for disabling', 
+                'Enter the new period for forced reading (in ms).\n '
+                'Enter "0" for disabling', 
                 max((0,msec,3000)), 0, 604800000, 100)
             if not ok: 
                 return
@@ -187,162 +189,160 @@ class ArchivingTrend(TaurusTrend):
             for name in tsetnames:
                 tset = self.trendSets[name]
                 tset.setForcedReadingPeriod(msec)
-                tset.setEventFilters([])
+                #tset.setEventFilters([])
                         
         finally:
             traceback.print_exc()
             self.curves_lock.release()
   
     def _showAxisFormatDialog(self,axis=None):
-      try:
-        import PyQt4.Qwt5,PyQt4.Qt
-        axis = axis or PyQt4.Qwt5.QwtPlot.yLeft
-        qi = Qt.QInputDialog.getText(None,"Axis Format","Enter format for Axis labels (\%6.2f):")
-        if qi[1]: 
-          self.setAxisLabelFormat(axis,str(qi[0]))
-          self.doReplot()
-      except:
-        ms = Qt.QMessageBox.warning(self,"Error!",traceback.format_exc())
+        try:
+            import PyQt4.Qwt5,PyQt4.Qt
+            axis = axis or PyQt4.Qwt5.QwtPlot.yLeft
+            qi = Qt.QInputDialog.getText(None,"Axis Format",
+                "Enter format for Axis labels (\%6.2f):")
+            if qi[1]: 
+                self.setAxisLabelFormat(axis,str(qi[0]))
+                self.doReplot()
+        except:
+            ms = Qt.QMessageBox.warning(self,"Error!",traceback.format_exc())
         
     def _zoomBack(self,zoomer=None):
-      try:
-        self.setPaused(True)
-        zoomer = zoomer or self._zoomer1
-        zs = zoomer.zoomStack()
-        if len(zs):
-          zoomer.zoom(zs[0])
-      except:
-        ms = Qt.QMessageBox.warning(self,"Error!",traceback.format_exc())            
+        try:
+            self.setPaused(True)
+            zoomer = zoomer or self._zoomer1
+            zs = zoomer.zoomStack()
+            if len(zs):
+                zoomer.zoom(zs[0])
+        except:
+            ms = Qt.QMessageBox.warning(self,"Error!",traceback.format_exc())            
   
     def _axisContextMenu(self,axis=None):
-      '''Returns a context menu for the given axis
-      :param axis: (Qwt5.QwtPlot.Axis) the axis
-      :return: (Qt.QMenu) the context menu for the given axis
-      '''
-      try:
-        menu = Qt.QMenu(self)
-        axisname = self.getAxisName(axis)
-        menu.setTitle("Options for axis %s"%axisname)
+        '''Returns a context menu for the given axis
+        :param axis: (Qwt5.QwtPlot.Axis) the axis
+        :return: (Qt.QMenu) the context menu for the given axis
+        '''
+        try:
+            menu = Qt.QMenu(self)
+            axisname = self.getAxisName(axis)
+            menu.setTitle("Options for axis %s"%axisname)
 
-        autoScaleThisAxis = lambda : self.setAxisAutoScale(axis=axis)
-        autoscaleAction= menu.addAction("AutoScale %s"%axisname)
-        self.connect(autoscaleAction, Qt.SIGNAL("triggered()"), autoScaleThisAxis)
+            autoScaleThisAxis = lambda : self.setAxisAutoScale(axis=axis)
+            autoscaleAction= menu.addAction("AutoScale %s"%axisname)
+            self.connect(autoscaleAction, Qt.SIGNAL("triggered()"), autoScaleThisAxis)
 
-        if not self.getXIsTime():
-            switchThisAxis = lambda : self.setAxisScaleType(axis=axis, scale=None)
-            switchThisAxisAction= menu.addAction("Toggle linear/log for %s"%axisname)
-            self.connect(switchThisAxisAction, Qt.SIGNAL("triggered()"), switchThisAxis)
+            if not self.getXIsTime():
+                switchThisAxis = lambda : self.setAxisScaleType(axis=axis, scale=None)
+                switchThisAxisAction= menu.addAction("Toggle linear/log for %s"%axisname)
+                self.connect(switchThisAxisAction, Qt.SIGNAL("triggered()"), switchThisAxis)
 
-        if axis in (Qwt5.QwtPlot.yLeft, Qwt5.QwtPlot.yRight):
-            zoomOnThisAxis = lambda : self.toggleZoomer(axis=axis)
-            zoomOnThisAxisAction= menu.addAction("Zoom-to-region acts on %s"%axisname)
-            self.connect(zoomOnThisAxisAction, Qt.SIGNAL("triggered()"), zoomOnThisAxis)
-            yZoomBackAction=menu.addAction("Zoom back")
-            self.connect(yZoomBackAction,Qt.SIGNAL("triggered()"),self._zoomBack)
-            ySetFormatAction=menu.addAction("Set Axis Format")
-            self.connect(ySetFormatAction,Qt.SIGNAL("triggered()"),self._showAxisFormatDialog)
+            if axis in (Qwt5.QwtPlot.yLeft, Qwt5.QwtPlot.yRight):
+                zoomOnThisAxis = lambda : self.toggleZoomer(axis=axis)
+                zoomOnThisAxisAction= menu.addAction("Zoom-to-region acts on %s"%axisname)
+                self.connect(zoomOnThisAxisAction, Qt.SIGNAL("triggered()"), zoomOnThisAxis)
+                yZoomBackAction=menu.addAction("Zoom back")
+                self.connect(yZoomBackAction,Qt.SIGNAL("triggered()"),self._zoomBack)
+                ySetFormatAction=menu.addAction("Set Axis Format")
+                self.connect(ySetFormatAction,Qt.SIGNAL("triggered()"),self._showAxisFormatDialog)
 
-        elif axis in (Qwt5.QwtPlot.xBottom, Qwt5.QwtPlot.xTop):
-            if self.isXDynScaleSupported():
-                xDynAction=menu.addAction("&Auto-scroll %s"%axisname)
-                xDynAction.setToolTip('If enabled, the scale of %s will be autoadjusted to provide a fixed window moving to show always the last value')
-                xDynAction.setCheckable(True)
-                xDynAction.setChecked(self.getXDynScale())
-                self.connect(xDynAction, Qt.SIGNAL("toggled(bool)"), self.setXDynScale)
-            xZoomBackAction=menu.addAction("Zoom back")
-            self.connect(xZoomBackAction,Qt.SIGNAL("triggered()"),self._zoomBack)
-            xShowDatesAction=menu.addAction("Show Dates Widget")
-            self.connect(xShowDatesAction,Qt.SIGNAL("triggered()"),self.showDatesWidget)
-        return menu  
-      except:
-        ms = Qt.QMessageBox.warning(self,"Error!",traceback.format_exc())
+            elif axis in (Qwt5.QwtPlot.xBottom, Qwt5.QwtPlot.xTop):
+                if self.isXDynScaleSupported():
+                    xDynAction=menu.addAction("&Auto-scroll %s"%axisname)
+                    xDynAction.setToolTip('If enabled, the scale of %s will be autoadjusted to provide a fixed window moving to show always the last value')
+                    xDynAction.setCheckable(True)
+                    xDynAction.setChecked(self.getXDynScale())
+                    self.connect(xDynAction, Qt.SIGNAL("toggled(bool)"), self.setXDynScale)
+                xZoomBackAction=menu.addAction("Zoom back")
+                self.connect(xZoomBackAction,Qt.SIGNAL("triggered()"),self._zoomBack)
+                xShowDatesAction=menu.addAction("Show Dates Widget")
+                self.connect(xShowDatesAction,Qt.SIGNAL("triggered()"),self.showDatesWidget)
+            return menu  
+        except:
+            ms = Qt.QMessageBox.warning(self,"Error!",traceback.format_exc())
         
     def _onUseArchivingAction(self, enable):
-      '''slot being called when toggling the useArchiving action
-      
-      .. seealso:: :meth:`setUseArchiving`
-      '''
-      try:
-        TaurusTrend._onUseArchivingAction(self,enable)
-        self.replot()
-      except:
-        ms = Qt.QMessageBox.warning(self,"Error!",traceback.format_exc())
+        '''slot being called when toggling the useArchiving action
+        
+        .. seealso:: :meth:`setUseArchiving`
+        '''
+        try:
+            TaurusTrend._onUseArchivingAction(self,enable)
+            self.replot()
+        except:
+            ms = Qt.QMessageBox.warning(self,"Error!",traceback.format_exc())
         
     def applyNewDates(self,dates=None):
-      """
-      Dates could be a tuple (start,end) or just (end,)
-      """
-      try:
-        #self.setForcedReadingPeriod(3000)
-        #self.setPaused(True)
-        ui = self._datesWidget
-        logger = self.getArchivedTrendLogger()
-        if dates is not None:
-            ui.xRangeCB.setEditText(dates[-1])
-            end = dates[-1]
-        else:
-            end = str(ui.xRangeCB.currentText())
+        """
+        Dates could be a tuple (start,end) or just (end,)
+        """
+        try:
+            #self.setForcedReadingPeriod(3000)
+            #self.setPaused(True)
+            ui = self._datesWidget
+            logger = self.getArchivedTrendLogger()
+            if dates is not None:
+                ui.xRangeCB.setEditText(dates[-1])
+                end = dates[-1]
+            else:
+                end = str(ui.xRangeCB.currentText())
 
-        if dates is not None and len(dates)>1:
-            ui.xEditStart.setText(dates[0])
-            start = dates[0]
-        else:
-            start = str(ui.xEditStart.text())
+            if dates is not None and len(dates)>1:
+                ui.xEditStart.setText(dates[0])
+                start = dates[0]
+            else:
+                start = str(ui.xEditStart.text())
+            
+            logger.warning('applyNewDates(%s,%s)'%(start,end))
+            
+            try: t0 = str2time(start)
+            except: t0 = None
+            try: t1 = str2time(end)
+            except: t1 = None
         
-        logger.warning('applyNewDates(%s,%s)'%(start,end))
-        
-        try: t0 = str2time(start)
-        except: t0 = None
-        try: t1 = str2time(end)
-        except: t1 = None
-        
-        if t1 is not None:
-          if t0 is None:
-            now = time.time()
-            t0,t1 = time.time()-t1,time.time()
-          else:
-            if t0<0: t0 = time.time()+t0
-            t0,t1 = t0,t0+t1
-            try:
-                if t1 > time.time() + 600:
-                    #If asked range goes into the future it is corrected
-                    r = t1-t0
-                    t1 = time.time() + 600
-                    t0 = t1 - r
-                    ui.xEditStart.setText(time2str(t0))
-            except:
-                traceback.print_exc()
+            if t1 is not None:
+                if t0 is None:
+                    now = time.time()
+                    t0,t1 = time.time()-t1,time.time()
+                else:
+                    if t0<0: t0 = time.time()+t0
+                    t0,t1 = t0,t0+t1
+                    try:
+                        if t1 > time.time() + 600:
+                            #If asked range goes into the future it is corrected
+                            r = t1-t0
+                            t1 = time.time() + 600
+                            t0 = t1 - r
+                            ui.xEditStart.setText(time2str(t0))
+                    except:
+                        traceback.print_exc()
                 
-        if t1-t0 > 365*86400:
-          v = Qt.QMessageBox.warning(self,'Warning!',
-            'Reading an interval so big may hung your PC!!',
-            Qt.QMessageBox.Ok|Qt.QMessageBox.Cancel)
-          
-          if t0 < 1000 or v == Qt.QMessageBox.Cancel:
-            return
+            if t0 < fn.now() < t1 and t1-t0 > utils.MAX_RESOLUTION:
+                self.setForcedReadingPeriod(10000.)
+                    
+            if t1-t0 > 365*86400:
+                v = Qt.QMessageBox.warning(self,'Warning!',
+                    'Reading an interval so big may hung your PC!!',
+                    Qt.QMessageBox.Ok|Qt.QMessageBox.Cancel)
+            
+                if t0 < 1000 or v == Qt.QMessageBox.Cancel:
+                    return
         
-        if t0 is not None:
+            if t0 is not None:
+                
+                logger.warning('applyNewDates(%s,%s)'%(fn.time2str(t0),fn.time2str(t1)))
+                #Set Axis Scale already triggers Check Buffers!!!!
+                self.setAxisScale(Qwt5.QwtPlot.xBottom, t0, t1)
+
+            ## DONT EVER APPLY SETPAUSED(TRUE); IT WILL NO ALLOW QT TO REFRESH
             
-          logger.warning('applyNewDates(%s,%s)'%(fn.time2str(t0),fn.time2str(t1)))
-          self.setAxisScale(Qwt5.QwtPlot.xBottom, t0, t1)
-          self.setXDynScale(t1 < time.time()) #%It causes weird effects
-          self.setPaused(t1 < time.time())
-          
-          #Set Axis Scale already triggers Check Buffers!!!!
-          
-          #hosts = [fn.get_tango_host(m,fqdn=True) for m in self.getModel()]
-          #logger.warning('applyNewDates.CheckBuffers(%s)'%str(fn.toList(self.getModel())))
-          ##rd = QReloadDialog(ui,logger=self.getArchivedTrendLogger())
-          ##rd.setModal(True)
-          ##rd.show()
-          #for i,m in enumerate(fn.toList(self.getModel())):
-            #logger.warning(i)
-            #logger.checkBuffers()
+            #logger.warning('Setting XDynScale != Paused = %s' % str(t1<time.time()))
+            #self.setXDynScale(t1>time.time()) #%It causes weird effects
+            #self.setPaused(t1<time.time())
+                
+            self.emit(Qt.SIGNAL("refreshData"))
             
-        self.emit(Qt.SIGNAL("refreshData"))
-            
-      except:
-        ms = Qt.QMessageBox.warning(self,"Error!",traceback.format_exc())
+        except:
+            ms = Qt.QMessageBox.warning(self,"Error!",traceback.format_exc())
         
     def resetDefaultCurvesTitle(self):
         '''resets the defaultCurvesTitle property to '<label>'
@@ -352,29 +352,29 @@ class ArchivingTrend(TaurusTrend):
         #self.setDefaultCurvesTitle('<label><[trend_index]>')
     
     def showDatesWidget(self,show=True):
-      try:
-        ui = getattr(self,'_datesWidget',None)
-        #try:
-            #ui.parent()
-        #except:
-            #self.warning(traceback.format_exc())
-            #ui = None
-        if not ui:
-            self._datesWidget = Qt.QDialog()
-            self._datesWidget.setLayout(Qt.QVBoxLayout())
-            dw = DatesWidget(self)#,self.legend(),Qt.QVBoxLayout())
-            self._datesWidget.layout().addWidget(dw)
-          
-        if show: self._datesWidget.show()
-        #else: self._datesWidget.hide()
-        self.replot()
-        return
-        #xMin = self.parent.axisScaleDiv(Qwt5.QwtPlot.xBottom).lowerBound()
-        #xMax = self.parent.axisScaleDiv(Qwt5.QwtPlot.xBottom).upperBound()
-        #if self.parent.getXIsTime():
-                #self.ui.xEditMin.setText(time.strftime('%Y/%m/%d %H:%M:%S',time.localtime(int(xMin))))
-      except:
-        ms = Qt.QMessageBox.warning(self,"Error!",traceback.format_exc())
+        try:
+            ui = getattr(self,'_datesWidget',None)
+            #try:
+                #ui.parent()
+            #except:
+                #self.warning(traceback.format_exc())
+                #ui = None
+            if not ui:
+                self._datesWidget = Qt.QDialog()
+                self._datesWidget.setLayout(Qt.QVBoxLayout())
+                dw = DatesWidget(self)#,self.legend(),Qt.QVBoxLayout())
+                self._datesWidget.layout().addWidget(dw)
+            
+            if show: self._datesWidget.show()
+            #else: self._datesWidget.hide()
+            self.replot()
+            return
+            #xMin = self.parent.axisScaleDiv(Qwt5.QwtPlot.xBottom).lowerBound()
+            #xMax = self.parent.axisScaleDiv(Qwt5.QwtPlot.xBottom).upperBound()
+            #if self.parent.getXIsTime():
+                    #self.ui.xEditMin.setText(time.strftime('%Y/%m/%d %H:%M:%S',time.localtime(int(xMin))))
+        except:
+            ms = Qt.QMessageBox.warning(self,"Error!",traceback.format_exc())
         
     def pickDataPoint(self, pos, scope=20, showMarker=True, targetCurveNames=None):
         '''Finds the pyxel-wise closest data point to the given position. The
@@ -488,7 +488,8 @@ def emitHistoryChanged(trend_set):
     #Initialization of refresh event:
     if getattr(trend_set,'_historyChangedSignal',None) is None:
         try:
-            trend_set.info('PyTangoArchiving.Reader: Configuring historyChanged() event ...')
+            trend_set.info('PyTangoArchiving.Reader: '
+                'Configuring historyChanged() event ...')
             parent.connect(parent,Qt.SIGNAL('historyChanged()'),parent.doReplot)
             trend_set._historyChangedSignal = True
         except: 
@@ -779,7 +780,7 @@ def getArchivedTrendValues(trend_set,model,start_date=0,stop_date=None,
     logger_obj = trend_set
     t00 = time.time()
     N = 0
-    trend_set.debug('In getArchivedTrendValues() ...')
+    trend_set.debug('In getArchivedTrendValues(%s) ...' % str(model))
     
     try:
         tango_host,attribute,model = parseTrendModel(model)
@@ -787,7 +788,8 @@ def getArchivedTrendValues(trend_set,model,start_date=0,stop_date=None,
         logger_obj = ArchivedTrendLogger(parent,tango_host=tango_host,
             multiprocess=multiprocess, value_setter = getArchivedTrendValues)
         
-        #logger_obj.info('< %s'%str((model,start_date,stop_date,use_db,decimate,multiprocess)))
+        #logger_obj.info('< %s'%str((model,start_date,stop_date,
+        # use_db,decimate,multiprocess)))
         lasts = logger_obj.last_args.get(model,None)
         
         logger = logger_obj.warning
@@ -1030,13 +1032,6 @@ def getArchivedTrendValues(trend_set,model,start_date=0,stop_date=None,
 # TaurusTrend -a helper for be4tter config
 
 def get_archiving_trend(models=None,length=12*3600,show=False,n_trends=1):
-    ## DEPRECATED?
-    #class PressureTrend(TaurusTrend):
-        #def showEvent(self,event):
-            #if not getattr(self,'_tuned',False): 
-                #setup_pressure_trend(self)
-                #setattr(self,'_tuned',True)        
-            #TaurusTrend.showEvent(self,event)
     global STARTUP_DELAY
     STARTUP_DELAY = 0
 
@@ -1052,7 +1047,8 @@ def get_archiving_trend(models=None,length=12*3600,show=False,n_trends=1):
         tt.setXIsTime(True)
         tt.setUseArchiving(True)
         tt.setModelInConfig(False)
-        tt.disconnect(tt.axisWidget(tt.xBottom), Qt.SIGNAL("scaleDivChanged ()"), tt._scaleChangeWarning)
+        tt.disconnect(tt.axisWidget(tt.xBottom), 
+            Qt.SIGNAL("scaleDivChanged ()"), tt._scaleChangeWarning)
         xMax = time.time() #tt.axisScaleDiv(Qwt5.QwtPlot.xBottom).upperBound()
         rg = length #abs(self.str2deltatime(str(self.ui.xRangeCB.currentText())))
         xMin=xMax-rg

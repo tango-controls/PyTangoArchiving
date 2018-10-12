@@ -35,32 +35,27 @@ import taurus
 from fandango.qt import Qt,Qwt5
 from taurus.qt.qtgui.plot import TaurusTrend,TaurusPlot
 from taurus.qt.qtgui.panel import TaurusDevicePanel
-#from fandango.qt import modelSetter,TauEmitterThread,SingletonWorker
 from taurus.qt.qtgui.panel import TaurusValue
-from taurus.qt.qtgui.display import TaurusLabel
+from taurus.qt.qtcore.util.emitter import SingletonWorker
 
-try:
-    # Tau / Taurus < 3.4
-    from taurus.qt.qtgui.display import TaurusValueLabel as TaurusLabel
-except:
-    # Taurus > 3.4
-    from taurus.qt.qtgui.display import TaurusLabel
-  
 try:
     # taurus 4
     from taurus.core.tango.util import tangoFormatter
     from taurus.qt.qtgui.display import TaurusLabel
     TaurusLabel.FORMAT=tangoFormatter  
 except:
-    pass
-
-from taurus.qt.qtcore.util.emitter import SingletonWorker
+    try:
+        # Tau / Taurus < 3.4
+        from taurus.qt.qtgui.display import TaurusValueLabel as TaurusLabel
+    except:
+        # Taurus > 3.4
+        from taurus.qt.qtgui.display import TaurusLabel
 
 try:
-  from PyTangoArchiving.widget.tree import TaurusModelChooser
+    from PyTangoArchiving.widget.tree import TaurusModelChooser
 except:
-  traceback.print_exc()
-  TaurusModelChooser = None
+    traceback.print_exc()
+    TaurusModelChooser = None
 
 def get_distinct_domains(l):
     return sorted(set(str(s).upper().split('/')[0] for s in l))

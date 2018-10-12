@@ -243,13 +243,15 @@ class Reader(Object,SingletonMap):
     @classmethod
     def set_preferred_schema(k,attr,sch):
         if sch=='*': sch = None
+        attr = get_full_name(attr,fqdn=True)
         print('Reader.set_preferred_schema(%s,%s)'%(attr,sch))
-        k.Preferred[attr] = sch
+        Reader.Preferred[attr] = sch
 
     @classmethod
     def get_preferred_schema(k,attr):
-        sch = k.Preferred.get(attr,None)
-        #print('Reader.get_preferred_schema(%s): %s'%(attr,sch))
+        attr = get_full_name(attr,fqdn=True)
+        sch = Reader.Preferred.get(attr)
+        print('Reader.get_preferred_schema(%s): %s'%(attr,sch))
         return sch
     
     @classmethod

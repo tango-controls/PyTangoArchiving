@@ -464,7 +464,7 @@ class ArchivedTrendLogger(SingletonMap):
         for n,ts in self.trend.trendSets.iteritems():
             model = ts.getModel()
             if not filters or fn.clmatch(filters,model):
-                self.warning('forceReadings(%s)' % model)
+                self.warning('forceReadings(%s,%s)' % (model,emit))
                 ts.forceReading()
         if emit:
             self.trend.emit(Qt.SIGNAL('refreshData'))
