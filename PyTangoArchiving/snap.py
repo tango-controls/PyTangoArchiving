@@ -63,50 +63,63 @@ TABLES={
     }
 
 class SnapAPI(Logger,Singleton):
-    """ This object encapsulates the methods used to manage the SnapArchiving System.
-    An SnapDB object is needed to manage the persistency of MySQL connections and tango proxies.
+    """ 
+    This object encapsulates the methods used to manage the SnapArchiving System.
+    
+    An SnapDB object is needed to manage the persistency of 
+    MySQL connections and tango proxies.
     
     SnapAPI(user='...',passwd='...',api=None,SINGLETON=True,load=True)
     """
 
     __instantiated__ = 0
 
-    #def __init__(self,user='browser',passwd='browser',api=None,SINGLETON=True,load=True):
-    def __init__(self,user='snaparchiver',passwd='snaparchiver',api=None,SINGLETON=True,load=True):
+    def __init__(self,user='',passwd='',api=None,SINGLETON=True,load=True):
         """ The SnapAPI is a Singleton object; is instantiated only one time
         @param[in] api An ArchivingAPI object is required.
         """
         print 'Creating SnapAPI object ...'
         if SINGLETON and self.__class__.__instantiated__: return
 
-        self.call__init__(Logger,'SnapDict',format='%(levelname)-8s %(asctime)s %(name)s: %(message)s')
+        self.call__init__(Logger,'SnapDict',
+            format='%(levelname)-8s %(asctime)s %(name)s: %(message)s')
+        
+        try:
+            self.tango = fandango.get_database()
+            user,host = user.split('@') if '@' in (user or '') else (user,'')
+            user = user or self.tango.get_class_property(
+                    'SnapArchiver',['DbUser'])['DbUser'][0]
+            host = host or self.tango.get_class_property(
+                    'SnapArchiver',['DbHost'])['DbHost'][0]
+            passwd= passwd or self.tango.get_class_property(
+                'SnapArchiver',['DbPassword'])['DbPassword'][0]
+        except Exception, e:
+            print traceback.format_exc()
+            print('ERROR: Unable to get Snapshoting DB settings: ',e)
+        
         if api is None:
-            api=getSingletonAPI(schema='snap') ##THIS IS A common.CommonAPI object!
+             ##THIS IS A CommonAPI object!
+            api = getSingletonAPI(schema = 'snap',
+                host = host, user = user, passwd = passwd)
             assert api.host, 'Snap DbHost not defined!'
             
         self.api=api
         self.manager=api.get_manager()        
-        self.archivers=dict([(a,api.proxies[a]) for a in api.servers.get_class_devices(api.ArchiverClass)])
-        self.extractors=dict([(a,api.proxies[a]) for a in api.servers.get_class_devices(api.ExtractorClass)])
+        self.archivers=dict([(a,api.proxies[a]) 
+            for a in api.servers.get_class_devices(api.ArchiverClass)])
+        self.extractors=dict([(a,api.proxies[a]) 
+            for a in api.servers.get_class_devices(api.ExtractorClass)])
 
         self.contexts={} #{ID:{'author','name','attributes':[]}}
         self.attributes = fandango.CaselessDict()
         try:
-            user,host = user.split('@') if '@' in user else (
-                self.api.tango.get_class_property('SnapArchiver',['DbUser'])['DbUser'][0],self.api.tango.get_class_property('SnapArchiver',['DbHost'])['DbHost'][0]
-                )
-            passwd=self.api.tango.get_class_property('SnapArchiver',['DbPassword'])['DbPassword'][0]
             print 'Connecting to %s as %s ...' % (host,user)
             self.set_db_config(api,host,user,passwd)
-
-            try:
-                if load: self.load_contexts()
-            except:
-                print traceback.format_exc()
-                print('ERROR: Unable to load contexts')
-        except Exception, e:
+            if load: 
+                self.load_contexts()
+        except:
             print traceback.format_exc()
-            print('ERROR: Unable to set Snapshoting DB host: ',e)
+            print('ERROR: Unable to load host/contexts')
 
         if SINGLETON: 
             SnapAPI.__singleton = self

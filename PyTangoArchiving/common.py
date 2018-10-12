@@ -66,7 +66,7 @@ class CommonAPI(Object,fandango.SingletonMap):
         self.log.setLogLevel(LogLevel)
         self.log.debug('Logger streams initialized (error,warning,info,debug)')
 
-        self.tango = PyTango.Database() #access to Tango database
+        self.tango = fandango.get_database() #access to Tango database
         self.api = self #hook used by legacy packages
         self.servers = None
         self.schema = str(schema).lower()
