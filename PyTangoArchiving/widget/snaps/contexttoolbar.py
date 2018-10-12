@@ -1,4 +1,7 @@
-from PyQt4 import Qt
+try:
+    from taurus.external.qt import Qt
+except:
+    from PyQt4 import Qt
 from snapdialogs import SnapSaver, SnapLoader
 
 
