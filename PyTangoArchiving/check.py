@@ -382,7 +382,7 @@ def check_db_schema(schema,tref = None):
     r.attrs = api.keys()
     r.on = api.get_archived_attributes()
     r.off = [a for a in r.attrs if a not in r.on]
-    if schema=='tdb':
+    if schema in ('tdb','hdb'):
         ups = api.db.get_table_updates()
         r.vals = dict((k,(ups[api[k].table],None)) for k in r.on)
     else:

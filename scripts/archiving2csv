@@ -2,7 +2,21 @@
 
 import sys,time,os,traceback
 import fandango as fun
-import PyTangoArchiving
+import PyTangoArchiving as pta
+
+__doc__ = """
+archiving2csv [--resolution=X(s)] [--schema="db_name"] [--modes] ["--arrsep=,"][attributes] ["Y-m-d H:M"] ["Y-m-d H:M"] filename.csv\n\n'
+  --schema="database" : choose database to extract the data
+  --modes : export modes instead of values
+  --config : same, in "human format"
+  --arrsep/--no-sep : default separator between arrays values
+  --sep : separator between columns
+  --linesep : character between lines
+  --resolution : force periodicity of values to a fix period
+  --noheader : do not include headers
+  --nodate : do not include datetime
+  --noepoch : do not include epochs
+"""
 
 sep = '\t'
 linesep = '\n'
@@ -21,71 +35,79 @@ try:
     assert fun.str2time(stop)>0,'wrong stop'
     [a.split('/')[2] for a in attrs]
   else:
-    if len(sys.argv)==3: filename = sys.argv[-1]
-    else: filename = '/tmp/%s_archiving_modes_%s.csv'%(os.environ['HOST'],fun.time2str(cad='%Y%m%d-%H%M%S'))
+    if len(sys.argv)==3: 
+        filename = sys.argv[-1]
+    else: 
+        host = fun.tango.get_tango_host().split(':')[0].split('.')[0]
+        filename = '/tmp/%s_archiving_modes_%s.csv'%(
+            host,fun.time2str(cad='%Y%m%d-%H%M%S'))
 except:
   print traceback.format_exc()
-  print '\nWrong arguments, right syntax is:\n\tarchiving2csv [--resolution=X(s)] [--hdb] [--tdb] [--modes] ["--arrsep=,"][attributes] ["Y-m-d H:M"] ["Y-m-d H:M"] filename.csv\n\n'
-  print '--hdb/tdb : choose database'
-  print '--modes : export modes instead of values'
-  print '--config : same, in "human format"'
-  print '--arrsep/--no-sep : default separator between arrays values'
-  print '--sep : separator between columns'
-  print '--linesep : character between lines'
-  print '--resolution : force periodicity of values to a fix period'  
-  print '--noheader : do not include headers'
-  print '--nodate : do not include datetime'
-  print '--noepoch : do not include epochs'
+  print '\nWrong arguments, right syntax is:\n\t'
+  print __doc__
   sys.exit(-1)
+  
+schema = '*'
+for a in args[:]:
+    if a.startswith('--schema='):
+        schema = a.split('=')[-1]
+        args.remove(a)
 
 if '--modes' in args:
     print 'Saving backup of current archiving configuration'
-    hdb = PyTangoArchiving.ArchivingAPI('hdb')
-    tdb = PyTangoArchiving.ArchivingAPI('tdb')
     lines = []
-    for a,v in hdb.items():
-        if v.archiver:
-            for m,p in v.modes.items():
-                lines.append('\t'.join(map(str,[a,'hdb',v.archiver,m]+p)))
-        else:
-            lines.append('\t'.join(map(str,[a,'hdb']+['']*3)))
-    for a,v in tdb.items():
-        if v.archiver:
-            for m,p in v.modes.items():
-                lines.append('\t'.join(map(str,[a,'tdb',v.archiver,m]+p)))
-        else:
-            lines.append('\t'.join(map(str,[a,'tdb']+['']*3)))
+    if schema == '*': 
+        schema = ','.join(k for k,v in Schemas.load().items() if v)
+    schemas = schema.split(',')
+    for schema in schemas:
+        api = pta.api(schema)
+        for a,v in api.items():
+            if not hasattr(v,'modes'):
+                api.get_attribute_modes(a)
+            if v.archiver:
+                for m,p in v.modes.items():
+                    lines.append('\t'.join(map(str,[a,schema,v.archiver,m]+p)))
+            else:
+                lines.append('\t'.join(map(str,[a,schema]+['']*3)))
+
     lines = sorted(lines)
     
 elif '--config' in args:
     print 'Saving backup of current archiving configuration (human readable)'
-    hdb = PyTangoArchiving.ArchivingAPI('hdb')
-    tdb = PyTangoArchiving.ArchivingAPI('tdb')
     lines = []
-    for api in (hdb,tdb):
-      for a,v in api.items():
-        if v.archiver:
-          for m,p in v.modes.items():
-            dev,attr = a.rsplit('/',1)
-            m,p[0] = m.replace('MODE_P','periodic').replace('MODE_A','absolute').replace('MODE_R','relative'),int(p[0]/1e3)
-            lines.append('\t'.join(map(str,[api.db.host,dev,attr,api.schema.upper(),m]+p)))
-        elif api is hdb or a not in hdb:
-          lines.append('\t'.join(map(str,[api.db.host,dev,attr,'STOP']+['']*3)))
+    if schema == '*': 
+        schema = ','.join(k for k,v in Schemas.load().items() if v)
+    schemas = schema.split(',')
+    for schema in schemas:
+        api = pta.api(schema)
+        for a,v in api.items():
+            if v.archiver:
+                for m,p in v.modes.items():
+                    dev,attr = a.rsplit('/',1)
+                    m,p[0] = m.replace(
+                        'MODE_P','periodic').replace(
+                        'MODE_A','absolute').replace(
+                        'MODE_R','relative').replace(
+                        'MODE_E','events'
+                        ),int(p[0]/1e3)
+                    lines.append('\t'.join(map(str,
+                        [api.db.host,dev,attr,api.schema,m]+p)))
+            else:
+                lines.append('\t'.join(map(str,
+                [api.db.host,dev,attr,api.schema,'STOP']+['']*2)))
     lines = sorted(lines)
     
 else:
     # Getting the right Reader object
-    if '--hdb' in args: rd = PyTangoArchiving.reader.Reader('hdb')
-    elif '--tdb' in args: rd = PyTangoArchiving.reader.Reader('tdb')
-    else: rd = PyTangoArchiving.reader.Reader() 
-    if rd.schema.lower()=='tdb': print 'Using only TDB values'
+    rd = pta.Reader(schema)
+    print('Using only %s db schema' % schema)
         
-    print 'The list of attributes is: %s'%attrs
+    print('The list of attributes is: %s'%attrs)
     if len(attrs) == 1 and '.csv' in attrs[0]:
-        try: attrs = PyTangoArchiving.ParseCSV(attrs[0]).keys()
+        try: attrs = pta.ParseCSV(attrs[0]).keys()
         except: pass
     
-    print 'Attributes: %s\nStart: %s\nStop: %s\n'%(attrs,start,stop)
+    print('Attributes: %s\nStart: %s\nStop: %s\n'%(attrs,start,stop))
     correlate = len(attrs)>1
     import codecs
     for a in args:
@@ -106,7 +128,9 @@ else:
             
     raws = rd.get_attributes_values(attrs,start,stop,text=False,correlate=False)
     values = fun.SortedDict()
-    for a in attrs: values[a] = raws[a]
+    for a in attrs: 
+        values[a] = raws[a]
+    
     print 'Obtained data from database:'
     print ' \n'.join(sorted('%s: %d values'%(a,len(v)) for a,v in values.items()))
     ll = max(len(v) for v in values.values())-1
@@ -138,7 +162,7 @@ else:
     
     options = {'arrsep':arrsep,'sep':sep,'linesep':linesep}
     print 'Options: %s'%options
-    data = PyTangoArchiving.Reader.export_to_text(
+    data = pta.Reader.export_to_text(
         values,order=attrs,**options).replace('None','NaN')
     
     #Remove repeated dates

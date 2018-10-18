@@ -299,10 +299,9 @@ class Reader(Object,SingletonMap):
         self.cache = {}
         self.is_hdbpp = False
         
-        props = self.tango.get_property('PyTangoArchiving',
-                                        [self.db_name,'DbConfig'])
-        self.default = props.get(self.db_name) or props.get('DbConfig')            
-        
+        props = ['DbConfig'] + ([self.db_name] if self.db_name!='*' else [])
+        dprops = self.tango.get_property('PyTangoArchiving',props)
+        self.default = dprops.get(props[-1]) or dprops.get(props[0])
         
         #Initializing Database connection
         if '*' in (self.db_name,self.schema):
@@ -321,12 +320,21 @@ class Reader(Object,SingletonMap):
         
     @fandango.Catched
     def init_for_schema(self,schema,config='',servers=[]):
-        
-        if not config:
-            try: 
-                config = '\n'.join(self.tango.get_class_property(
-                    '%sextractor'%self.schema,['DbConfig'])['DbConfig'] or [''])
-            except: config = ''
+        print('%s.init_for_schema(%s,%s)' % (self.schema,schema,config))
+
+        if not config and schema in Schemas.keys():
+                #raise 'NotImplemented!, Use generic Reader() instead'
+                sch = Schemas.getSchema(schema)
+                sch = map(sch.get,('user','passwd','host','db_name'))
+                if all(sch): config = '%s:%s@%s/%s' % tuple(sch)
+                
+        if not config and schema in ('hdb','tdb'):
+            try:
+                prop = '%sextractor'%self.schema
+                prop = self.tango.get_class_property(prop,['DbConfig'])
+                config = '\n'.join(prop['DbConfig'] or [''])
+            except: 
+                pass
             if not config and self.default: 
                 config = '\n'.join(self.default)
             
@@ -339,12 +347,13 @@ class Reader(Object,SingletonMap):
                 and self.schema not in ('hdb','tdb'):
             raise 'NotImplemented!, Use generic Reader() instead'
 
-        # THIS METHOD OF CHECKING HDB++ IS FLAWED!! (and unused) @TODO
-        if any(a.lower() in s for s in map(str,(self.db_name,schema,config)) 
-               for a in ('hdbpp','hdb++','hdblite')):
+        ## THIS METHOD OF CHECKING HDB++ IS FLAWED!! (and unused) @TODO
+        #if any(a.lower() in s for s in map(str,(self.db_name,schema,config)) 
+               #for a in ('hdbpp','hdb++','hdblite')):
+        if schema.lower() not in ('*','hdb','tdb'):
             self.is_hdbpp = True
             c = sorted(self.configs.items())[-1][-1]
-            self.db_name = c.split('/')[-1] if '/' in c else db_name
+            self.db_name = c.split('/')[-1] if '/' in c else schema
             self.log.debug("Created HDB++ reader")
         else:
             self.log.debug("Created '%s' reader"%self.db_name)
@@ -423,10 +432,13 @@ class Reader(Object,SingletonMap):
             #traceback.print_exc()
             self.log.warning('Unable to get DB(%s,%s) config at %s, using Java Extractors.\n%s'%(self.db_name,self.schema,epoch,e))
             return None
+        print('get_database(%s)' % config)
         try:
-            user,host = '@' in config and config.split('@',1) or (config,os.environ['HOST'])
+            user,host = '@' in config and config.split('@',1)\
+                or (config,os.getenv('HOSTNAME'))
             user,passwd = ':' in user and user.split(':',1) or (user,'')
-            host,db_name = host.split('/') if '/' in host else (host,self.db_name)
+            host,db_name = host.split('/') if '/' in host \
+                else (host,self.db_name)
             #(self.log.info if len(self.configs)>1 else self.log.debug)('Accessing MySQL using config = %s:...@%s/%s' % (user,host,db_name))
         except:
             self.log.warning('Wrong format of DB config: %s.\n%s'%(config,traceback.format_exc()))
