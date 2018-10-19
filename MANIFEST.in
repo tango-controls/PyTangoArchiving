@@ -4,5 +4,6 @@ include AUTHORS
 include LICENSE
 include README
 include PyTangoArchiving/VERSION
+include PyTangoArchiving/widget/ui/TaurusAttributeChooser.ui
 include CHANGES
 

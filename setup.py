@@ -50,19 +50,20 @@ entry_points = {
         ],
 }
 
-package_data = {
-    'PyTangoArchiving': [#'VERSION','README',
-         './VERSION',
+# EXTRA FILES ARE ADDED IN MANIFEST.in, not here
+
+#package_data = {
+#    'PyTangoArchiving': [#'VERSION','README',
+#         './VERSION',
          #'./CHANGES',
-         './scripts/*',
-         './widget/ui/*',
-         './widget/resources/*',
-         './widget/resources.qrc',
-         './widget/snaps/ui/*',
-         './widget/snaps/doc/snapimg/*',
-         './widget/snaps/README',
-         ],
-}
+#         './widget/ui/TaurusAttributeChooser.ui',
+         #'./widget/resources/*',
+         #'./widget/resources.qrc',
+         #'./widget/snaps/ui/*',
+         #'./widget/snaps/doc/snapimg/*png',
+         #'./widget/snaps/README',
+#         ],
+#}
 
 setup(
     name="PyTangoArchiving",
@@ -93,7 +94,7 @@ setup(
     scripts=scripts,
     entry_points=entry_points,
     include_package_data=True,
-    package_data=package_data,
+    #package_data=package_data,
     install_requires=['fandango','PyTango','MySQL-python'],
     zip_safe=False
   )
