@@ -54,6 +54,7 @@ package_data = {
     'PyTangoArchiving': [#'VERSION','README',
          './VERSION',
          #'./CHANGES',
+         './widget/ui/*',
          './widget/resources/*',
          './widget/resources.qrc',
          './widget/snaps/doc/snapimg/*',
