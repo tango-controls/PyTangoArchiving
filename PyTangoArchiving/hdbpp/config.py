@@ -114,7 +114,7 @@ class HDBpp(ArchivingDB,SingletonMap):
         self.keys();       
         return self.attributes.values()
     
-    def items(self,key):
+    def items(self):
         self.keys();       
         return self.attributes.items()
     
