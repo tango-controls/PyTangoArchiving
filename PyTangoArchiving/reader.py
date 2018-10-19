@@ -432,7 +432,7 @@ class Reader(Object,SingletonMap):
             #traceback.print_exc()
             self.log.warning('Unable to get DB(%s,%s) config at %s, using Java Extractors.\n%s'%(self.db_name,self.schema,epoch,e))
             return None
-        print('get_database(%s)' % config)
+        print('get_database(%s)' % self.schema)
         try:
             user,host = '@' in config and config.split('@',1)\
                 or (config,os.getenv('HOSTNAME'))

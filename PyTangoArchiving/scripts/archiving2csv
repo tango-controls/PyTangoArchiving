@@ -77,30 +77,12 @@ except:
   print '\nWrong arguments, right syntax is:\n\t'
   print __doc__
   sys.exit(-1)
-  
-  
-if '--modes' in args:
-    print 'Saving backup of current archiving configuration'
-    lines = []
-    if schema == '*': 
-        schema = ','.join(k for k,v in pta.Schemas.load().items() if v)
-    schemas = schema.split(',')
-    for schema in schemas:
-        api = pta.api(schema)
-        for a in (attrs or api.get_attributes()):
-            v = api[a]
-            if not hasattr(v,'modes'):
-                api.get_attribute_modes(a)
-            if v.archiver:
-                for m,p in v.modes.items():
-                    lines.append('\t'.join(map(str,[a,schema,v.archiver,m]+p)))
-            else:
-                lines.append('\t'.join(map(str,[a,schema]+['']*3)))
-
-    lines = sorted(lines)
     
-elif '--config' in args:
-    print 'Saving backup of current archiving configuration (human readable)'
+if '--config' in args or '--modes' in args:
+    print('Saving backup of current archiving configuration')
+    if '--config' in args:
+        print('(human readable)')
+        
     lines = []
     if schema == '*': 
         schema = ','.join(k for k,v in pta.Schemas.load().items() if v)
@@ -111,25 +93,64 @@ elif '--config' in args:
         except:
             print('%s schema not available' % schema)
             continue
+
         if not attrs:
             attrs = api.keys() if hasattr(api,'keys') else api.get_attributes()
-            #avail = 
-        for a in (attrs or avail):
-            v = api[a]
-            dev,attr = a.rsplit('/',1)            
-            if v.archiver:
+            
+        print('Extracting %d attribute modes from %s' % (len(attrs),schema))
+
+        for a in attrs:
+            try:
+                v = api[a]
+                dev,attr = a.rsplit('/',1)
+                if not hasattr(v,'modes') and\
+                    hasattr(api,'get_attribute_archiver'):
+                        #v.modes = api.get_attribute_modes(a)
+                        ## For HDB++ the modes gives you no useful info
+                        # A check_attribute_events is needed for each attr
+                        if not hasattr(v,'archiver'):
+                            v.archiver = api.get_attribute_archiver(a)
+                        if v.archiver:
+                            v.modes = {'MODE_E':[v.archiver]}
+            except:
+                v = fn.Struct()
+                v.modes = {'ERROR':[]}
+                    
+            if hasattr(v,'modes'):
+                if not hasattr(v,'archiver'):
+                    #if hasattr(api,'get_attribute_archiver'):
+                        #v.archiver = api.get_attribute_archiver(a)
+                    #else:
+                    v.archiver = ''
+                        
+                #if '--config' in args and not 'archiver' in v.modes:
+                    #v.modes['archiver'] = [v.archiver]
+                        
                 for m,p in v.modes.items():
-                    m,p[0] = m.replace(
-                        'MODE_P','periodic').replace(
-                        'MODE_A','absolute').replace(
-                        'MODE_R','relative').replace(
-                        'MODE_E','events'
-                        ),int(p[0]/1e3)
-                    lines.append('\t'.join(map(str,
-                        [api.db.host,dev,attr,api.schema,m]+p)))
-            else:
+                    
+                    if '--config' in args:
+                        m,p[0] = m.replace(
+                            'MODE_P','periodic').replace(
+                            'MODE_A','absolute').replace(
+                            'MODE_R','relative').replace(
+                            'MODE_E','events'
+                            ),(fn.isNumber(p[0]) and int(p[0]/1e3) or p[0])
+
+                        lines.append('\t'.join(map(str,
+                            [api.host,dev,attr,schema,m]+p)))
+                            
+                    else:
+                        if not fn.isSequence(p):
+                            p = [str(p)]
+                            
+                        lines.append('\t'.join(map(str,
+                            [a,schema,v.archiver,m]+p)))
+            
+            elif '--config' in args:
                 lines.append('\t'.join(map(str,
-                [api.db.host,dev,attr,api.schema,'STOP']+['']*2)))
+                [api.host,dev,attr,schema,'STOP']+['']*2)))
+            else:
+                lines.append('\t'.join(map(str,[a,schema]+['']*3)))
                 
     lines = sorted(lines)
     

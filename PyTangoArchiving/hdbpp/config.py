@@ -167,7 +167,11 @@ class HDBpp(ArchivingDB,SingletonMap):
                     break
                     
         dp = get_device(self.manager,keep=True) if self.manager else None
-        return check_device(dp) and dp
+        if not check_device(dp):
+            print('get_manager(%s): %s is not running!' 
+                  % (db_name,self.manager))
+
+        return dp
       
     @Cached(depth=10,expire=60.)
     def get_archived_attributes(self,search=''):
@@ -249,10 +253,11 @@ class HDBpp(ArchivingDB,SingletonMap):
         if not self.dedicated:
             self.get_archivers_attributes()
 
-        m = parse_tango_model(attribute,fqdn=True)
+        #m = parse_tango_model(attribute,fqdn=True).fullname
+        m = get_full_name(attribute,fqdn=True)
         for k,v in self.dedicated.items():
             for l in v:
-                if m.fullname in l.split(';'):
+                if m in l.split(';'):
                     return k
         return None
     
