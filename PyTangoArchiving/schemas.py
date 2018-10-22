@@ -41,9 +41,26 @@ EXPERT_MODE = True
 class SchemaDict(dict):
     
     def __getitem__(self,key):
-        if key=='reader' and isinstance(self.get('reader',None),str):
-            Schemas.getReader(self['schema'],self)
+        if key=='reader':
+            r = dict.get(self,'reader',None)
+            #print('%s.get(%s)' % (self['schema'],key))
+            if isinstance(r,str):
+                self['reader'] = Schemas.getReader(self['schema'],self.copy())
+                #print(self['reader'])
         return dict.__getitem__(self,key)
+    
+    def get(self,key,default=None):
+        try:
+            return self.__getitem__(key)
+        except:
+            return default
+        
+    #def __getattribute__(self,name):
+        #if name in dict.keys(self):
+            #return self.__getitem__(name)
+        #else:
+            #return dict.__getattribute__(self,name)
+    
         
 class Schemas(object):
     """ Schemas kept in a singleton object """
@@ -63,7 +80,7 @@ class Schemas(object):
         return k.SCHEMAS.keys()
     
     @classmethod
-    def load(k,tango='',prop=''):
+    def load(k,tango='',prop='',logger=None):
         tangodb = fandango.tango.get_database(tango)
         schemas = prop or tangodb.get_property(
             'PyTangoArchiving','Schemas')['Schemas']
@@ -71,7 +88,8 @@ class Schemas(object):
           schemas = ['tdb','hdb']
           tangodb.put_property('PyTangoArchiving',{'Schemas':schemas})
         print('Loading schemas from Tango Db ... (%s)'%','.join(schemas)) 
-        [k.getSchema(schema,tango,write=True) for schema in schemas]
+        [k.getSchema(schema,tango,write=True,logger=logger)
+            for schema in schemas]
         return k.SCHEMAS
     
     @classmethod
@@ -89,25 +107,31 @@ class Schemas(object):
         return fandango.evalX(obj, modules=k.MODULES, _locals=dct)
     
     @classmethod
-    def getReader(k,schema,dct=None):
+    def getReader(k,schema,dct):
+        # This method initializes a reader object from Schema config
+        # It does not update the Schema object, just returns a reader
+        
         dct = dct if dct is not None else k.getSchema(schema)
         rd = dct.get('reader',dct.get('api'))
 
         if rd and isinstance(rd,str):
-            
-            print('Schemas.getReader(%s): instantiating reader' % schema)
-            
-            dct['reader'] = rd = k._load_object(rd,dct)
-            print('getReader(%s): %s' % (schema,type(rd)))
-            if not hasattr(rd,'is_attribute_archived'):
-                rd.is_attribute_archived = lambda *a,**k:True
-            if not hasattr(rd,'get_attributes'):
-                rd.get_attributes = lambda *a,**k:[]
-            if not hasattr(rd,'get_attribute_values'):
-                if dct['method']:
-                    rd.get_attribute_values = getattr(rd,dct['method'])
-            if not hasattr(rd,'schema'): 
-                rd.schema = dct['schema']
+            try:
+                #print('Schemas.getReader(%s): instantiating reader' % schema)
+                
+                rd = k._load_object(rd,dct)
+                print('getReader(%s): %s' % (schema,type(rd)))
+                if not hasattr(rd,'is_attribute_archived'):
+                    rd.is_attribute_archived = lambda *a,**k:True
+                if not hasattr(rd,'get_attributes'):
+                    rd.get_attributes = lambda *a,**k:[]
+                if not hasattr(rd,'get_attribute_values'):
+                    if dct['method']:
+                        rd.get_attribute_values = getattr(rd,dct['method'])
+                if not hasattr(rd,'schema'): 
+                    rd.schema = schema
+            except:
+                print('getReader(%s) failed!' % schema)
+                traceback.print_exc()                    
         
         return rd
         

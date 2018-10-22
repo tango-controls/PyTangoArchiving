@@ -244,14 +244,14 @@ class Reader(Object,SingletonMap):
     def set_preferred_schema(k,attr,sch):
         if sch=='*': sch = None
         attr = get_full_name(attr,fqdn=True)
-        print('Reader.set_preferred_schema(%s,%s)'%(attr,sch))
+        #print('Reader.set_preferred_schema(%s,%s)'%(attr,sch))
         Reader.Preferred[attr] = sch
 
     @classmethod
     def get_preferred_schema(k,attr):
         attr = get_full_name(attr,fqdn=True)
         sch = Reader.Preferred.get(attr)
-        print('Reader.get_preferred_schema(%s): %s'%(attr,sch))
+        #print('Reader.get_preferred_schema(%s): %s'%(attr,sch))
         return sch
     
     @classmethod
@@ -387,16 +387,18 @@ class Reader(Object,SingletonMap):
         self.log.debug("Reader.init_universal(%s)"%','.join(Schemas.SCHEMAS))
         rd = getArchivingReader()
         #Hdb++ classes will be scanned when searching for HDB
-        tclasses = map(str.lower,fandango.get_database().get_class_list('*'))
+        #tclasses = map(str.lower,fandango.get_database().get_class_list('*'))
         for s in Schemas.SCHEMAS:
-            if (s in self.DefaultSchemas 
-                    and any(c.startswith(s.lower()) for c in tclasses)):
-                self.configs[s] = Reader(s,logger=logger)
+            #if (s in self.DefaultSchemas 
+                    #and any(c.startswith(s.lower()) for c in tclasses)):
+                #self.configs[s] = Reader(s,logger=logger)
 
+            #else:
+            sch = Schemas.getSchema(s,logger=self.log)
+            if sch: 
+                self.configs[sch.get('schema')] = sch.get('reader')
             else:
-                sch = Schemas.getSchema(s,logger=self.log)
-                if sch: 
-                    self.configs[sch.get('schema')] = sch.get('reader')
+                self.log.warning('%s schema not loaded!' % s)
 
         self.log.debug("... created")        
         
@@ -432,7 +434,7 @@ class Reader(Object,SingletonMap):
             #traceback.print_exc()
             self.log.warning('Unable to get DB(%s,%s) config at %s, using Java Extractors.\n%s'%(self.db_name,self.schema,epoch,e))
             return None
-        print('get_database(%s)' % self.schema)
+        #print('get_database(%s)' % self.schema)
         try:
             user,host = '@' in config and config.split('@',1)\
                 or (config,os.getenv('HOSTNAME'))

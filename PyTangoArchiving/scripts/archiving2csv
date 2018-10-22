@@ -30,6 +30,8 @@ To extract attribute values:
   --sep : separator between columns
   --linesep : character between lines
   --resolution=X(s) : force periodicity of values to a fix period
+  --list : list available schemas for attributes
+  --fill : try to fill gaps using fallback schemas
   --noheader : do not include headers
   --nodate : do not include datetime
   --noepoch : do not include epochs
@@ -38,33 +40,40 @@ To extract attribute values:
 sep = '\t'
 linesep = '\n'
 arrsep = ', '
+lines = []
 attrs = []
+filename = ''
 print arrsep*80
+
+def is_filename(a):
+    return '/' not in a or os.path.exists(a.rsplit('/',1)[0])
 
 try:
     attrs = [a for a in sys.argv[1:] if not a.startswith('-')]
     args = [a for a in sys.argv[1:] if a.startswith('-')]
     
-    if not any(fn.inCl(s,args) for s in ('--modes','--config')):
-        assert len(sys.argv)>=5, 'na'
-        start,stop = attrs[-3:-1]
-        filename = attrs[-1]
-        attrs = map(str.lower,attrs[:-3])
+    if attrs and is_filename(attrs[-1]):
+        filename = attrs.pop(-1)    
+    
+    if any(fn.inCl(s,args) for s in ('--modes','--config')):
+        if not filename: 
+            host = fn.tango.get_tango_host().split(':')[0].split('.')[0]
+            filename = '/tmp/%s_archiving_modes_%s.csv'%(
+                host,fn.time2str(cad='%Y%m%d-%H%M%S'))        
+
+    elif '--list' in args:
+        pass
+
+    else:
+        assert filename and len(attrs)>3, "Dates and filename required!"
+        start,stop = attrs[-2:]
+        attrs = map(str.lower,attrs[:-2])
         assert fn.str2time(start)>0,'wrong start'
         assert fn.str2time(stop)>0,'wrong stop'
         [a.split('/')[2] for a in attrs]
-        
-    else:
-        attrs = map(str.lower,attrs[:-3])
-        if len(sys.argv)==3: 
-            filename = sys.argv[-1]
-        else: 
-            host = fn.tango.get_tango_host().split(':')[0].split('.')[0]
-            filename = '/tmp/%s_archiving_modes_%s.csv'%(
-                host,fn.time2str(cad='%Y%m%d-%H%M%S'))
             
     if attrs:
-        attrs = [fn.tango.get_full_name(a,fqdn=1).lower() for a in attrs[:-3]]
+        attrs = [fn.tango.get_full_name(a,fqdn=1).lower() for a in attrs]
 
     schema = '*'
     for a in args[:]:
@@ -83,7 +92,6 @@ if '--config' in args or '--modes' in args:
     if '--config' in args:
         print('(human readable)')
         
-    lines = []
     if schema == '*': 
         schema = ','.join(k for k,v in pta.Schemas.load().items() if v)
     schemas = schema.split(',')
@@ -153,6 +161,15 @@ if '--config' in args or '--modes' in args:
                 lines.append('\t'.join(map(str,[a,schema]+['']*3)))
                 
     lines = sorted(lines)
+    
+elif "--list" in args:
+    rd = pta.Reader()
+    attrs = attrs or rd.get_attributes(active=True)
+    print("Parsing all attributes from databases ...")
+    for a in attrs:
+        h = rd.is_attribute_archived(a)
+        if h:
+            lines.append('%s: %s' % (a,','.join(h)))
     
 else:
     # Getting the right Reader object
@@ -245,6 +262,11 @@ else:
     if '--noheader' in args:
         lines = lines[1:]
 
-print 'Writing %s'%filename
-data = linesep.join(lines)
-open(filename,'w').write(data)
+if filename:
+    print 'Writing %s'%filename
+    data = linesep.join(lines)
+    open(filename,'w').write(data)
+    
+else:
+    for l in lines:
+        print(str(l))
