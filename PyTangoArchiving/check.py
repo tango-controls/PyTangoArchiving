@@ -389,6 +389,14 @@ def check_db_schema(schema,tref = None):
         r.vals = dict(fn.kmap(api.load_last_values,r.on))
         r.vals = dict((k,v and v.values()[0]) for k,v in r.vals.items())
 
+    dups = fn.defaultdict(list)
+    if getattr(api,'dedicated',None):
+        [dups[a].append(k) for a in r.on 
+            for k,v in api.dedicated.items() if a in v]
+        nups = [a for a,v in dups.items() if len(v)<=1]
+        [dups.pop(a) for a in nups]
+    r.dups = dict(dups)
+
     # Get all updated attributes
     r.ok = [a for a,v in r.vals.items() if v and v[0] > r.tref]
     # Try to read not-updated attributes
@@ -422,7 +430,7 @@ def check_db_schema(schema,tref = None):
                 
     # SUMMARY
     print(schema)
-    for k in 'attrs on off ok nok noev stall lost'.split():
+    for k in 'attrs on off dups ok nok noev stall lost'.split():
         print('\t%s:\t:%d' % (k,len(r.get(k))))
                 
     return r
