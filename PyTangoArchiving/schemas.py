@@ -131,7 +131,8 @@ class Schemas(object):
                     rd.schema = schema
             except:
                 print('getReader(%s) failed!' % schema)
-                traceback.print_exc()                    
+                traceback.print_exc()
+                rd = None
         
         return rd
         

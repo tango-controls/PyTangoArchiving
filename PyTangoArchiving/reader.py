@@ -395,7 +395,7 @@ class Reader(Object,SingletonMap):
 
             #else:
             sch = Schemas.getSchema(s,logger=self.log)
-            if sch: 
+            if sch and sch.get('reader') is not None: 
                 self.configs[sch.get('schema')] = sch.get('reader')
             else:
                 self.log.warning('%s schema not loaded!' % s)
