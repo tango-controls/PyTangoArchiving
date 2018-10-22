@@ -46,7 +46,8 @@ filename = ''
 print arrsep*80
 
 def is_filename(a):
-    return '/' not in a or os.path.exists(a.rsplit('/',1)[0])
+    return (not fn.isRegexp(a) 
+            and ('/' not in a or os.path.exists(a.rsplit('/',1)[0])))
 
 try:
     attrs = [a for a in sys.argv[1:] if not a.startswith('-')]
@@ -73,6 +74,14 @@ try:
         [a.split('/')[2] for a in attrs]
             
     if attrs:
+        ext = [a for a in attrs if fn.isRegexp(a)]
+        if ext:
+            [attrs.remove(e) for e in ext]
+            rd = pta.Reader()
+            for a in rd.get_attributes():
+                if any(fn.clmatch(e,a) for e in ext):
+                    attrs.append(a)
+            
         attrs = [fn.tango.get_full_name(a,fqdn=1).lower() for a in attrs]
 
     schema = '*'

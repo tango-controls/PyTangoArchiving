@@ -493,7 +493,9 @@ class Reader(Object,SingletonMap):
         """ Gets a random extractor device."""
         #Try Unified Reader
         if self.db_name=='*':
-            return self.configs[('tdb' if self.configs['tdb'].is_attribute_archived(attribute) else 'hdb')].get_extractor(check,attribute)
+            return self.configs[
+                ('tdb' if self.configs['tdb'].is_attribute_archived(attribute) 
+                 else 'hdb')].get_extractor(check,attribute)
         
         extractor = None
         if (check and not self.check_state()) or not self.extractors:
@@ -670,7 +672,7 @@ class Reader(Object,SingletonMap):
                         if k in DB_MODES or k.lower() in ('archiver','id'))
             else:
                 self.modes[attribute] = {}
-                schemas = self.is_attribute_archived(attribute)
+                schemas = self.is_attribute_archived(attribute,active=True)
                 for s in schemas:
                     c = self.configs[s]
                     try:
@@ -705,7 +707,7 @@ class Reader(Object,SingletonMap):
             pref = self.get_preferred_schema(attr)
             if preferent and pref not in (None,'*'): 
                 return [pref]
-            elif len(self.attr_schemas[attr]):
+            elif not active and len(self.attr_schemas[attr]):
                 return self.attr_schemas[attr]
             else:
                 sch = []
