@@ -66,7 +66,7 @@ try:
         pass
 
     else:
-        assert filename and len(attrs)>3, "Dates and filename required!"
+        #assert filename and len(attrs)>3, "Dates and filename required!"
         start,stop = attrs[-2:]
         attrs = map(str.lower,attrs[:-2])
         assert fn.str2time(start)>0,'wrong start'
