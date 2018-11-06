@@ -266,7 +266,7 @@ def get_current_conf(attr):
 def start_archiving_for_attributes(attrs,*args,**kwargs):
     """
     from start_archiving(self,attribute,archiver,period=0,
-                      rel_event=None,per_event=300000,abs_event=None,
+                      rel_event=None,per_event=0,abs_event=None,
                       code_event=False, ttl=None, start=False):
 
     See HDBpp.add_attribute.__doc__ for a full description of arguments

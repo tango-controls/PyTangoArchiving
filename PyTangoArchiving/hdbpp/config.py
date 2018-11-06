@@ -484,7 +484,7 @@ class HDBpp(ArchivingDB,SingletonMap):
                                           for a in self.get_attributes())
           
     def start_archiving(self,attribute,archiver,period=0,
-                      rel_event=None,per_event=300000,abs_event=None,
+                      rel_event=None,per_event=0,abs_event=None,
                       code_event=False, ttl=None, start=False):
         """
         See HDBpp.add_attribute.__doc__ for a full description of arguments
