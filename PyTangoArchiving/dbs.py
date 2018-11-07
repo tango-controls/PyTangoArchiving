@@ -300,10 +300,13 @@ def mysqldump_by_date(schema,user,passwd,folder,start,stop):
     Deleting of temporary files created (folder/*dmp) must be done manually.
     """
     db = FriendlyDB(schema,user=user,passwd=passwd)
+    t,e = start,stop
+    print(t,e)
     start = start if fn.isString(start) else fn.time2str(start)
     stop = stop if fn.isString(stop) else fn.time2str(stop)
     tables = db.getTables()
-    print('mysqldump_by_date(%s): %d tables to backup' % (schema,len(tables)))
+    print('mysqldump_by_date(%s): %d tables to backup between %s and %s' 
+          % (schema,len(tables),start,stop))
     for t in tables:
         filename = ('%s/%s-%s-%s-%s.dmp' 
             % (folder,schema,t,start.split()[0],stop.split()[0]))
@@ -867,3 +870,6 @@ def repair_attribute_names(db,attrlist=None,upper=False,update=False):
     ok = len(allnames)-failed
     if update: print '%d names updated' % (len(attrlist or allnames)-failed)
     return ok    
+
+if __name__ == '__main__':
+    print(fn.call(locals_=locals()))
