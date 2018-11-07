@@ -288,6 +288,52 @@ class ArchivingDB(FriendlyDB):
 SCHEMAS = ('hdb','tdb','snap')
 
 from fandango import time2date,str2time
+
+def mysqldump_by_date(schema,user,passwd,folder,start,stop):
+    """
+    This method creates a backup between selected dates for each table 
+    of the selected database.
+    
+    All dump files are exported to the same folder, and a compressed file
+    is created at the end.
+    
+    Deleting of temporary files created (folder/*dmp) must be done manually.
+    """
+    db = FriendlyDB(schema,user=user,passwd=passwd)
+    start = start if fn.isString(start) else fn.time2str(start)
+    stop = stop if fn.isString(stop) else fn.time2str(stop)
+    tables = db.getTables()
+    print('mysqldump_by_date(%s): %d tables to backup' % (schema,len(tables)))
+    for t in tables:
+        filename = ('%s/%s-%s-%s-%s.dmp' 
+            % (folder,schema,t,start.split()[0],stop.split()[0]))
+        cols = db.getTableCols(t)
+        col = [c for c in ('time','data_time') if c in cols] 
+        if col:
+            where = " %s >= '%s' and %s < '%s' " % (col[0],start,col[0],stop)
+        else:
+            where = ""
+        mysqldump(schema,user,passwd,filename,t,where)
+        
+    filename = ('%s/%s-%s-%s.tgz' 
+            % (folder,schema,start.split()[0],stop.split()[0]))
+    cmd = 'tar zcvf %s %s/*.dmp' % (filename,folder)
+    print(cmd)
+    fn.linos.shell_command(cmd)
+    return filename
+
+def mysqldump(schema,user,password,filename,tables='',where=''):
+    cmd = "mysqldump --single-transaction --force --compact --no-create-db "\
+        "--skip-lock-tables --quick -u %s -p%s" % (user,password)
+    cmd += " " + schema
+    if where:
+        cmd += ' --where=" %s"' % where
+    if tables:
+        cmd += ' --tables '+(' '.join(tables) if fn.isSequence(tables) 
+                             else tables)
+    cmd += ' > '+filename
+    print(cmd)
+    fn.linos.shell_command(cmd)
     
 def repair_attribute_name(attr):
     """

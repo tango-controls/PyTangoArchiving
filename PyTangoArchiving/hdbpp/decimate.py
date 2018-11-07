@@ -37,7 +37,7 @@ def check_db(db_name):
 def check_table(db_name,table,tstart,tend):
     print('check_table(%s,%s,%s,%s)'% (db_name,table,tstart,tend))
     api = pta.api(db_name)
-    tstart,tend = fn.time2str(tstart),fn.time2str(tend)
+    tstart,tend = fn.time2str(tstart),fn.time2str(tend-1)
     rows = dict()
     for a in api:
         api.get_attr_id_type_table(a)
