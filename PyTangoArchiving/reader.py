@@ -753,8 +753,10 @@ class Reader(Object,SingletonMap):
             for attr in attribute:
                 result[attr] = self.load_last_values(attr,schema,epoch)
             return result
-        elif schema is None:
+        elif schema is None or fun.isNumber(schema):
             schemas = self.is_attribute_archived(attribute)
+            if fun.isNumber(schema):
+                schemas = schemas[:schema]
         else:
             schemas = fandango.toList(schema)
         for s in schemas:

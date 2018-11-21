@@ -655,7 +655,7 @@ class HDBpp(ArchivingDB,SingletonMap):
     def get_attribute_values(self,table,start_date=None,stop_date=None,
                              desc=False,N=0,unixtime=True,
                              extra_columns='quality',decimate=0,human=False,
-                             as_double=True,
+                             as_double=True,aggregate='MAX',
                              **kwargs):
         """
         This method returns values between dates from a given table.
@@ -706,8 +706,8 @@ class HDBpp(ArchivingDB,SingletonMap):
           elif start_date and fandango.str2epoch(start_date):
             interval += " and data_time > '%s'"%start_date
             
-        query = 'select %s from %s %s order by data_time' \
-                        % (what,table,interval)
+        query = 'select %s from %s %s' % (what,table,interval)
+        query += ' order by data_time'
                     
         if N == 1:
             human = 1
@@ -818,7 +818,7 @@ class HDBpp(ArchivingDB,SingletonMap):
         aid,tid,table = self.get_attr_id_type_table(attribute)
         if start_date and stop_date:
             dates = map(time2str,(start_date,stop_date))
-            where = "and data_time between '%s' and '%s'" % dates
+            where = " and data_time between '%s' and '%s'" % tuple(dates)
         else:
             where = ''
         r = self.Query('select count(*) from %s where att_conf_id = %s'
