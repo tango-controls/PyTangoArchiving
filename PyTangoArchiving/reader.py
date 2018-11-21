@@ -831,8 +831,8 @@ class Reader(Object,SingletonMap):
                 of a list (for trends)
         :param N: if N>0, only the last N values will be returned
                   if N<0, values will be extracted from the end of the query
-        :param decimate: remove repeated values, False by default but True 
-                when called from trends
+        :param decimate: False by default, when True it remove repeated values,
+                when having a value it keeps 1 value every N seconds
         
         :return: a list with values (History or tuple values depending of args)
         '''
@@ -1397,7 +1397,8 @@ class Reader(Object,SingletonMap):
 class ReaderByBunches(Reader):
     """
     Class that splits in bunches every query done against the database.
-    It allows only database queries; not extractor
+    It allows only database queries; not extractor devices
+    It uses multiprocessing and threading to run queries in parallel
     """
     DEFAULT_BUNCH_SIZE = 1000
     def init_buncher(self):

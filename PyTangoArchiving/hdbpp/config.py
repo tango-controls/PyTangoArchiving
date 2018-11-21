@@ -714,7 +714,7 @@ class HDBpp(ArchivingDB,SingletonMap):
         if decimate:
              # decimation on server side
              query += 'group by FLOOR(UNIX_TIMESTAMP(data_time)/%d)' % (
-			int(decimate) or 1)
+                        int(decimate) or 1)
         query += ' order by data_time'
                     
         if N == 1:
