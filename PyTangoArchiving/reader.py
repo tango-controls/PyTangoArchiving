@@ -1594,10 +1594,12 @@ class ReaderProcess(Logger,SingletonMap): #,Object,SingletonMap):
         self._reader.start()
         self._receiver.start()
         self.get_attributes()
+        
     def stop(self):
         self.info('ReaderProces().stop()')
         self._process_event.set(),self._threading_event.set()
         self._pipe1.close(),self._pipe2.close() 
+        
     def alive(self):
         if not self._reader.is_alive():
             raise Exception('ReaderProcess is not Alive!!! (last contact at %s)'%time.ctime(self._last_alive))

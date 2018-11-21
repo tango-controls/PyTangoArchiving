@@ -691,22 +691,30 @@ class HDBpp(ArchivingDB,SingletonMap):
         if as_double:
             what = 'CAST(%s as DOUBLE)' % what
         if 'array' in table: what+=",idx"
-        what += ',value_r' if 'value_r' in self.getTableCols(table) \
-                                else ',value'
-        if extra_columns: what+=','+extra_columns
+        value = 'value_r' if 'value_r' in self.getTableCols(table) \
+                                else 'value'
+        if decimate and aggregate in ('AVG','MAX','MIN'):
+            value = '%s(%s)' % (aggregate,value)
+        what += ', ' + value
+        if extra_columns: 
+            what+=','+extra_columns
+
         interval = 'where att_conf_id = %s'%aid if aid is not None \
                                                 else 'where att_conf_id >= 0 '
-
         if start_date or stop_date:
-          start_date,start_time,stop_date,stop_time = \
-              Reader.get_time_interval(start_date,stop_date)
-          if start_date and stop_date:
-            interval += (" and data_time between '%s' and '%s'"
+            start_date,start_time,stop_date,stop_time = \
+                Reader.get_time_interval(start_date,stop_date)
+            if start_date and stop_date:
+                interval += (" and data_time between '%s' and '%s'"
                             %(start_date,stop_date))
-          elif start_date and fandango.str2epoch(start_date):
-            interval += " and data_time > '%s'"%start_date
+            elif start_date and fandango.str2epoch(start_date):
+                interval += " and data_time > '%s'"%start_date
             
         query = 'select %s from %s %s' % (what,table,interval)
+        if decimate:
+             # decimation on server side
+             query += 'group by FLOOR(UNIX_TIMESTAMP(data_time)/%d)' % (
+			int(decimate) or 1)
         query += ' order by data_time'
                     
         if N == 1:
