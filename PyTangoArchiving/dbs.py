@@ -33,6 +33,7 @@ import fandango as fn
 from fandango.objects import Object
 from fandango.log import Logger
 import PyTangoArchiving.utils as utils
+import os.path
 
 try:
     from fandango.db import FriendlyDB
@@ -289,7 +290,8 @@ SCHEMAS = ('hdb','tdb','snap')
 
 from fandango import time2date,str2time
 
-def mysqldump_by_date(schema,user,passwd,folder,start,stop):
+def mysqldump_by_date(schema, user, passwd, folder, start, stop,
+                      compress = True, delete = True):
     """
     This method creates a backup between selected dates for each table 
     of the selected database.
@@ -299,14 +301,22 @@ def mysqldump_by_date(schema,user,passwd,folder,start,stop):
     
     Deleting of temporary files created (folder/*dmp) must be done manually.
     """
+    print('mysqldump_by_date(%s,,,folder=%s,%s,%s,compress=%s,delete=%s)'
+          % (schema, folder, start, stop, compress, delete))
     db = FriendlyDB(schema,user=user,passwd=passwd)
     t,e = start,stop
     print(t,e)
     start = start if fn.isString(start) else fn.time2str(start)
     stop = stop if fn.isString(stop) else fn.time2str(stop)
     tables = db.getTables()
+
     print('mysqldump_by_date(%s): %d tables to backup between %s and %s' 
           % (schema,len(tables),start,stop))
+
+    if not os.path.isdir(folder):
+        print('mkdir %s' % folder)
+        os.mkdir(folder)
+        
     for t in tables:
         filename = ('%s/%s-%s-%s-%s.dmp' 
             % (folder,schema,t,start.split()[0],stop.split()[0]))
@@ -318,11 +328,17 @@ def mysqldump_by_date(schema,user,passwd,folder,start,stop):
             where = ""
         mysqldump(schema,user,passwd,filename,t,where)
         
-    filename = ('%s/%s-%s-%s.tgz' 
-            % (folder,schema,start.split()[0],stop.split()[0]))
-    cmd = 'tar zcvf %s %s/*.dmp' % (filename,folder)
-    print(cmd)
-    fn.linos.shell_command(cmd)
+    ext = ('part.' if fn.str2time(stop) > fn.now() else '') + 'tgz'
+    if compress:
+        filename = ('%s/%s-%s-%s.%s' 
+            % (folder,schema,start.split()[0],stop.split()[0]),ext)
+        cmd = 'tar zcvf %s %s/*.dmp' % (filename,folder)
+        print(cmd)
+        fn.linos.shell_command(cmd)
+    if compress and delete:
+        cmd = 'rm -rf %s/*.dmp' % folder
+        print(cmd)
+        fn.linos.shell_command(cmd)
     return filename
 
 def mysqldump(schema,user,password,filename,tables='',where=''):
