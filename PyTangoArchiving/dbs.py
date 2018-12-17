@@ -331,7 +331,7 @@ def mysqldump_by_date(schema, user, passwd, folder, start, stop,
     ext = ('part.' if fn.str2time(stop) > fn.now() else '') + 'tgz'
     if compress:
         filename = ('%s/%s-%s-%s.%s' 
-            % (folder,schema,start.split()[0],stop.split()[0]),ext)
+            % (folder,schema,start.split()[0],stop.split()[0],ext))
         cmd = 'tar zcvf %s %s/*.dmp' % (filename,folder)
         print(cmd)
         fn.linos.shell_command(cmd)
