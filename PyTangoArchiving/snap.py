@@ -87,23 +87,25 @@ class SnapAPI(Logger,Singleton):
         try:
             self.tango = fandango.get_database()
             user,host = user.split('@') if '@' in (user or '') else (user,'')
-            user = user or self.tango.get_class_property(
-                    'SnapArchiver',['DbUser'])['DbUser'][0]
-            host = host or self.tango.get_class_property(
-                    'SnapArchiver',['DbHost'])['DbHost'][0]
-            passwd= passwd or self.tango.get_class_property(
-                'SnapArchiver',['DbPassword'])['DbPassword'][0]
+            get_prop = (lambda p: (list(self.tango.get_class_property(
+                'SnapArchiver',[p]).values()[0] or ['']))[0])
+            user = user or get_prop('DbUser')
+            host = host or get_prop('DbHost')
+            passwd = passwd or get_prop('DbPassword')
+            
         except Exception, e:
             print traceback.format_exc()
             print('ERROR: Unable to get Snapshoting DB settings: ',e)
         
         if api is None:
+            if not host: 
+                raise Exception('Snap DbHost not defined!')
              ##THIS IS A CommonAPI object!
             api = getSingletonAPI(schema = 'snap',
                 host = host, user = user, passwd = passwd)
-            assert api.host, 'Snap DbHost not defined!'
             
         self.api=api
+        print('get manager')
         self.manager=api.get_manager()        
         self.archivers=dict([(a,api.proxies[a]) 
             for a in api.servers.get_class_devices(api.ArchiverClass)])
@@ -113,6 +115,7 @@ class SnapAPI(Logger,Singleton):
         self.contexts={} #{ID:{'author','name','attributes':[]}}
         self.attributes = fandango.CaselessDict()
         try:
+            print('conecting')
             print 'Connecting to %s as %s ...' % (host,user)
             self.set_db_config(api,host,user,passwd)
             if load: 
@@ -127,7 +130,6 @@ class SnapAPI(Logger,Singleton):
 
     def set_db_config(self,api,host,user,passwd):
         self.db=SnapDB(api,host=host,user=user,passwd=passwd)
-        print 'Done'
 
     ## @name Get methods
     # @{
@@ -145,21 +147,29 @@ class SnapAPI(Logger,Singleton):
             return {wildcard:self.contexts[wildcard]}
         return dict((k,c) for k,c in self.contexts.items() if fandango.matchCl(wildcard,c.name))
 
-    def get_context(self,ID=None,name=None):
+    def get_context(self, ID=None, name=None, load=False):
         """ Return a single context matching the given int(ID) or str(name)
         """
-        assert name is not None or ID is not None, 'SnapAPI_get_context_ArgumentRequired'
-        if not name and (type(ID) is int or type(ID) is str and ID.isdigit()):
-            name = ID
-            # Commented to allow context reloading
-            #if int(name) in self.contexts: return self.contexts[name]
-            name = int(name)
-            cts = self.db.get_id_contexts(name)
-            assert cts, 'SnapAPI_Context%sDoesntExist'%name
-            return SnapContext(self,name,ct_info=cts[0])
-        else: #Getting context by name
-            name = name or ID
-            ids = sorted(k for k,c in self.contexts.items() if name.lower()==c.name.lower()) or sorted(self.load_contexts(name))
+        if ID is None and name is None:
+            raise Exception('SnapAPI_get_context_ArgumentRequired')
+        
+        if not fandango.isString(ID): #not name and fandango.isNumber(ID):
+            #print('get_context(%s(%s))' % (type(ID),ID))
+            if not load and ID in self.contexts: 
+                return self.contexts[ID]
+            else:
+                cts = self.db.get_id_contexts(ID)
+                if not cts:
+                    raise Exception('SnapAPI_Context%sDoesntExist' % ID)
+                return SnapContext(self, ID, ct_info=cts[0])
+        
+        else: 
+            #Getting context by name
+            name = name or str(ID)
+            #print('get_context(%s(%s))' % (type(name),name))
+            ids = (sorted(k for k, c in self.contexts.items() 
+                        if name.lower()==c.name.lower()) 
+                    or sorted(self.load_contexts(name)))
             if ids:
                 return fandango.first(self.get_context(i) for i in ids)
             else:
@@ -176,34 +186,40 @@ class SnapAPI(Logger,Singleton):
     ## @name Load methods
     # @{
 
-    def load_contexts(self,wildcard=None):
+    def load_contexts(self, wildcard=None, attributes = False):
         """ Loads a list of contexts from the database using a wildcard
         """
+        print('load_contexts(%s)' % wildcard)
         ids = self.db.get_context_ids(wildcard or '*')
         for k in ids:
             try:
-              if k not in self.contexts:
-                self.contexts[k] = SnapContext(self,k)
-              else:
-                self.contexts[k].get_attributes()
-                #self.contexts[k].get_snapshots()
-            except:
-              print('SnapContext(%s) failed!: %s'%(k,traceback.format_exc()))
+                if k not in self.contexts:
+                    self.contexts[k] = SnapContext(self, k, load = False)
 
-            self.get_attributes(update=True,load=False)
+                elif attributes:
+                    self.contexts[k].get_attributes()
+                    #self.contexts[k].get_snapshots()
+            except:
+                print('SnapContext(%s) failed!: %s'%(k,traceback.format_exc()))
+
+            if attributes:
+                self.get_attributes(update=True, load=False) #avoid recurse
 
         if wildcard in (None,'*'):
             to_delete = [k for k in self.contexts if k not in ids]
             if to_delete:
                 print 'deleting %d contexts ...'%len(to_delete)
                 [self.contexts.pop(k) for k in to_delete]
+
         return ids
     
     def get_attributes(self,filters=None,update=True,load=False):
-        if load: self.load_contexts()
-        if update or load: 
+        if load: 
+            self.load_contexts(attributes = True)
+            
+        if update or load or not self.attributes: 
             for i,c in self.contexts.items():
-                for a in c.attributes.values():
+                for k,a in c.get_attributes().items():
                     name = a['full_name']
                     #Caching
                     contexts = self.attributes.get(name,{}).get('contexts',set()).union((i,))
@@ -213,18 +229,34 @@ class SnapAPI(Logger,Singleton):
                     if snaps: self.attributes[name]['snapshots'] = self.attributes[name]['snapshots'].union(snaps)
                     self.attributes[name]['contexts'] = contexts
 
-        return sorted(a for a in self.attributes if not filters or fandango.matchCl(filters,a))
+        return sorted(a for a in self.attributes 
+            if not filters or fandango.matchCl(filters,a))
     
-    def get_attribute_snapshots(self,attribute,start_date=None,stop_date=None):
+    def get_attribute_snapshots(self,attribute ,start_date=None, 
+            stop_date=None, update = False):
         """
         attribute id or attribute name can be used
         if start_date/stop_date are not given it returns all snapshots
         if given, dates must be in unix time seconds
         """
-        if isinstance(attribute,int): attribute = fandango.first(a for a,v in self.attributes.items() if v['ID']==attribute)
-        values = dict((t[0],t[1:]) for t in self.db.get_snapshots_for_attribute(self.attributes[attribute]['ID'],table=self.attributes[attribute]['table'],start_date=start_date,stop_date=stop_date))
-        comments = dict((t[0],t[1:]) for t in self.db.get_snapshots(values.keys()))
-        return sorted((fandango.date2time(comments[i][0]),{'value':values[i],'comment':comments[i][1],'ID':i,'date':comments[i][0]}) for i in values)
+        self.get_attributes(update = update);
+        if isinstance(attribute,int): 
+            attribute = fandango.first(a for a,v in self.attributes.items() 
+                if v['ID']==attribute)
+
+        values = dict((t[0],t[1:]) for t in 
+            self.db.get_snapshots_for_attribute(
+                self.attributes[attribute]['ID'],
+                table=self.attributes[attribute]['table'],
+                start_date=start_date,stop_date=stop_date))
+
+        comments = dict((t[0],t[1:]) for t in 
+            self.db.get_snapshots(values.keys()))
+
+        return sorted((fandango.date2time(comments[i][0]),
+            {'value':values[i],'comment':comments[i][1],
+             'ID':i,'date':comments[i][0]}) 
+            for i in values)
 
     ##@}
 
@@ -370,17 +402,18 @@ class SnapContext(object):
         self.info = self.api.info
         self.db = api.db
         self.ID = ID
-        self.get_info(ct_info)
+        self.get_info(ct_info) # ct_info is loaded here
         self.attributes = {}
         self.snapshots = {}
+
         if load:
             self.get_attributes()
             self.get_snapshots()
-            if not ct_info: self.get_info()
 
     def __repr__(self):
-        return 'SnapContext(%s,%s,%s,%s,Attributes[%d],Snapshots[%d])'%\
-            (self.ID,self.name,self.author,self.reason,len(self.attributes),len(self.snapshots))
+        return ('SnapContext(%s,%s,%s,%s,Attributes[%d],Snapshots[%d])'%
+            (self.ID,self.name,self.author,self.reason,
+             len(self.attributes),len(self.snapshots)))
 
     ## @name Get methods
     # @{
@@ -397,8 +430,10 @@ class SnapContext(object):
         return ct_info
 
     def get_attributes(self,update=False):
-        if update: self.attributes = {}
+        if update: 
+            self.attributes = {}
         if not self.attributes:
+            print('SnapContext(%s).get_attributes(True)' % self.name)
             #[self.attributes.__setitem__(line[0],line[1]) for line in self.db.get_context_attributes(self.ID)]
             ids = sorted(self.db.get_context_attributes(self.ID))
             if ids:
@@ -433,7 +468,8 @@ class SnapContext(object):
         result = self.db.get_context_snapshots(**kwargs)
         for element in result: #Each element is an (ID,time,Comment) tuple
             self.snapshots[element[0]]=element[1:]
-            [v['snapshots'].add(element[0]) for v in self.attributes.values()] ##It may be wrong if context have been modified!!
+            [v['snapshots'].add(element[0]) 
+                for v in self.get_attributes().values()] ##It may be wrong if context have been modified!!
             
         return self.snapshots
 
@@ -455,20 +491,25 @@ class SnapContext(object):
             snapid = sorted(self.snapshots.keys())[-1]
         if snapid not in self.snapshots:
             print '.get_snapshot(%d): Unknown snap_id, loading from db ...'%snapid
-            self.get_snapshots()
+            self.get_snapshots();
             if snapid not in self.snapshots:
                 raise Exception('SnapIDNotFoundInThisContext! {0}'.format(snapid))
         date,comment = self.snapshots[snapid]
         attributes = self.db.get_snapshot_attributes(snapid).values()
         if not attributes:
             self.api.warning('SnapContext.get_snapshot(%d): The attribute list is empty!'%snapid)
-        attr_names = [self.attributes[a['id_att']]['full_name'] for a in attributes]
+        
+        self.get_attributes();
+        attr_names = [self.attributes[a['id_att']]['full_name'] 
+                      for a in attributes]
         attr_values = []
-        if not self.attributes: self.get_attributes()
+
         for a in attributes:
             values = Snapshot.cast_snapshot_values(a,self.attributes[a['id_att']]['data_format'],self.attributes[a['id_att']]['data_type'])
             attr_values.append(tuple(values))
-        return Snapshot(snapid,self.ID,time.mktime(date.timetuple()),zip(attr_names,attr_values),comment)
+
+        return Snapshot(snapid,self.ID,time.mktime(date.timetuple()),
+                        zip(attr_names,attr_values),comment)
 
         ## @todo SnapExtractor should be used instead of direct attack to the DB
         #try:
@@ -523,22 +564,26 @@ class SnapContext(object):
         """
         self.info('In SnapContext.take_snapshot(%s,%s)'%(comment,None))
         try:
-            last_snap = self.get_snapshot_by_date(-1,update=True)
-            if last_snap: last_snap = last_snap.ID
-            nextID = self.api.db.get_last_snapshot()+1
-            self.info('\tlast ctx snap = %s ; next would be %s'%(last_snap,nextID))
-            
+            #last_snap = self.get_snapshot_by_date(-1,update=True)
+            #if last_snap: last_snap = last_snap.ID
+            last_snap = self.api.db.get_last_snapshot()
+            self.info('\tlast snap = %s' % (last_snap))
             
             if archiver and isinstance(archiver,str):
                 try:
-                    if archiver in self.api.archivers: archiver = self.api.archivers[archiver]
-                    else: archiver = PyTango.DeviceProxy(archiver)#self.api.get_random_archiver()
-                except: archiver=None
+                    if archiver in self.api.archivers: 
+                        archiver = self.api.archivers[archiver]
+                    else: 
+                        archiver = PyTango.DeviceProxy(archiver)#self.api.get_random_archiver()
+                except: 
+                    archiver=None
 
             if not archiver and self.api.manager:
-                self.info('Trying to use SnapManager.LaunchSnapshot (java archiving release>1.4)')
+                self.info('Trying to use SnapManager.LaunchSnapshot '
+                        '(java archiving release>1.4)')
                 try:
-                    if 'launchsnapshot' in [str(cmd.cmd_name).strip().lower() for cmd in self.api.manager.command_list_query()]:
+                    if 'launchsnapshot' in [str(cmd.cmd_name).strip().lower() 
+                            for cmd in self.api.manager.command_list_query()]:
                         #print '... using %s'%self.api.manager
                         archiver = self.api.manager
                     else: archiver = None
@@ -553,19 +598,26 @@ class SnapContext(object):
             print '%s.LaunchSnapshot(%s) = %s'%(archiver,self.ID,result)
             time.sleep(timewait) #Waiting for the database to update ...
             
-            nextID = archiver.getSnapShotResult(self.ID)
-            #snapshot = self.get_snapshot_by_date(-1,update=True)
-            if last_snap==nextID: #(snapshot and last_snap == snapshot.ID):
-                self.api.error('Launch Snapshot has not added a new entry in the database!') #raise Exception,'LaunchSnapshotFailed'
-            else:
-                nextID = nextID #snapshot.ID
-                #if snapshot is None:
-                    #self.api.error('Snapshots table has no values for this context!') #raise Exception,'NoSnapshotsFound'
-                if comment:
-                    self.info('\t%s.UpdateSnapComment(%s,%s)'%(archiver.name(),nextID,comment))
-                    self.api.manager.command_inout('UpdateSnapComment',[[nextID],[comment]])
-                    if nextID in self.snapshots: self.snapshots[nextID][1] = comment
-                return nextID #self.get_snapshot(nextID)
+            bID = archiver.getSnapShotResult(self.ID) #It may release some lock?
+            nextID = self.api.db.get_last_snapshot() 
+            print('New Snapshot(%s): %s, %s?' % (self.ID, nextID, bID))
+
+            if last_snap == nextID: #(snapshot and last_snap == snapshot.ID):
+                self.api.error('Launch Snapshot has not added '
+                    'a new entry in the database (last == %s!)'%nextID)
+                nextID = last_snap + 1
+            #else:
+            if comment:
+
+                    self.info('\t%s.UpdateSnapComment(%s,%s)'
+                              %(archiver.name(), nextID,comment))
+                    self.api.manager.command_inout(
+                        'UpdateSnapComment',[[nextID],[comment]])
+
+                    if nextID in self.snapshots: 
+                        self.snapshots[nextID][1] = comment
+
+            return nextID #self.get_snapshot(nextID)
         except Exception,e:
             msg = traceback.format_exc()
             self.api.error('Exception in LaunchSnapshot: %s'%msg)
@@ -672,9 +724,10 @@ class SnapDB(FriendlyDB,Singleton):
         """SnapDB Singleton creator
         @param api it links the SnapDB object to its associated SnapAPI (unneeded?)
         """
-        print 'Creating SnapDB object ... (%s,%s,%s,%s,%s)' % ('',host,user,passwd,db_name)
+        print 'Creating SnapDB object ... (%s,%s)' % (host,db_name)
         self._api=api if api else None
-        FriendlyDB.__init__(self,db_name,host or (api and api.arch_host) or 'localhost',user,passwd)
+        FriendlyDB.__init__(self,db_name,host or (api and api.arch_host) 
+                            or 'localhost',user,passwd)
         assert hasattr(self,'db'),'SnapDB_UnableToCreateConnection'
         [self.getTableCols(t) for t in self.getTables()]
         self.setLogLevel('DEBUG')
@@ -930,7 +983,11 @@ class SnapDB(FriendlyDB,Singleton):
         return self.Select(cols,'snapshot',clause,order='time desc') #,limit=limit)
     
     def get_last_snapshot(self):
-        return self.Query('select max(id_snap) from snapshot')[0][0]
+        try:
+            return self.Query('select max(id_snap) from snapshot')[0][0]
+        except:
+            traceback.print_exc()
+            return 0
 
     def get_snapshot_attributes(self,snapid,tables=[]):
         """ For a given snapid it returns all values found in the database
@@ -1207,6 +1264,7 @@ def __test__():
         if 'get' in str(sys.argv):
             aid = 42
             name = api.db.get_attribute_name(aid)
+            api.get_attributes();
             print name,'\n',api.attributes[name]
             print 'contexts\n',[api.contexts[c] for c in api.attributes[name]['contexts']]
             print 'snapshots\n','\n'.join(map(str,api.get_attribute_snapshots(name)))
@@ -1216,6 +1274,7 @@ def __test__():
             
         if 'create' in str(sys.argv):
             print api.get_contexts()
+            api.get_attributes();
             attrs = fandango.get_matching_attributes('sys/tg_test/1/(long|double)*(scalar_rww|spectrum)',fullname=False)
             try:
                 test_step(1,'CreateContext')
