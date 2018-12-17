@@ -371,8 +371,6 @@ def check_archiving_schema(
         
     return result 
 
-import PyTangoArchiving as pta, fandango as fn
-
 def check_db_schema(schema,tref = None):
     
     r = fn.Struct()
@@ -434,6 +432,42 @@ def check_db_schema(schema,tref = None):
         print('\t%s:\t:%d' % (k,len(r.get(k))))
                 
     return r
+
+CheckState = fn.Struct(
+    on = 0, # archived
+    off = 1, # not archived
+    ok = 2, # device up and running, values updated
+    nok = 3, # device not running
+    stall = 4, # value not changing
+    noev = 5, # not sending events
+    lost = 6, # value changed, but not updated in db
+    )
+
+def check_archived_attribute():
+
+    # Get current value/timestamp
+    vv,t = getattr(v,'value',v),getattr(v,'time',0)
+    t = t and fn.ctime2time(t)
+    
+    if isinstance(vv,(type(None),Exception)):
+        # attribute is not readable
+        r.nok.append(a)
+    elif r.vals[a] and 0<t<=r.vals[a][0]:
+        # attribute timestamp doesnt change
+        r.stall.append(a)
+    elif r.vals[a] and fbool(vv==r.vals[a][1]):
+        # attribute value doesnt change
+        r.stall.append(a)
+    else:
+        r.evs[a] = fn.tango.check_attribute_events(a)
+        if not r.evs[a]:
+            # attribute doesnt send events
+            r.noev.append(a)
+        else:
+            # archiving failure (events or polling)
+            r.lost.append(a)
+
+    return state
 
 
 def save_schema_values(schema, filename='', folder=''):
