@@ -82,7 +82,8 @@ class PyExtractor(PyTango.Device_4Impl):
     
     @staticmethod
     def tag2attr(argin):
-        if any(argin.endswith(s) for s in ('_r','_t','_w','_d','_l','_ld')): 
+        if any(argin.endswith(s) for s in 
+               ('_r','_t','_w','_d','_l','_ld','_rg')): 
             argin = argin.rsplit('_',1)[0]
         if '/' not in argin: argin = argin.replace('__','/')
         return argin
@@ -153,8 +154,12 @@ class PyExtractor(PyTango.Device_4Impl):
                 
             elif aname.endswith('_d'): 
                 values = [fn.time2str(float(v[0] or 0.)) for v in data]
-                if values: print time.ctime()+'In read_dyn_attr(%s): %s[%d]:%s...%s'%(aname,type(values[0]),len(values),values[0],values[-1])
-                else: print '\tno values'
+                if values: 
+                    print(time.ctime()+'In read_dyn_attr(%s): %s[%d]:%s...%s'
+                        %(aname,type(values[0]),len(values),
+                          values[0],values[-1]))
+                else: 
+                    print('\tno values')
                 attr.set_value(values,len(values))            
                 
             elif aname.endswith('_ld'): 
@@ -164,6 +169,14 @@ class PyExtractor(PyTango.Device_4Impl):
                             %(aname,type(lv[0]),len(lv),lv[0],lv[-1]))
                 else: print '\tno values'
                 attr.set_value(lv[-1])
+                
+            elif aname.endswith('_rg'): 
+                lv = [fn.time2str(float(v[0] or 0.)) for v in data]
+                if lv: 
+                    print(time.ctime()+'In read_dyn_attr(%s): %s[%d]:%s...%s'
+                            %(aname,type(lv[0]),len(lv),lv[0],lv[-1]))
+                else: print '\tno values'
+                attr.set_value('%s - %s' % (lv[0],lv[-1]))
                 
             else:
                 if atformat == PyTango.SpectrumAttr:
@@ -244,6 +257,10 @@ class PyExtractor(PyTango.Device_4Impl):
             self.add_attribute(
                 PyTango.Attr(aname+'_ld',PyTango.DevString,PyTango.AttrWriteType.READ),
                                self.read_dyn_attr,None,self.is_dyn_attr_allowed)              
+            
+            self.add_attribute(
+                PyTango.Attr(aname+'_rg',PyTango.DevString,PyTango.AttrWriteType.READ),
+                               self.read_dyn_attr,None,self.is_dyn_attr_allowed)                 
             
             #Then add the data to Cache values, so IsDataReady will return True
             t = fn.now()
