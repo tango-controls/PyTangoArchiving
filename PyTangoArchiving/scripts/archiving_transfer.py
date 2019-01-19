@@ -72,11 +72,19 @@ Out[51]:
 
 def transfer_table(db, db2, table, bunch = 1024, is_str = False):
     
-    t0 = fn.now()
+    t0 = fn.now()       
     cols = db.getTableCols(table)
+    
     cols = sorted(c for c in cols if c not in ('recv_time','insert_time'))
     it, iv, ii = (cols.index('data_time'), cols.index('value_r'), 
         cols.index('att_conf_id'))
+    ix = cols.index('idx') if 'idx' in cols else None
+    #if is_array:
+        #print("%s: THIS METHOD IS NO SUITABLE YET FOR ARRAYS!" % table)
+        ## dim_x/dim_y dim_x_r/dim_y_r columns should be taken into account
+        ## when array should be stored?  only when value changes, or on time/fixed basis?
+        #return
+    
     
     last = db2.Query('select UNIX_TIMESTAMP(data_time) from %s order by '
         'data_time desc, att_conf_id limit 1' % table)
@@ -110,13 +118,26 @@ def transfer_table(db, db2, table, bunch = 1024, is_str = False):
         if last == end:
             break
         
-        for x in range(bunch):
+        for _ in range(bunch):
             count += 1
             i,t,w = v[ii], v[it], v[iv]
+            x = v[ix] if ix is not None else None
             last = fn.time2str(t,us=True)
-            if (i not in lasts or w != lasts[i][1] 
+            if ix is None and (i not in lasts or w != lasts[i][1] 
                     or (t-lasts[i][0]) >= 60):
                 lasts[i] = (t,w)
+                v = map(str,v)
+                v[2] = repr(last)
+                if values:
+                    values += ','
+                values += '(%s)' % ','.join(v)
+                v = cursor.fetchone()
+                if v is None:
+                    break
+                done += 1
+            elif ix is not None and ((i,x) nor in lasts 
+                    or (t-lasts[(i,x)][0])>=60)):
+                lasts[(i,x)] = (t,w)
                 v = map(str,v)
                 v[2] = repr(last)
                 if values:
