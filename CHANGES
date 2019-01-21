@@ -6,6 +6,19 @@
 @TODO Rename widgetArchivingBrowser.ModelSearchWidget to widget.browser.ArchivingBrowser
 @TODO: rename ArchivingBrowser to browser
 
+8.6.0
+
+    add methods for checking/transferring/repairing tables between databases
+    add mysqldump_by_date method for partial hdb++ backups
+    remove default periodic ivents from hdb++
+    add _rg attributes to pyextractor
+    testing aggregation/decimation methods on hdb++ queries
+    solve packaging issues
+    enable regexps on archiving2csv --list
+    add --schema argument to archiving2csv
+    add MaxIV pull request #10 (add missing ui)
+    
+
 8.5.0
 
     Add SchemaManager device server for monitoring attribute availability
