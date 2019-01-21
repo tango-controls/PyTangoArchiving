@@ -6,8 +6,9 @@
 @TODO Rename widgetArchivingBrowser.ModelSearchWidget to widget.browser.ArchivingBrowser
 @TODO: rename ArchivingBrowser to browser
 
-8.6.0
+8.6.2
 
+    reenable snap widgets
     add methods for checking/transferring/repairing tables between databases
     add mysqldump_by_date method for partial hdb++ backups
     remove default periodic ivents from hdb++
