@@ -469,6 +469,37 @@ def check_archived_attribute():
 
     return state
 
+def check_table_data(db, att_id, table, start, stop, gap, period):
+    """
+    db must be a fandango.FriendlyDB object
+    
+    this method will check different intervals within the table to 
+    see whether there is available data or not for the attribute
+    
+    start/stop must be epoch times
+    """
+    cols = db.getTableCols(table)
+    if 'att_conf_id' in cols:
+        query = ("select count(*) from %s where att_conf_id = %s and "
+            "data_time between " % (table, att_id))
+    else:
+        query = ("select count(*) from %s where "
+            "time between " % (table))
+    
+    tend = start + period
+    while tend < stop:
+        tq = '"%s" and "%s"' % (fn.time2str(start),fn.time2str(tend))
+        try:
+            r = db.Query(query + ' ' + tq)
+            print('%s:%s' % (tq, r[0][0]))
+        except:
+            traceback.print_exc()
+            break
+            print('%s: failed' % tq)
+        start, tend = start+gap, tend+gap
+        
+    return
+
 
 def save_schema_values(schema, filename='', folder=''):
     t0 = fn.now()
