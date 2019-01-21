@@ -135,8 +135,8 @@ def transfer_table(db, db2, table, bunch = 1024, is_str = False):
                 if v is None:
                     break
                 done += 1
-            elif ix is not None and ((i,x) nor in lasts 
-                    or (t-lasts[(i,x)][0])>=60)):
+            elif ix is not None and ((i,x) not in lasts 
+                    or (t-lasts[(i,x)][0])>=60):
                 lasts[(i,x)] = (t,w)
                 v = map(str,v)
                 v[2] = repr(last)
