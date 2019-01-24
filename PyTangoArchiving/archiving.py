@@ -44,10 +44,11 @@ from fandango.log import Logger
 from fandango.db import FriendlyDB
 import fandango.functional as fun
 
-from PyTangoArchiving.common import CommonAPI,PyTango,ServersDict
+from PyTangoArchiving.common import CommonAPI,PyTango,ServersDict, \
+    modes_to_string, modes_to_dict, check_attribute_modes
 from PyTangoArchiving import ARCHIVING_CLASSES,ARCHIVING_TYPES,MAX_SERVERS_FOR_CLASS,MIN_ARCHIVING_PERIOD
 import PyTangoArchiving.utils as utils
-from PyTangoArchiving.dbs import ArchivingDB
+from PyTangoArchiving.dbs import ArchivingDB, get_table_name
 
 #################################################################################################
 # Class for managing archived attributes
@@ -76,7 +77,7 @@ class ArchivedAttribute(Object):
         ID=None ;"Unique ID associated to the attribute in the database"
         """
         ID = ID and int(ID) or 0
-        self.ID,self.table=ID,utils.get_table_name(ID)
+        self.ID,self.table=ID,get_table_name(ID)
 
     def setConfig(self,data_type,data_format,writable):
         """ Stores the information about Attribute Format and Type (adt table)
@@ -117,12 +118,12 @@ class ArchivedAttribute(Object):
         if self and not modestring: modestring=self.archiving_mode
         if isinstance(modestring,str):
             attrib = ':' in modestring and modestring.split(':')[0] or self.name
-            modes = utils.modes_to_dict(modestring)
+            modes = modes_to_dict(modestring)
             if self and attrib==self.name or attrib==(self.device+'/'+self.name):
                 self.modes=modes
             return modes
         if isinstance(modestring,dict):
-            return utils.modes_to_string(modestring)
+            return modes_to_string(modestring)
 
     def __repr__(self):
         if not self.modes and self.archiving_mode: self.extractModeString()
@@ -141,27 +142,19 @@ class ArchivingAPI(CommonAPI):
     EXPORT_PERIOD = 10*60 # Time, in seconds, that TDB data will be buffered before inserting in MySQL
     SCHEMAS = ('hdb','tdb')
     
-    def __init__(self,schema,host=None,user='browser',passwd='browser',classes=[],LogLevel='info',load=False,values=False,logger=None):
+    def __init__(self,schema,host=None,user='browser',passwd='browser',
+                 classes=[],LogLevel='info',load=False,values=False,
+                 dedicated=False, tango_host='',logger=None, ):
+
         self.schema = schema.lower()
         assert self.schema in self.SCHEMAS, 'UnknownSchema_%s'%schema
-        CommonAPI.__init__(self,self.schema,host,user,passwd,classes=self.get_archiving_classes(),LogLevel=LogLevel,load=load,logger=logger)
-        self.db = ArchivingDB(self.schema,self.host,self.user,self.passwd)
-        self.load_all(values=values,dedicated=load,servers=load)
+        CommonAPI.__init__(self,self.schema,host,user,passwd,
+                classes=self.get_archiving_classes(),LogLevel=LogLevel,
+                load=load,logger=logger)
         
-    ## The ArchivingAPI is an iterator through archived attributes
-    def __getitem__(self,k): return self.attributes.__getitem__(k)
-    def __contains__(self,k): return self.attributes.__contains__(k)
-    def get(self,k): return self.attributes.get(k)
-    def has_key(self,k): return self.attributes.has_key(k)
-    #[setattr(self,method,lambda k,meth=method:getattr(self.attributes,meth)(k)) for method in ('__getitem__','__contains__','get','has_key')]
-    def __iter__(self): return self.attributes.__iter__()
-    def iteritems(self): return self.attributes.iteritems()
-    def keys(self): return self.attributes.keys()
-    def values(self): return self.attributes.values()
-    def __len__(self): return len(self.attributes.keys())
-    def items(self): return self.attributes.items()
-    #[setattr(self,method,lambda meth=method:getattr(self.attributes,meth)()) for method in ('__iter__','iteritems','items','keys','values')]
-
+        self.tango_host = tango_host or fandango.get_tango_host()
+        self.db = ArchivingDB(self.schema,self.host,self.user,self.passwd)
+        self.load_all(values=values,dedicated=load and dedicated,servers=load)
     
     def get_archiving_classes(self):        
         '''overriden for convenience '''
@@ -212,7 +205,9 @@ class ArchivingAPI(CommonAPI):
         return [a for a in attrs if a in self and self[a].archiver]
     
     def is_attribute_archived(self,attribute):
-        return (attribute.lower() in [a.lower() for a in self.get_archived_attributes()])    
+        attribute = '/'.join(attribute.split('/')[-4:])
+        #return (attribute.lower() in [a.lower() for a in self.get_archived_attributes()])    
+        return bool(self[attribute].archiver)
         
     def get_attribute_archivers(self,attribute_list=None,load=False):
         '''
@@ -223,6 +218,7 @@ class ArchivingAPI(CommonAPI):
             self.load_attribute_modes()
         if not attribute_list: attribute_list = sorted(self.attributes)
         elif isinstance(attribute_list,str): attribute_list = [attribute_list]
+        attribute_list = ['/'.join(a.split('/')[-4:]) for a in attribute_list]
         return dict((a,self[a].archiver) for a in attribute_list)
 
     def get_archivers_load(self):
@@ -275,6 +271,7 @@ class ArchivingAPI(CommonAPI):
             self.load_attribute_modes()
         if not attribute_list: attribute_list = sorted(self.attributes)
         elif isinstance(attribute_list,str): attribute_list = [attribute_list]
+        attribute_list = ['/'.join(a.split('/')[-4:]) for a in attribute_list]
         return dict((a,self[a].modes) for a in attribute_list)
         
     def get_dedicated_archivers(self,attr_list=None,load=True):
@@ -487,7 +484,7 @@ class ArchivingAPI(CommonAPI):
                             [errors[attribute][mode].append(t0) for mode in modes]
                         for value in values:
                             t1,v1 = utils.date2time(value[0]),value[1]
-                            for mode,check in utils.check_attribute_modes((t0,v0),(t1,v1),self[attribute].modes).items():
+                            for mode,check in check_attribute_modes((t0,v0),(t1,v1),self[attribute].modes).items():
                                 if not check:
                                     if mode not in errors[attribute]: 
                                         params = self[attribute].modes[mode]
@@ -832,7 +829,7 @@ class ArchivingAPI(CommonAPI):
             att = self.attributes[att_name]
             if att.ID in IDs:
                 line=IDs[att.ID]
-                archiver,start_date,arch_mode = line['archiver'],line['start_date'],utils.modes_to_string(line,translate=True)
+                archiver,start_date,arch_mode = line['archiver'],line['start_date'],modes_to_string(line,translate=True)
                 att.setArchiver(archiver,start_date,arch_mode)
                 self.log.debug( 'Attribute %s Status loaded: %s,%s,%s'%tuple(
                     [a+':'+str(getattr(self.attributes[att.name],a)) for a in ['name','archiver','start_date','archiving_mode']]))
@@ -867,7 +864,9 @@ class ArchivingAPI(CommonAPI):
                     self.log.info('Attribute %s archived by %s has no values in archiving database!'%(str(att),str(self.attributes[att].archiver)))
             #IT SHOULD BE SORTED BY TIME!!!
             return values
-        elif attribute not in self.attributes: 
+        
+        attribute = '/'.join(attribute.split('/')[-4:])
+        if attribute not in self.attributes: 
             self.log.error('The Attribute %s is not being Archived in %s database ...'%(attribute,self.schema))
             return None
         else:
@@ -898,6 +897,7 @@ class ArchivingAPI(CommonAPI):
             return
         if type(start_date) is not str: start_date=time.strftime('%Y-%m-%d %H:%M:%S',time.localtime(start_date))
         if type(stop_date) is not str: stop_date=time.strftime('%Y-%m-%d %H:%M:%S',time.localtime(stop_date))   
+        attribute = '/'.join(attribute.split('/')[-4:])
         lines=self.db.get_attribute_values(self.attributes[attribute].table,start_date,stop_date)
         if lines:
             date=time.mktime(lines[-1][0].timetuple())+1e-6*lines[-1][0].microsecond
@@ -979,6 +979,7 @@ class ArchivingAPI(CommonAPI):
             ## assigned = It gets all existing archivers for this host
             existing = map(str.lower,filter(lambda s:bool(re.match('.*/.*/'+host+'[\-0-9]+',s)),archivers))
             ## Filtering the attribute list to remove all attributes already archived in *HOST* archivers
+            self.log.info('existing archivers> %s' % str(existing))
             for archiver in existing:
                 assigned[archiver] = self.get_archiver_reserved_attributes(archiver)
                 self.log.info('%s is already archiving %s attributes'%(archiver,len(assigned[archiver])))

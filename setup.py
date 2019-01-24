@@ -30,18 +30,18 @@ version = open('PyTangoArchiving/VERSION').read().strip()
 scripts = []
 license = 'GPL-3.0'
 
-f = './scripts/'
+f = './PyTangoArchiving/scripts/'
 scripts = [
 f+'taurusfinder',
 f+'ctarchiving',
 f+'ctsnaps',
 f+'archiving2csv',
 f+'archiving2plot',
-f+'archiving_report.py',
-f+'archiving_service.py',
-f+'archiver_health_check.py',
-f+'cleanTdbFiles',
-f+'db_repair.py',
+#f+'archiving_report.py',
+f+'archiving_service',
+#f+'archiver_health_check.py',
+#f+'cleanTdbFiles',
+#f+'db_repair.py',
 ]
 
 entry_points = {
@@ -50,16 +50,20 @@ entry_points = {
         ],
 }
 
-package_data = {
-    'PyTangoArchiving': [#'VERSION','README',
-         './VERSION',
+# EXTRA FILES ARE ADDED IN MANIFEST.in, not here
+
+#package_data = {
+#    'PyTangoArchiving': [#'VERSION','README',
+#         './VERSION',
          #'./CHANGES',
-         './widget/resources/*',
-         './widget/resources.qrc',
-         './widget/snaps/doc/snapimg/*',
-         './widget/snaps/README',
-         ],
-}
+#         './widget/ui/TaurusAttributeChooser.ui',
+         #'./widget/resources/*',
+         #'./widget/resources.qrc',
+         #'./widget/snaps/ui/*',
+         #'./widget/snaps/doc/snapimg/*png',
+         #'./widget/snaps/README',
+#         ],
+#}
 
 setup(
     name="PyTangoArchiving",
@@ -87,10 +91,10 @@ setup(
         'Topic :: Software Development :: Libraries',
     ],
     platforms=[ "Linux" ],
-    install_requires=[],
     scripts=scripts,
     entry_points=entry_points,
     include_package_data=True,
-    package_data=package_data,
+    #package_data=package_data,
+    install_requires=['fandango','PyTango','MySQL-python'],
     zip_safe=False
   )

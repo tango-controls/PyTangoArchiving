@@ -1,12 +1,13 @@
 import PyTangoArchiving, traceback, taurus, time, re
-from PyQt4 import QtCore, QtGui, Qt
-from taurus.qt.qtgui.panel import TaurusAttributeChooserOLD
+
+from fandango.qt import QtCore, QtGui, Qt, Qwt5
+from PyTangoArchiving.widget.taurusattributechooser import TaurusAttributeChooser
 from taurus.qt.qtgui.panel import TaurusForm
 from taurus.qt.qtgui.resource import getThemeIcon
 
-class attributeChooser(TaurusAttributeChooserOLD):
+class attributeChooser(TaurusAttributeChooser):
     def __init__(self):
-        TaurusAttributeChooserOLD.__init__(self, parent=None, designMode=False)
+        TaurusAttributeChooser.__init__(self, parent=None, designMode=False)
         self.tdb = PyTangoArchiving.Reader('tdb')
         self.beingArchived=[]
         self.beingArchived=[a.lower() for a in self.tdb.get_attributes() if self.tdb.is_attribute_archived(a.lower())] #already archived attributes

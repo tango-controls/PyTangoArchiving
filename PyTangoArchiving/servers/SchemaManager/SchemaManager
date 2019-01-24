@@ -1,0 +1,5 @@
+#!/bin/sh
+
+cd /homelocal/sicilia/local/PyTangoArchiving/servers/SchemaManager
+screen -dm -S $0-$1 python SchemaManager.py $1 $2 -v4
+

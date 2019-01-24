@@ -125,7 +125,7 @@ def archiving_check(schema,csvpath=''):
     torestart = list(reversed(sorted((len(v),k) for k,v in lostservers.items())))
     
     for k in torestart.values():
-         print('Restarting %s')
+        print('Restarting %s')
         fandango.Astor(k).stop_servers()
         time.sleep(20.)
         fandango.Astor(k).start_servers(wait=240.)
@@ -447,3 +447,5 @@ def main_report():
 
 if __name__ == '__main__':
     main_report()
+
+

@@ -1,7 +1,7 @@
 import sys
 
-from PyQt4 import Qt
-from tau.widget import TauMainWindow, TauWidget
+from fandango.qt import Qt
+from taurus.qt.qtgui.container import TaurusWidget, TaurusMainWindow
 from PyTangoArchiving.widget import ContextToolBar
 from PyTangoArchiving.widget.snapdialogs import LoadForm 
 
@@ -199,18 +199,18 @@ def create_comparison(device_names):
 
 my_cmp = create_comparison(BO_DEVICES)
 
-class Gui(TauMainWindow):
+class Gui(TaurusMainWindow):
     
     def __init__(self, parent=None):
-        TauMainWindow.__init__(self, parent)
+        TaurusMainWindow.__init__(self, parent)
         contextToolBar = ContextToolBar()
         contextToolBar.setDefaultContextID(85)
         contextToolBar.setSorter(cmp)
         self.addToolBar(contextToolBar)
         
-class Dummy(TauWidget):
+class Dummy(TaurusWidget):
     def __init__(self, parent=None):
-        TauWidget.__init__(self, parent)
+        TaurusWidget.__init__(self, parent)
         self.setLayout(Qt.QHBoxLayout())
         form = LoadForm(self)
         form.setModel(["simumotor/zreszela/1/position", "simumotor/zreszela/2/position", "simumotor/zreszela/3/position", "simumotor/zreszela/4/position"])

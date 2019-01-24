@@ -5,10 +5,8 @@ import fandango
 from fandango.functional import time2str
 import pickle
 import PyTangoArchiving
-import PyQt4
-from PyQt4 import Qt
-from PyQt4.Qt import QColor
 import fandango.qt
+from fandango.qt import Qt
 
 import guiqwt
 import guidata

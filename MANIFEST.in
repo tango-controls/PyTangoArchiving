@@ -4,5 +4,21 @@ include AUTHORS
 include LICENSE
 include README
 include PyTangoArchiving/VERSION
+include PyTangoArchiving/widget/ui/TaurusAttributeChooser.ui
+include PyTangoArchiving/widget/resources.qrc
+include PyTangoArchiving/widget/snaps/doc/snapimg/save_dialog.png
+include PyTangoArchiving/widget/snaps/doc/snapimg/load_dialog.png
+include PyTangoArchiving/widget/snaps/doc/snapimg/compare_view.png
+include PyTangoArchiving/widget/snaps/doc/snapimg/snap.png
+include PyTangoArchiving/widget/snaps/doc/snapimg/table_view.png
+include PyTangoArchiving/widget/snaps/doc/snapimg/snaptoolbar.png
+include PyTangoArchiving/widget/snaps/doc/snapimg/create_context.png
+include PyTangoArchiving/widget/snaps/doc/snapimg/live_view.png
+include PyTangoArchiving/widget/snaps/doc/snapimg/csv_dialog.png
+include PyTangoArchiving/widget/snaps/doc/snapimg/modify_context.png
+include PyTangoArchiving/widget/resources/save.png
+include PyTangoArchiving/widget/resources/open.png
+include PyTangoArchiving/widget/resources/add.png
+include PyTangoArchiving/widget/snaps/README
 include CHANGES
 

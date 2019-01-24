@@ -1,5 +1,8 @@
 import sys, taurus
-from PyQt4 import Qt, QtGui, QtCore
+try:
+    from taurus.external.qt import Qt, QtGui, QtCore
+except:
+    from PyQt4 import Qt, QtGui, QtCore
 from taurus.qt.qtgui import container
 from taurus.qt.qtgui.panel import TaurusForm
 from PyTangoArchiving import SnapAPI

@@ -1,0 +1,13 @@
+#!/bin/bash
+
+if [ "$(which alba_blissrc 2>/dev/null)" ] ; then
+  echo "loading .rc file ..."
+  source alba_blissrc
+elif [ -e $HOME/etc/SICILIA.rc ] ; then 
+  source $HOME/etc/SICILIA.rc
+fi
+
+PTALIB=$(python -c "import imp;print(imp.find_module('PyTangoArchiving')[1])")
+python $PTALIB/widget/snaps/snaps.py $*
+
+

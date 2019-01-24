@@ -26,16 +26,22 @@
 import time,sys,os,re,fandango,traceback
 from fandango.functional import *
 import PyTangoArchiving
-try:
- from taurus.external.qt import Qt
-except:
- from PyQt4 import Qt
-
-from fandango.qt import QOptionDialog
+from fandango.qt import Qt, QOptionDialog
 
 __all__= ['show_history']
 
 TABS = []
+
+"""
+@TODO
+
+This dialog hungs on exit and is very hard to debug
+
+Do not use it outside of TaurusFinder
+
+It should be refactored in next release
+
+"""
 
 tformat = '%Y-%m-%d %H:%M:%S'    
 str2epoch = lambda s: time.mktime(time.strptime(s,tformat))
@@ -95,7 +101,7 @@ class ShowHistoryDialog(fandango.Object):
       formatter = get_value_formatter(attribute)
       
       for i,tup in enumerate(values):
-          date,value = tup
+          date,value = tup[:2]
           qdate = Qt.QTableWidgetItem(epoch2str(date))
           qdate.setTextAlignment(Qt.Qt.AlignRight)
           tab.setItem(i,0,qdate)
@@ -134,8 +140,8 @@ class ShowHistoryDialog(fandango.Object):
           traceback.print_exc()
           dates = epoch2str(),epoch2str()
 
-      
-      if rd.is_attribute_archived(attribute):
+      schemas = rd.is_attribute_archived(attribute,preferent=False)
+      if schemas:
           print '%s is being archived' % attribute
           di = Qt.QDialog(parent)
           wi = di #QtGui.QWidget(di)
@@ -147,26 +153,53 @@ class ShowHistoryDialog(fandango.Object):
           tfilter = Qt.QLineEdit()
           vfilter = Qt.QCheckBox()
           wi.setWindowTitle('Show %s Archiving'%attribute)
+          wil = wi.layout()
           wi.layout().addWidget(Qt.QLabel(attribute),0,0,1,2)
-          wi.layout().addWidget(Qt.QLabel('Enter Begin and End dates in %s format'%tformat),1,0,1,2)
-          wi.layout().addWidget(Qt.QLabel('Begin:'),2,0,1,1)
-          wi.layout().addWidget(Qt.QLabel('End:'),3,0,1,1)
-          wi.layout().addWidget(Qt.QLabel('Time Filter:'),4,0,1,1)
-          wi.layout().addWidget(Qt.QLabel('Value Filter:'),5,0,1,1)
-          wi.layout().addWidget(begin,2,1,1,1)
-          wi.layout().addWidget(end,3,1,1,1)
-          wi.layout().addWidget(tfilter,4,1,1,1)
-          wi.layout().addWidget(vfilter,5,1,1,1)
-          buttons = Qt.QDialogButtonBox(Qt.QDialogButtonBox.Ok|Qt.QDialogButtonBox.Cancel)
+          wi.layout().addWidget(Qt.QLabel('Preferred Schema'),1,0,1,1)
+          qschema = Qt.QComboBox()
+          qschema.insertItems(0,['*']+list(schemas))
+          wil.addWidget(qschema,1,1,1,1)
+          #qb = Qt.QPushButton("Save as preferred schema")
+          #wil.addWidget(qb,wil.rowCount(),0,1,2)
+          #qi.connect(qb,Qt.SIGNAL('pushed()'),save_schema)
+          wil.addWidget(Qt.QLabel('Enter Begin and End dates in %s format'%tformat),2,0,1,2)
+          wil.addWidget(Qt.QLabel('Begin:'),3,0,1,1)
+          wil.addWidget(begin,3,1,1,1)
+          wil.addWidget(Qt.QLabel('End:'),4,0,1,1)
+          wil.addWidget(end,4,1,1,1)
+          wil.addWidget(Qt.QLabel('Time Filter:'),5,0,1,1)
+          wil.addWidget(tfilter,5,1,1,1)
+          wil.addWidget(Qt.QLabel('Value Filter:'),6,0,1,1)
+          wil.addWidget(vfilter,6,1,1,1)
+          buttons = Qt.QDialogButtonBox(wi)
+          buttons.addButton(Qt.QPushButton("Export"),Qt.QDialogButtonBox.AcceptRole)
+
+          bt = Qt.QPushButton("Apply")
+          buttons.addButton(bt,Qt.QDialogButtonBox.ApplyRole)
+          def set_schema(r=rd,a=attribute,qs=qschema):
+              print 'setting schema ...'
+              schema = str(qs.currentText()).strip()
+              r.set_preferred_schema(a,schema)
+              
+          buttons.connect(bt,Qt.SIGNAL('clicked()'),set_schema)
+
+          buttons.addButton(Qt.QPushButton("Close"),Qt.QDialogButtonBox.RejectRole)
+
+          #  Qt.QDialogButtonBox.Apply\
+          #    |Qt.QDialogButtonBox.Open|Qt.QDialogButtonBox.Close)
           wi.connect(buttons,Qt.SIGNAL('accepted()'),wi.accept)
           wi.connect(buttons,Qt.SIGNAL('rejected()'),wi.reject)
-          wi.layout().addWidget(buttons,6,0,1,2)
+          wi.layout().addWidget(buttons,7,0,1,2)
           
           def check_values():
               di.exec_()
+              print 'checking schema ...'
+              schema = str(qschema.currentText()).strip()
+              if schema != '*':
+                    rd.set_preferred_schema(attribute,schema)              
               if di.result():
+                  print 'checking result ...'
                   try:
-                      print 'checking result ...'
                       start,stop = str(begin.text()),str(end.text())
                       try: tf = int(str(tfilter.text()))
                       except: tf = 0
@@ -261,4 +294,4 @@ if __name__ == '__main__':
   import sys,fandango.qt
   qapp = fandango.qt.getApplication()
   w = __test__(sys.argv[1:])
-  qapp.exec_()
+  sys.exit(qapp.exec_())

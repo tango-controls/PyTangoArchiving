@@ -25,16 +25,16 @@
 
 ## author: srubio@cells.es, 2015
 
-from PyQt4 import Qt
-import taurus
 import PyTango
 import re,sys,os,time,traceback,threading
 import fandango,fandango as F
 import fandango.qt as fqt
+from fandango.qt import Qt
 import fandango.functional as fun
 from threading import Thread
 import PyTangoArchiving as pta
 from PyTangoArchiving.widget.history import show_history
+from PyTangoArchiving.common import modes_to_string
 
 def showTestDevice(device=None):
     import os
@@ -142,8 +142,11 @@ class QArchivingMode(fqt.Dropable(Qt.QFrame)):
       self.multirow = multirow
     self.table = Qt.QTableWidget()
     self.header = self.table.horizontalHeader()
-    self.table.verticalHeader().setResizeMode(self.header.Stretch)
-    self.header.setResizeMode(self.header.Stretch)
+    try:
+        self.table.verticalHeader().setResizeMode(self.header.Stretch)
+        self.header.setResizeMode(self.header.Stretch)
+    except:
+        pass
     if self.multirow:
       self.table.setColumnCount(3)
       self.table.setRowCount(3)
@@ -196,7 +199,7 @@ class QArchivingMode(fqt.Dropable(Qt.QFrame)):
   def setModes(self,modes={},expected={}):
     """ modes is a dictionary like {'MODE_P':[period]} """
     print(type(self).__name__,'setModes',self.getModel(),modes)
-    if pta.utils.modes_to_string(expected) == pta.utils.modes_to_string(modes):
+    if modes_to_string(expected) == modes_to_string(modes):
       self.logger().hide()    
     for i,m in enumerate(('MODE_P','MODE_R','MODE_A')):
       for j in range(3):

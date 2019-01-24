@@ -1,0 +1,83 @@
+#!/bin/bash
+
+if [ "$(which alba_blissrc 2>/dev/null)" ] ; then
+  echo "loading .rc file ..."
+  . alba_blissrc
+fi
+
+PTAROOT=$(python -c "import imp;print(imp.find_module('PyTangoArchiving')[1])")
+
+case $1 in
+ --help|help)
+  echo "Usage:"
+  echo "  ctarchiving --help"
+  echo "  ctarchiving --load <filename.csv> <hdb/tdb> [force] ;\
+        adds attributes to archiving "
+  echo "  ctarchiving --parse <filename.csv>"  
+  echo "  ctarchiving --check <filename.csv/attrs> <hdb/tdb> [force] ; \
+        checks if attributes from .csv are archived"
+  echo "  ctarchiving --start/stop <attributes> <hdb/tdb> ; \
+        starts/stops attribute archiving"
+  echo '  ctarchiving --export [--resolution=X(s)] [--hdb] [--tdb] [--modes]\
+        [attributes] ["Y-m-d H:M"] ["Y-m-d H:M"] filename.csv'
+  echo "  ctarchiving --search <device/attributes> ; \
+        searchs for matching archived attributes, returns configuration"
+  echo "  ctarchiving --search_active <device/attributes> ; \
+        searchs only for active attributes"
+  echo "  ctarchiving --gui [--range YYYY/MM/DD_HH:mm,XXh] <device/attributes>;\
+        shows Archiving GUI, TaurusFinder"
+  echo "  ctarchiving [attributes] ; shows Archiving GUI, TaurusFinder"
+  echo "  ctarchiving --trend <regexps>; shows Archiving trend, without panel"
+  ;;
+ --load|load)
+ shift 1
+ python $PTAROOT/files.py load $*
+  ;;
+ --check|check)
+ shift 1
+ python $PTAROOT/files.py check $*
+  ;;
+ --parse|parse)
+  python -c "import PyTangoArchiving as pta;print('\n');\
+        print('\n'.join(map(str,pta.files.ParseCSV('$2',log=True).items())))"
+  ;;
+ --export|export)
+  shift 1
+  archiving2csv $*
+  ;;
+ --search|search)
+  python -c "import fandango as F,PyTangoArchiving as pta;pta.Reader();\
+        print('\n');[(F.printf('\n'+a),map(F.printf,
+            pta.Reader().get_attribute_modes(a).items())) \
+        for a in sorted(pta.Reader().get_attributes(active=0)) \
+        if F.matchCl('$2',a)]"
+  ;;
+ --search_active|search_active)
+  python -c "import fandango as F,PyTangoArchiving as pta;pta.Reader();\
+        print('\n');[(F.printf('\n'+a),map(F.printf,
+            pta.Reader().get_attribute_modes(a).items())) \
+        for a in sorted(pta.Reader().get_attributes(active=1)) \
+        if F.matchCl('$2',a)]"  ;;
+ --gui|gui)
+  shift 1
+  ctarchiving $*
+  ;;  
+ --trend|trend)
+  shift 1
+  echo "Launching ArchivingTrend ..."
+  python $PTAROOT/widget/trend.py $*
+  ;;    
+ --start|start)
+  shift 1
+  python $PTAROOT/files.py start $*
+  ;;
+ --stop|stop)
+  shift 1
+  python $PTAROOT/files.py stop $*
+  ;;  
+ *)
+  cd $PTAROOT/widget
+  python ArchivingBrowser.py $*
+  ;;
+esac
+

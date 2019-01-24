@@ -7,7 +7,10 @@
 #
 # WARNING! All changes made in this file will be lost!
 
-from PyQt4 import QtCore, QtGui
+try:
+    from taurus.external.qt import Qt, QtCore, QtGui
+except:
+    from PyQt4 import QtCore, QtGui
 
 class Diff_Ui_Form(object):
     def diffSetupUi(self, Form):

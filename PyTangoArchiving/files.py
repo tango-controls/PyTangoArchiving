@@ -25,7 +25,7 @@
 PyTangoArchiving methods for loading/exporting into text files
 """
 
-import time,os,re,traceback
+import sys,time,os,re,traceback
 from collections import defaultdict
 from xml.dom import minidom
 from os.path import abspath
@@ -39,6 +39,7 @@ import fandango.functional as fun
 import PyTangoArchiving
 from PyTangoArchiving.utils import PyTango
 import PyTangoArchiving.utils as utils
+from PyTangoArchiving.common import modes_to_string, modes_to_dict
 
 
 ARCHIVING_CONFIGS =  os.environ.get('ARCHIVING_CONFIGS','/data/Archiving/Config')
@@ -132,7 +133,7 @@ def LoadArchivingConfiguration(filename, schema,launch=False,force=False,stop=Fa
     #Attributes classified by Mode config
     modes = defaultdict(list)    
     for k,v in sorted(config.items()): 
-        mode = utils.modes_to_string(api.check_modes(schema,v[schema.upper()]))
+        mode = modes_to_string(api.check_modes(schema,v[schema.upper()]))
         modes[mode].append(k)
     
     #The active part
@@ -161,7 +162,7 @@ def LoadArchivingConfiguration(filename, schema,launch=False,force=False,stop=Fa
                             if force: failed.extend(attrs)
                             else: raise Exception,'Archiving stop failed for: %s'%(attrs)
                     if launch:
-                        if api.start_archiving(attrs,utils.modes_to_dict(mode),load=False,retries=1):
+                        if api.start_archiving(attrs,modes_to_dict(mode),load=False,retries=1):
                             done.extend(attrs)
                         else:
                             if force: failed.extend(attrs)
@@ -384,7 +385,7 @@ def CheckArchivingConfiguration(filename,schema,api=None,check_modes=False,check
                 print '%s is LOST, no archiver assigned!'%(att)
                 if restart:
                     #Dedicated configuration is not done here!! ... this is just for restarting temporarily unavailable attributes
-                    retriable[utils.modes_to_string(api.check_modes(api.schema,modes))].append(att)
+                    retriable[modes_to_string(api.check_modes(api.schema,modes))].append(att)
             else:
                 #Never archived before
                 STATS['missing'].append(att)
@@ -422,7 +423,7 @@ def CheckArchivingConfiguration(filename,schema,api=None,check_modes=False,check
                 
             if check_conf:
                 mode_to_str = lambda m: (
-                    utils.modes_to_string(api.check_modes(api.schema,
+                    modes_to_string(api.check_modes(api.schema,
                         m if 'MODE_A' not in m and 'MODE_R' not in m else dict((k,v) for k,v in m.items() if k!='MODE_P'),
                         )))
                 m1,m2 = mode_to_str(api.check_modes(api.schema,modes)),mode_to_str(api[att].modes)
@@ -474,13 +475,13 @@ def CheckArchivingConfiguration(filename,schema,api=None,check_modes=False,check
         for att in STATS.get('hung',[]):
             if not api[att].archiver or api[att].archiver not in idles: #Adding not-idle attributes to retriable list
                 modes = attributes[att]
-                retriable[utils.modes_to_string(api.check_modes(api.schema,modes))].append(att)
+                retriable[modes_to_string(api.check_modes(api.schema,modes))].append(att)
         print '%s ---> Restarting %d archiving modes'%(time.ctime(),len(retriable))
         
         for modes,attrs in retriable.items():
             print '%s ---> Restarting %s archiving for %d attributes' % (time.ctime(),modes,len(attrs))
             try: 
-                modes = utils.modes_to_dict(modes)
+                modes = modes_to_dict(modes)
                 targets = [a for a in attrs if not api[a].archiver or api[a].archiver not in idles]
                 if targets: 
                     if not api.start_archiving(targets,modes,load=False):
@@ -494,7 +495,7 @@ def CheckArchivingConfiguration(filename,schema,api=None,check_modes=False,check
    
 def CheckConfigFilesForSchema(schema):
     import PyTangoArchiving as pta
-    tables = pta.utils.get_table_updates()
+    tables = pta.dbs.get_table_updates()
     api = pta.ArchivingAPI(schema)
     csvs = pta.files.GetConfigFiles()
     csvapi = [a for f in csvs for a in pta.ParseCSV(f,schema.upper())]
@@ -667,6 +668,7 @@ def ParseCSV(filename,schema='',filters=None,exclude=None,dedicated=None,deletel
     trace('In ParseCSV(%s,%s,%s,-%s) ...'%(filename,schema,filters,exclude))
     
     config = CSVArray()
+    config.trace = log
     config.load(filename,comment='#')
     assert len(config.rows)>1, 'File is empty!'
     
@@ -678,8 +680,14 @@ def ParseCSV(filename,schema='',filters=None,exclude=None,dedicated=None,deletel
         if not all(h in ''.join(head) for h in headers):
             print 'WRONG FILE HEADERS!'
             exit()
-      
-    [config.fill(head=h) for h in head]
+    
+    for h in head:
+      if not h: 
+        trace('In ParseCSV, empty headers!?: %s'%head)
+        break
+      else:
+        trace('In ParseCSV(...): fill column "%s"'%h)
+        config.fill(head=h)
     config.setOffset(1)
   
     trace('Getting attributes from the file ...')
@@ -1028,22 +1036,57 @@ def parse_raw_file(filename,section='',is_key=fandango.tango.parse_tango_model):
         
 ####################################################################################
 
-if __name__ == '__main__':
+def exxit():
+    print('Usage:\n\tPyTangoArchiving/files.py check/load/start/stop '
+                'filename/attribute [schema]\n')
+    sys.exit(-1)
+    
+def main(args):
     #@todo: this script features can be part of ctarchiving script
-    import sys
-    print('Usage:\n\tPyTangoArchiving/files.py check/load filename [schema]\n')
-    args = sys.argv[1:]
-    if not args: sys.exit(-1)
+    if not args: 
+        exxit()
+        
     action = args[0]
-    filename = args[1]
-    schema = args[2] if len(args)>2 else ''
-    if action in ('load','check'):
-        attrs = ParseCSV(filename,schema)
-        if action in 'check' and schema: 
-            from PyTangoArchiving import ArchivingAPI
-            api = ArchivingAPI(schema)
-            for a in sorted(attrs):
-              t = ArchivingAPI(schema).get(a)
-              print((a,t,t and api.load_last_values(a)))
-    if action in ('load',):
-        LoadArchivingConfiguration(filename,schema,launch=True,force='force' in args)
+    filenames = args[1:]
+    if len(args)>2:
+        schema = filenames.pop(-1)
+    else:
+        schema = raw_input('Schema?').strip() or ''
+    
+    if all(map(os.path.isfile,filenames)):
+    
+        if action in ('load','check'):
+            attrs = ParseCSV(filename,schema,log=False)
+            if action in 'check' and schema: 
+                from PyTangoArchiving import ArchivingAPI
+                api = ArchivingAPI(schema)
+                for a in sorted(attrs):
+                    t = ArchivingAPI(schema).get(a)
+                    print((a,t,t and api.load_last_values(a)))
+                
+        if action in ('load',):
+            LoadArchivingConfiguration(filename,schema,launch=True,
+                                       force='force' in args)
+            
+    else:
+        import fandango.tango as ft
+        if schema and all(map(ft.parse_tango_model,filenames)):
+            api = PyTangoArchiving.ArchivingAPI(schema)
+
+            if 'start' in action.lower():
+                modes = eval(raw_input('Archiving modes?'))
+                api.start_archiving(filenames,modes)
+
+            if 'stop' in action.lower():
+                api.stop_archiving(filenames)
+                
+            if 'check' in action.lower():
+                print(api.load_last_values(filenames))
+        else:
+            print('Unknown args: %s' % filenames)
+            exxit()
+        
+
+if __name__ == '__main__':
+    print sys.argv
+    main(sys.argv[1:])
