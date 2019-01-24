@@ -343,7 +343,7 @@ def mysqldump_by_date(schema, user, passwd, folder, start, stop,
 
 def mysqldump(schema,user,password,filename,tables='',where=''):
     cmd = "mysqldump --single-transaction --force --compact --no-create-db "\
-        "--skip-lock-tables --quick -u %s -p%s" % (user,password)
+        "--skip-lock-tables --complete-insert --quick -u %s -p%s" % (user,password)
     cmd += " " + schema
     if where:
         cmd += ' --where=" %s"' % where
