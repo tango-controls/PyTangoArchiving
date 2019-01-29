@@ -12,6 +12,9 @@ The creation of an SnapAPI object requires a registered user and password in the
   from PyTangoArchiving import snap
   snapapi = snap.SnapAPI('snapuser@snaphost','password')
 
+Apart from the main SnapAPI object; the SnapAPI.db can be used to do more searches/queries into the database
+
+
 Context Creation
 ----------------
 
