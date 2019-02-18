@@ -712,9 +712,12 @@ class HDBpp(ArchivingDB,SingletonMap):
             
         query = 'select %s from %s %s' % (what,table,interval)
         if decimate:
-             # decimation on server side
-             query += 'group by FLOOR(UNIX_TIMESTAMP(data_time)/%d)' % (
-                        int(decimate) or 1)
+            if isinstance(decimate,(int,float)):
+                d = int(decimate) or 1
+            else:
+                d = int((stop_time-start_time)/10800) or 1
+            # decimation on server side
+            query += 'group by FLOOR(UNIX_TIMESTAMP(data_time)/%d)' % (d)
         query += ' order by data_time'
                     
         if N == 1:
@@ -726,7 +729,7 @@ class HDBpp(ArchivingDB,SingletonMap):
         
         ######################################################################
         # QUERY
-        self.debug(query)
+        self.info(query)
         try:
             result = self.Query(query)
         except MySQLdb.ProgrammingError as e:
