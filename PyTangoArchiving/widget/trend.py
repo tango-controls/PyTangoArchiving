@@ -274,49 +274,34 @@ class ArchivingTrend(TaurusTrend):
     def applyNewDates(self,dates=None):
         """
         Dates could be a tuple (start,end) or just (end,)
+        
+        #If two dates are passed, they are start and end
+        #If a single date is passed, then it is just the range
         """
         try:
-            #self.setForcedReadingPeriod(3000)
-            #self.setPaused(True)
-            ui = self._datesWidget
             logger = self.getArchivedTrendLogger()
+            # Update/Pause the Trend could cause unexpected behaviours!
+            #   self.setForcedReadingPeriod(3000)
+            #   self.setPaused(True)
+            
             if dates is not None:
-                ui.xRangeCB.setEditText(dates[-1])
-                end = dates[-1]
-            else:
-                end = str(ui.xRangeCB.currentText())
-
-            if dates is not None and len(dates)>1:
-                ui.xEditStart.setText(dates[0])
-                start = dates[0]
-            else:
-                start = str(ui.xEditStart.text())
-            
-            logger.warning('applyNewDates(%s,%s)'%(start,end))
-            
-            try: t0 = str2time(start)
-            except: t0 = None
-            try: t1 = str2time(end)
-            except: t1 = None
+                self._datesWidget.setRange(dates[-1])
+                if len(dates)>1:
+                    self._datesWidget.setStartDate(dates[0])
+                
+            t0 = self._datesWidget.getStartDate()
+            t1 = self._datesWidget.getRange()
+            logger.warning('applyNewDates(%s,%s)'%(t0, t1))
         
-            if t1 is not None:
-                if t0 is None:
-                    now = time.time()
-                    t0,t1 = time.time()-t1,time.time()
-                else:
-                    if t0<0: t0 = time.time()+t0
-                    t0,t1 = t0,t0+t1
-                    try:
-                        if t1 > time.time() + 600:
-                            #If asked range goes into the future it is corrected
-                            r = t1-t0
-                            t1 = time.time() + 600
-                            t0 = t1 - r
-                            ui.xEditStart.setText(time2str(t0))
-                    except:
-                        traceback.print_exc()
+            if t0 is None: # start date is relative
+                now = time.time()
+                t0, t1 = time.time()-abs(t1), time.time()
+            else:
+                t0 = t0 if t0>0 else time.time() + t0
+                t0, t1 = t0, t0 + abs(t1)
                 
             if t0 < fn.now() < t1 and t1-t0 > utils.MAX_RESOLUTION:
+                # For periods > 3h set readings at 10s
                 self.setForcedReadingPeriod(10000.)
                     
             if t1-t0 > 365*86400:
@@ -328,19 +313,16 @@ class ArchivingTrend(TaurusTrend):
                     return
         
             if t0 is not None:
-                
                 logger.warning('applyNewDates(%s,%s)'%(fn.time2str(t0),fn.time2str(t1)))
                 #Set Axis Scale already triggers Check Buffers!!!!
                 self.setAxisScale(Qwt5.QwtPlot.xBottom, t0, t1)
 
             ## DONT EVER APPLY SETPAUSED(TRUE); IT WILL NO ALLOW QT TO REFRESH
-            
             #logger.warning('Setting XDynScale != Paused = %s' % str(t1<time.time()))
             #self.setXDynScale(t1>time.time()) #%It causes weird effects
             #self.setPaused(t1<time.time())
                 
             self.emit(Qt.SIGNAL("refreshData"))
-            
         except:
             ms = Qt.QMessageBox.warning(self,"Error!",traceback.format_exc())
         
@@ -354,25 +336,18 @@ class ArchivingTrend(TaurusTrend):
     def showDatesWidget(self,show=True):
         try:
             ui = getattr(self,'_datesWidget',None)
-            #try:
-                #ui.parent()
-            #except:
-                #self.warning(traceback.format_exc())
-                #ui = None
+
             if not ui:
                 self._datesWidget = Qt.QDialog()
                 self._datesWidget.setLayout(Qt.QVBoxLayout())
                 dw = DatesWidget(self)#,self.legend(),Qt.QVBoxLayout())
                 self._datesWidget.layout().addWidget(dw)
             
-            if show: self._datesWidget.show()
-            #else: self._datesWidget.hide()
+            if show: 
+                self._datesWidget.show()
             self.replot()
             return
-            #xMin = self.parent.axisScaleDiv(Qwt5.QwtPlot.xBottom).lowerBound()
-            #xMax = self.parent.axisScaleDiv(Qwt5.QwtPlot.xBottom).upperBound()
-            #if self.parent.getXIsTime():
-                    #self.ui.xEditMin.setText(time.strftime('%Y/%m/%d %H:%M:%S',time.localtime(int(xMin))))
+
         except:
             ms = Qt.QMessageBox.warning(self,"Error!",traceback.format_exc())
         
@@ -1050,7 +1025,7 @@ def get_archiving_trend(models=None,length=12*3600,show=False,n_trends=1):
         tt.disconnect(tt.axisWidget(tt.xBottom), 
             Qt.SIGNAL("scaleDivChanged ()"), tt._scaleChangeWarning)
         xMax = time.time() #tt.axisScaleDiv(Qwt5.QwtPlot.xBottom).upperBound()
-        rg = length #abs(self.str2deltatime(str(self.ui.xRangeCB.currentText())))
+        rg = length
         xMin=xMax-rg
         tt.setAxisScale(Qwt5.QwtPlot.xBottom,xMin, xMax)
         if n_trends>1: qw.layout().addWidget(tt)
