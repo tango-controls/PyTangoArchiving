@@ -6,6 +6,19 @@
 @TODO Rename widgetArchivingBrowser.ModelSearchWidget to widget.browser.ArchivingBrowser
 @TODO: rename ArchivingBrowser to browser
 
+8.7.0
+
+    solve bug on filtering on server side
+    add script to restart archivers if dead
+    correct transfer limits
+    solve bug on filtering on server side
+    adapt browser to fqdn names
+    clean up dates dialog
+    template file for adding db users
+    working on optmizing data transfer
+    add column names to backups
+
+
 8.6.2
 
     reenable snap widgets
