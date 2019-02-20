@@ -62,12 +62,17 @@ def get_hdbpp_databases(archivers=[],dbs={}):
         print('Loading databases from Tango')
         cms = ft.get_class_devices('HdbConfigurationManager')
         for c in cms:
-            props = ['LibConfiguration','ArchiverList']
-            props = ft.get_database().get_device_property(c,props)
-            db = dict(t.split('=') for t in props['LibConfiguration'])['dbname']
-            dbs[db] = {c:None}
-            for a in props['ArchiverList']:
-                dbs[db][a] =  ft.get_device_property(a,'AttributeList')
+            try:
+                props = ['LibConfiguration','ArchiverList']
+                props = ft.get_database().get_device_property(c,props)
+                db = dict(t.split('=') 
+                          for t in props['LibConfiguration'])['dbname']
+                dbs[db] = {c:None}
+                for c in props['ArchiverList']:
+                    dbs[db][c] =  ft.get_device_property(c,'AttributeList')
+            except:
+                print('Unable to load %s config' % str(c))
+                traceback.print_exc()
     else:
         dbs = dbs.copy()
             
