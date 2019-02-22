@@ -27,12 +27,13 @@ __doc__ = """ABBA, Archiving Best Browser for Alba"""
 
 import re,sys,os,time,traceback,threading
 import PyTango
-import fandango
-import fandango.functional as fun
+import fandango as fn
 from fandango.log import tracer
 
 import taurus
 from fandango.qt import Qt,Qwt5
+from fandango.qt import QGridTable, QDictToolBar
+
 from taurus.qt.qtgui.plot import TaurusTrend,TaurusPlot
 from taurus.qt.qtgui.panel import TaurusDevicePanel
 from taurus.qt.qtgui.panel import TaurusValue
@@ -66,8 +67,6 @@ def launch(script,args=[]):
     print 'launch(%s)'%f
     os.system(f)
 
-from fandango.qt import QGridTable, QDictToolBar
-
 ###############################################################################
 ###############################################################################
 
@@ -87,7 +86,7 @@ PARENT_KLASS = QGridTable #Qt.QFrame #Qt.QWidget
 class AttributesPanel(PARENT_KLASS):
     
     _domains = ['ALL EPS']+['LI','LT']+['LT%02d'%i for i in range(1,3)]+['SR%02d'%i for i in range(1,17)]
-    _fes = [f for f in get_distinct_domains(fandango.get_database().get_device_exported('fe*')) if fun.matchCl('fe[0-9]',f)]
+    _fes = [f for f in get_distinct_domains(fn.get_database().get_device_exported('fe*')) if fn.matchCl('fe[0-9]',f)]
     
     LABELS = 'Label/Value Device Attribute Alias Archiving Check'.split()
     SIZES = [500, 150, 90, 90, 120, 40]
@@ -254,7 +253,7 @@ class AttributesPanel(PARENT_KLASS):
             model,device,attribute,alias = map(str.upper,(model,device,attribute,alias))
             #self.vheaders.append(model)
             def ITEM(m,model='',size=0):
-                q = fandango.qt.Draggable(Qt.QLabel)(m)
+                q = fn.qt.Draggable(Qt.QLabel)(m)
                 if size is not 0:
                     q.setMinimumWidth(size) #(.7*950/5.)
                 q._model = model
@@ -318,7 +317,7 @@ class AttributesPanel(PARENT_KLASS):
                 self.models.append(tv)
                 
             #self.widgetbuffer.extend([qf,self.itemAt(i+self.offset,1),self.itemAt(i+self.offset,2),self.itemAt(i+self.offset,3),self.itemAt(i+self.offset,4)])
-            fandango.threads.Event().wait(.02)
+            fn.threads.Event().wait(.02)
             
         if len(values):
             def setup(o=self):
@@ -372,7 +371,7 @@ class ArchivingBrowser(Qt.QWidget):
     STRETCH = AttributesPanel.STRETCH
     
     def __init__(self,parent=None,domains=None,regexp='*pnv-*',USE_SCROLL=True,USE_TREND=False):
-        print('%s: ArchivingBrowser()' % fun.time2str())
+        print('%s: ArchivingBrowser()' % fn.time2str())
         Qt.QWidget.__init__(self,parent)
         self.setupUi(USE_SCROLL=USE_SCROLL, USE_TREND=USE_TREND, SHOW_OPTIONS=False)
         self.load_all_devices()
@@ -388,19 +387,19 @@ class ArchivingBrowser(Qt.QWidget):
         #self.domains = domains if domains else ['MAX','ANY','LI/LT','BO/BT']+['SR%02d'%i for i in range(1,17)]+['FE%02d'%i for i in (1,2,4,9,11,13,22,24,29,34)]
         #self.combo.addItems((['Choose...']+self.domains) if len(self.domains)>1 else self.domains)
         self.connectSignals()
-        print('%s: ArchivingBrowser(): done' % fun.time2str())
+        print('%s: ArchivingBrowser(): done' % fn.time2str())
         
     def load_all_devices(self,filters='*'):
-        import fandango
-        self.tango = fandango.get_database()
-        self.alias_devs = fandango.defaultdict_fromkey(
+        import fandango as fn #needed by subprocess
+        self.tango = fn.get_database()
+        self.alias_devs = fn.defaultdict_fromkey(
                 lambda k,s=self: str(s.tango.get_device_alias(k)))
         self.archattrs = []
         self.archdevs = []
         #print('In load_all_devices(%s)...'%str(filters))
-        devs = fandango.tango.get_all_devices()
+        devs = fn.tango.get_all_devices()
         if filters!='*': 
-            devs = [d for d in devs if fandango.matchCl(
+            devs = [d for d in devs if fn.matchCl(
                         filters.replace(' ','*'),d,extend=True)]
         self.all_devices = devs
         self.all_domains = sorted(set(a.split('/')[0] for a in devs))
@@ -417,30 +416,46 @@ class ArchivingBrowser(Qt.QWidget):
         
         self.all_members = sorted(set(e for m in members 
                 for e in re.split('[-_0-9]',m) 
-                if not fandango.matchCl('^[0-9]+([ABCDE][0-9]+)?$',e)))
+                if not fn.matchCl('^[0-9]+([ABCDE][0-9]+)?$',e)))
 
         #print 'Loading alias list ...'
         self.all_alias = self.tango.get_device_alias_list('*')
         #self.alias_devs =  dict((str(self.tango.get_device_alias(a)).lower(),a) for a in self.all_alias)
         tracer('Loading (%s) finished.'%(filters))
         
-    def load_attributes(self,servfilter,devfilter,attrfilter,warn=True,exclude = ('dserver','tango*admin','sys*database','tmp','archiving')):
-        tracer('In load_attributes(%s,%s,%s)'%(servfilter,devfilter,attrfilter))
+    def load_attributes(self,servfilter,devfilter,attrfilter,warn=True,
+        exclude = ('dserver','tango*admin','sys*database','tmp','archiving')):
         
-        servfilter,devfilter,attrfilter = servfilter.replace(' ','*').strip(),devfilter.replace(' ','*'),attrfilter.replace(' ','*')
-        attrfilter = attrfilter or 'state'
-        devfilter = devfilter or attrfilter
+        servfilter = servfilter.replace(' ','*').strip()
+        attrfilter = (attrfilter or 'state').replace(' ','*')
+        devfilter = (devfilter or attrfilter).replace(' ','*')
+
+        #Solve fqdn issues
+        devfilter = devfilter.replace('tango://','')
+        if ':' in devfilter:
+            tracer('ArchivingBrowser ignores tango host filters')
+            devfilter = fn.clsub(fn.tango.rehost,'',devfilter)
+            
+        tracer('In load_attributes(%s,%s,%s)'%(servfilter,devfilter,attrfilter))            
+
         archive = self.dbcheck.isChecked()
         all_devs = self.all_devices if not archive else self.archdevs
-        all_devs = [d for d in all_devs if not any(d.startswith(e) for e in exclude) or any(d.startswith(e) and fun.matchCl(e,devfilter) for e in exclude)]
+        all_devs = [d for d in all_devs if not 
+                    any(d.startswith(e) for e in exclude) 
+                    or any(d.startswith(e) 
+                    and fn.matchCl(e,devfilter) for e in exclude)]
+
         if servfilter.strip('.*'):
-            sdevs = map(str.lower,fandango.Astor(servfilter).get_all_devices())
+            sdevs = map(str.lower,fn.Astor(servfilter).get_all_devices())
             all_devs = [d for d in all_devs if d in sdevs]
+            
         #print('In load_attributes(%s,%s,%s): Searching through %d %s names'
               #%(servfilter,devfilter,attrfilter,len(all_devs),
                 #'server' if servfilter else 'device'))
+                
         if devfilter.strip().strip('.*'):
-            devs = [d for d in all_devs if (fandango.searchCl(devfilter,d,extend=True))]
+            devs = [d for d in all_devs if 
+                    (fn.searchCl(devfilter,d,extend=True))]
             print('\tFound %d devs, Checking alias ...'%(len(devs)))
             alias,alias_devs = [],[]
             if '&' in devfilter:
@@ -450,11 +465,11 @@ class ArchivingBrowser(Qt.QWidget):
                     alias.extend(self.tango.get_device_alias_list('*%s*'%df.strip()))
             if alias: 
                 print('\t%d alias found'%len(alias))
-                alias_devs.extend(self.alias_devs[a] for a in alias if fun.searchCl(devfilter,a,extend=True))
+                alias_devs.extend(self.alias_devs[a] for a in alias if fn.searchCl(devfilter,a,extend=True))
                 print('\t%d alias_devs found'%len(alias_devs))
                 #if not self.alias_devs:
                     #self.alias_devs =  dict((str(self.tango.get_device_alias(a)).lower(),a) for a in self.all_alias)
-                #devs.extend(d for d,a in self.alias_devs.items() if fandango.searchCl(devfilter,a) and (not servfilter or d in all_devs))
+                #devs.extend(d for d,a in self.alias_devs.items() if fn.searchCl(devfilter,a) and (not servfilter or d in all_devs))
                 devs.extend(d for d in alias_devs if not servfilter.strip('.*') or d in all_devs)
         else:
             devs = all_devs
@@ -488,7 +503,7 @@ class ArchivingBrowser(Qt.QWidget):
                 else:
                     tcs = [a.split('/')[-1] for a in self.archattrs if a.startswith(d+'/')]
 
-                matches = [t for t in tcs if fandango.searchCl(attrfilter,t,extend=True)]
+                matches = [t for t in tcs if fn.searchCl(attrfilter,t,extend=True)]
 
                 for t in sorted(tcs):
                     if not self.dbcheck.isChecked() or not matches: 
@@ -496,7 +511,7 @@ class ArchivingBrowser(Qt.QWidget):
                     else: 
                         label = t
                         
-                    if t in matches or fandango.searchCl(attrfilter,label,extend=True):
+                    if t in matches or fn.searchCl(attrfilter,label,extend=True):
                         if self.archivecheck.isChecked() \
                                 and not self.reader.is_attribute_archived(d+'/'+t):
                             continue
@@ -558,10 +573,10 @@ class ArchivingBrowser(Qt.QWidget):
         
         self.ServerFilter = Qt.QLineEdit()
         self.ServerFilter.setMaximumWidth(250)
-        self.DeviceFilter = fandango.qt.Dropable(Qt.QLineEdit)()
-        self.DeviceFilter.setSupportedMimeTypes(fandango.qt.TAURUS_DEV_MIME_TYPE)
-        self.AttributeFilter = fandango.qt.Dropable(Qt.QLineEdit)()
-        self.AttributeFilter.setSupportedMimeTypes([fandango.qt.TAURUS_ATTR_MIME_TYPE,fandango.qt.TEXT_MIME_TYPE])
+        self.DeviceFilter = fn.qt.Dropable(Qt.QLineEdit)()
+        self.DeviceFilter.setSupportedMimeTypes(fn.qt.TAURUS_DEV_MIME_TYPE)
+        self.AttributeFilter = fn.qt.Dropable(Qt.QLineEdit)()
+        self.AttributeFilter.setSupportedMimeTypes([fn.qt.TAURUS_ATTR_MIME_TYPE,fn.qt.TEXT_MIME_TYPE])
         self.update = Qt.QPushButton('Update')
         self.archivecheck = Qt.QCheckBox("Only archived")
         self.archivecheck.setChecked(False)
@@ -778,7 +793,8 @@ class ArchivingBrowser(Qt.QWidget):
                   self.panel.setParent(None)
                   self.panel = None
                 if not self.panel: 
-                    self.panel = AttributesPanel(self._scroll,devices=self.all_devices)
+                    self.panel = AttributesPanel(
+                        self._scroll,devices=self.all_devices)
                     self.attrpanel = self.panel
                     if hasattr(self,'trend'): 
                         self.attrpanel.trend = self.trend
@@ -787,8 +803,9 @@ class ArchivingBrowser(Qt.QWidget):
                 if old: 
                   old.clear()
                   old.deleteLater() #Must be done after creating the new one!!
+                  
                 table = [] #model,device,attribute,alias,archived,ok
-                #ATTRIBUTES ARE FILTERED HERE!! <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+                #ATTRIBUTES ARE FILTERED HERE!! <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
                 for k,v in self.load_attributes(*filters).items():
                     try: 
                         archived = self.reader.is_attribute_archived(k)

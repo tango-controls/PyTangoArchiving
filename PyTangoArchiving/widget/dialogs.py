@@ -43,7 +43,7 @@ from history import show_history
 from fandango.objects import BoundDecorator, Cached
 from fandango.debug import Timed
 from fandango.dicts import defaultdict
-from fandango import SingletonMap,str2time, time2str
+from fandango import SingletonMap, str2time, time2str
 
 from fandango.qt import Qt,Qwt5,QTextBuffer,setDialogCloser,QWidgetWithLayout
 
@@ -631,11 +631,19 @@ class DatesWidget(Qt.QWidget): #Qt.QDialog): #QGroupBox):
             1y : X years
             """)
         self.xRangeCB.setCurrentIndex(1)
-        self.xApply = Qt.QPushButton("Refresh")
-        self.layout().addWidget(QWidgetWithLayout(self,child=[self.xLabelStart,self.xEditStart]))
-        self.layout().addWidget(QWidgetWithLayout(self,child=[self.xLabelRange,self.xRangeCB]))
-        self.layout().addWidget(QWidgetWithLayout(self,child=[self.xApply]))
-        trend.connect(self.xApply,Qt.SIGNAL("clicked()"),self.refreshAction)
+        self.xRefresh = Qt.QPushButton("Refresh")
+        self.layout().addWidget(QWidgetWithLayout(
+            self,child=[self.xLabelStart,self.xEditStart]))
+        self.layout().addWidget(QWidgetWithLayout(
+            self,child=[self.xLabelRange,self.xRangeCB]))
+        self.layout().addWidget(QWidgetWithLayout(
+            self,child=[self.xRefresh]))
+        trend.connect(self.xRefresh,Qt.SIGNAL("clicked()"),
+                      self.onRefreshButton)
+        self.xRangeCB.connect(self.xRangeCB, Qt.SIGNAL("currentIndexChanged(int)"),
+                    self.onRangeChanged)
+        self.xRangeCB.connect(self.xRangeCB, Qt.SIGNAL("editTextChanged"),
+                    self.onRangeChanged)
         
         if hasattr(self._trend,'getArchivedTrendLogger'):
             self.logger = self._trend.getArchivedTrendLogger()
@@ -663,7 +671,45 @@ class DatesWidget(Qt.QWidget): #Qt.QDialog): #QGroupBox):
     def setTitle(self,title):
         self.setWindowTitle(title)
         
-    def refreshAction(self):
+    def getStartDate(self):
+        try:
+            t = str(self.xEditStart.text())
+            if t == self.DEFAULT_START:
+                return None
+            return str2time(t)
+        except:
+            traceback.print_exc()
+        
+    def getRange(self):
+        try:
+            return str2time(str(self.xRangeCB.currentText()))
+        except:
+            traceback.print_exc()
+    
+    def setStartDate(self, start):
+        if isinstance(start,(int,float)):
+            start = time2str(start)
+        self.xEditStart.setText(start)
+        
+    def setRange(self, end):
+        self.xRangeCB.setEditText(end)      
+        
+    def onRangeChanged(self):
+        t0, t1 = self.getStartDate(), self.getRange()
+        print('onRangeChanged(%s,%s)' % (t0,t1))
+        if t0 is None:
+            self.setStartDate(time.time()-abs(t1))
+        else:
+            t1 = t0 + abs(t1)
+            #If asked range goes into the future it is corrected
+            if t1 > time.time() + 600:
+                r, t1 = t1 - t0, time.time() + 600
+                t0 = t1 - r
+                self.setStartDate(t0)
+        print('\t\t(%s,%s)' % (t0,t1))
+        return t0, t1
+        
+    def onRefreshButton(self):
         self._trend.applyNewDates()
         try:
             date = str2time(str(self.xEditStart.text()))

@@ -82,7 +82,7 @@ def get_table_attr_ids(db, table):
         ' where att_conf_data_type_id = %d' %ti)]
 
 def transfer_table(db, db2, table, bunch = 16*16*1024, is_str = False,
-                   per_value = 60):
+                   per_value = 60, min_tdelta = 0.2, ids = []):
     
     t0 = fn.now()       
     tq = 0
@@ -114,17 +114,27 @@ def transfer_table(db, db2, table, bunch = 16*16*1024, is_str = False,
     else:
         where = " where data_time >= '%s'"
         where += " and data_time < '%s'"
-    limit = ' limit %s' % bunch
+    
     if has_int:
         order = ' order by int_time'
+        if min_tdelta > 1:
+            order = ' group by int_time DIV %d'%int(min_tdelta) + order
     else:
         order = ' order by data_time'
+        if min_tdelta > 1:
+            order = ' group by data_time DIV %d'%int(min_tdelta) + order
+        
+    limit = ' limit %s' % bunch
     
     print('inserting data ...')
     
     count,done,changed,periodic = 0,0,0,0
     attr_ids = get_table_attr_ids(db, table)
     for aii,ai in enumerate(attr_ids):
+
+        if ids and ai not in ids:
+            continue
+        
         print('attr: %s (%s/%s)' % (ai,aii,len(attr_ids)))
         
         print('getting limits ...')
@@ -156,6 +166,7 @@ def transfer_table(db, db2, table, bunch = 16*16*1024, is_str = False,
             prev = last
             print('last: %s' % last)
             nxt = fn.time2str(fn.str2time(last)+4*86400)
+            
             if fn.str2time(last) >= fn.now() or fn.str2time(nxt) >= fn.now():
                 break            
             if fn.str2time(last)+60 >= fn.str2time(end):
@@ -164,6 +175,7 @@ def transfer_table(db, db2, table, bunch = 16*16*1024, is_str = False,
                 qr = query+(where%(int(str2time(last)),int(str2time(nxt))))
             else:
                 qr = query+(where%(last,nxt))
+                
             qr += ' and att_conf_id = %s' % ai
             qr += order+limit
             print(qr)
@@ -175,8 +187,9 @@ def transfer_table(db, db2, table, bunch = 16*16*1024, is_str = False,
                 last = nxt
             else:
                 last = fn.time2str(v[it],us=True)
+                
             if fn.str2time(last)+60 >= fn.str2time(end):
-                break #Make sense twice
+                break #It must be checked before and after querying
             if v is None:
                 continue
             
@@ -187,15 +200,20 @@ def transfer_table(db, db2, table, bunch = 16*16*1024, is_str = False,
                 count += 1
                 i,t,w = v[ii], v[it], v[iv]
                 x = v[ix] if ix is not None else None
+
                 last = fn.time2str(t,us=True)
                 if i not in lasts:
                     diff = True
+                elif t < lasts[i][0]+min_tdelta:
+                    diff = False
                 else:
                     diff = (w != lasts[i][1])
                     if is_float:
                         if w and None not in (w,lasts[i][1]):
                             diff = diff and abs((w-lasts[i][1])/w)>1e-12
+                            
                 if ix is None and diff:
+                    # changed scalar value
                     lasts[i] = (t,w)
                     v = map(str,v)
                     v[2] = repr(last)
@@ -207,7 +225,9 @@ def transfer_table(db, db2, table, bunch = 16*16*1024, is_str = False,
                     v = cursor.fetchone()
                     if v is None:
                         break
+                    
                 elif ix is None and (t-lasts[i][0]) >= per_value:
+                    # periodic scalar value
                     lasts[i] = (t,w)
                     v = map(str,v)
                     v[2] = repr(last)
@@ -219,8 +239,10 @@ def transfer_table(db, db2, table, bunch = 16*16*1024, is_str = False,
                     v = cursor.fetchone()
                     if v is None:
                         break
+                    
                 elif ix is not None and ((i,x) not in lasts 
                         or (t-lasts[(i,x)][0]) >= per_value):
+                    # periodic array value
                     lasts[(i,x)] = (t,w)
                     v = map(str,v)
                     v[2] = repr(last)
@@ -231,6 +253,7 @@ def transfer_table(db, db2, table, bunch = 16*16*1024, is_str = False,
                     v = cursor.fetchone()
                     if v is None:
                         break
+                    
                 else:
                     v = cursor.fetchone()
                     if v is None:
