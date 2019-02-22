@@ -198,7 +198,25 @@ def get_attributes_as_event_list(attributes,start_date=None,stop_date=None,formu
             buffer[i] = (event[0],event[1],event[2],f)
             
     return buffer
-                    
+
+def parse_property(name,value):
+    """
+    Parses properties in the format 'name(;|\n)key=value(;|\n)key=value'
+    Used by HDB++ config and archivers
+    """
+    if '\n' in value:
+        value = value.split('\n')
+    elif ';' in value:
+        value = value.split(';')
+    else:
+        value = [value]
+
+    r = {'name': (value.pop(0) if '=' not in value[0] else name) }
+    value = [v.strip().split('=',1) for v in value]
+    r.update((v[0],v[-1]) for v in value)
+
+    return r
+    
 def translate_attribute_alias(attribute):
     full = 'tango://' in attribute
     attribute = attribute.replace('tango://','')
@@ -445,14 +463,24 @@ DevState
 """    
 
 def h_to_tuple(T):
-    return (T.time.tv_sec,T.value if not hasattr(T.value,'__len__') else tuple(T.value)) #if data_format == PyTango.AttrDataFormat.SPECTRUM:
+    #if data_format == PyTango.AttrDataFormat.SPECTRUM:
+    return (T.time.tv_sec,T.value if not hasattr(T.value,'__len__') 
+            else tuple(T.value)) 
+
 def get_mysql_value(v):
-    return (mysql2time(v[0]),v[1 if len(v)<4 else 2]) #Date and read value (excluding dimension?!?)
+    #Date and read value (excluding dimension?!?)
+    return (mysql2time(v[0]),v[1 if len(v)<4 else 2]) 
+
 def listToHistoryBuffer(values):
     return [FakeAttributeHistory(*v) for v in values]
+
 def mysql2array(v,data_type,default=None):
-    #lambda v: [(s.strip() and data_type(s.strip()) or (0.0 if data_type in (int,float) else None)) for s in str(v[1]).split(',')]
-    return [data_type(x) if x else default for x in map(str.strip,str(v).split(','))]
+    #lambda v: [(s.strip() and data_type(s.strip()) 
+    #  or (0.0 if data_type in (int,float) else None)) 
+    #  for s in str(v[1]).split(',')]
+    return [data_type(x) if x else default 
+            for x in map(str.strip,str(v).split(','))]
+
 def mysql2bool(v):
     v = str(v)
     if v in ('','None','none','null','NULL'): return None 
