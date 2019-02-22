@@ -115,12 +115,12 @@ def transfer_table(db, db2, table, bunch = 16*16*1024, is_str = False,
         where = " where data_time >= '%s'"
         where += " and data_time < '%s'"
     
+    order = ' order by data_time'
     if has_int:
-        order = ' order by int_time'
+        #order = ' order by int_time' #It may put NULL/error values FIRST!!
         if min_tdelta > 1:
             order = ' group by int_time DIV %d'%int(min_tdelta) + order
     else:
-        order = ' order by data_time'
         if min_tdelta > 1:
             order = ' group by data_time DIV %d'%int(min_tdelta) + order
         
