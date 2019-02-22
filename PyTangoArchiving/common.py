@@ -49,7 +49,9 @@ def int2DevState(n): return str(PyTango.DevState.values[n])
 def int2DevType(n): return str(PyTango.ArgType.values[n])    
 
 class CommonAPI(Object,fandango.SingletonMap):
-    """ This class provides common methods for managing a Soleil-like database (for either archiving or snapshoting)
+    """ 
+    This class provides common methods for managing a Soleil-like database 
+    (for either archiving or snapshoting)
     The methods starting by "get" retrieve values using ArchivingDSs
     The methods starting by "load" access directly to MySQL database
     """
