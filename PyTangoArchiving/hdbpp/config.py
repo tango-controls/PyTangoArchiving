@@ -580,12 +580,16 @@ class HDBpp(ArchivingDB,SingletonMap):
           
     def get_attributes_by_table(self,table=''):
         if table:
-          return self.Query("select att_name from att_conf,att_conf_data_type where data_type like '%s'"+
-                  " and att_conf.att_conf_data_type_id = att_conf_data_type.att_conf_data_type_id")
+            table = table.replace('att_','')
+            return self.Query(
+                "select att_name from att_conf,att_conf_data_type where "
+                "data_type like '%s' and att_conf.att_conf_data_type_id "
+                "= att_conf_data_type.att_conf_data_type_id" % table)
         else:
-          types = self.Query("select data_type,att_conf_data_type_id from att_conf_data_type")
-          return dict((t,self.Query("select att_name from att_conf where att_conf_data_type_id = %s"%i))
-                      for t,i in types)
+            types = self.Query("select data_type,att_conf_data_type_id "
+                "from att_conf_data_type")
+            return dict(('att_'+t,self.Query("select att_name from att_conf"
+                "  where att_conf_data_type_id = %s"%i)) for t,i in types)
           
     #@staticmethod
     #def decimate_values(values,N=540,method=None):
