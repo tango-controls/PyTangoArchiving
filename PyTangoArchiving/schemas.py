@@ -31,6 +31,8 @@ import fandango
 import fandango.functional as fun
 from fandango import clmatch
 
+from PyTangoArchiving.utils import parse_property
+
 import sys
 EXPERT_MODE = True
     #any(a in str(sys.argv) for a in 
@@ -83,10 +85,11 @@ class Schemas(object):
     def load(k,tango='',prop='',logger=None):
         tangodb = fandango.tango.get_database(tango)
         schemas = prop or tangodb.get_property(
-            'PyTangoArchiving','Schemas')['Schemas']
+            'PyTangoArchiving',['DbSchemas','Schemas'])
+        schemas = schemas.get('DbSchemas',schemas.get('Schemas',[]))
         if not schemas:
           schemas = ['tdb','hdb']
-          tangodb.put_property('PyTangoArchiving',{'Schemas':schemas})
+          tangodb.put_property('PyTangoArchiving',{'DbSchemas':schemas})
         print('Loading schemas from Tango Db ... (%s)'%','.join(schemas)) 
         [k.getSchema(schema,tango,write=True,logger=logger)
             for schema in schemas]
