@@ -90,7 +90,8 @@ class Schemas(object):
         if not schemas:
           schemas = ['tdb','hdb']
           tangodb.put_property('PyTangoArchiving',{'DbSchemas':schemas})
-        print('Loading schemas from Tango Db ... (%s)'%','.join(schemas)) 
+        print('Loading schemas from tango@%s ... (%s)'%
+              (tangodb.get_db_host(), ','.join(schemas)))
         [k.getSchema(schema,tango,write=True,logger=logger)
             for schema in schemas]
         return k.SCHEMAS
