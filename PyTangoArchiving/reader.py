@@ -690,9 +690,9 @@ class Reader(Object,SingletonMap):
         proxy calls, launch .reset() to clean those lists. 
         """
 
-        if self.is_hdbpp: # NEVER CALLED IF setting reader=HDBpp(...)
-            self.log.warning('HDBpp.is_attribute_archived() OVERRIDE!!')
-            return True
+        #if self.is_hdbpp: # NEVER CALLED IF setting reader=HDBpp(...)
+            #self.log.warning('HDBpp.is_attribute_archived() OVERRIDE!!')
+            #return True
         
         if expandEvalAttribute(attribute):
             return all(self.is_attribute_archived(a,active) 
