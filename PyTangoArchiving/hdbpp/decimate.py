@@ -35,7 +35,7 @@ def check_db(db_name):
         print(g)        
 
 def check_table(db_name,table,tstart,tend):
-    print('check_table(%s,%s,%s,%s)'% (db_name,table,tstart,tend))
+    print('check_table(%s,%s,%s,%s)' % (db_name,table,tstart,tend))
     api = pta.api(db_name)
     tstart,tend = fn.time2str(tstart),fn.time2str(tend-1)
     rows = dict()
@@ -51,10 +51,38 @@ def check_table(db_name,table,tstart,tend):
     print('%d attributes found'  % len(rows))
     for n,k in sorted((s,a) for a,s in rows.items()):
         print('%s id=%s rows=%s' % (k, api[k].id, n))
+        
+def delete_tdb_table_data(table, date):
+    tdb = pta.api('tdb')
+    tdb.db.setLogLevel('debug')
+    if table in tdb:
+        table = tdb[table].table
+    try:
+        v = tdb.db.Query('select time from %s order by time limit 1' % table)
+        print('first value at %s' % str(v))
+    except:
+        tdb.db.Query('repair table '+table)
+        v = tdb.db.Query('select time from %s order by time limit 1' % table)
+        print('first value at %s' % str(v))        
+    try:
+        tdb.db.Query("delete from %s where time < '%s'" % (table, date))
+        tdb.db.Query('optimize table '+table)
+        tdb.db.Query('repair table '+table)
+        v = tdb.db.Query('select time from %s order by time limit 1' % table)        
+        print(v)
+        return True
+    except:
+        print(fn.except2str())
+        print(table,'failed')
+        return False
+        
             
 def decimate(db_name,keys,tstart,tend,period=10,dry=False):
     """
     time arguments are strings
+    BUT!, this method seems to not work anymore to free space in TDB
+    Maybe a mysqld restart is needed, I don't know; 
+    but up to now space is not freed
     """
     api = pta.api(db_name)
     
