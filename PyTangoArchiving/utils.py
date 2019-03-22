@@ -280,6 +280,23 @@ RULE_MAX = lambda v,w: (max((v[0],w[0])),max((v[1],w[1])))
 START_OF_TIME = time.time()-10*365*24*3600 #Archiving reading limited to last 10 years.
 MAX_RESOLUTION = 10*1080.
 
+def overlap(int1,int2):
+    """
+    returns whether two date intervals overlap
+    both intervals should be tuples of dates (start,stop)
+    """
+    int1,int2 = map(str2time,int1),map(str2time,int2)
+    if int1[0] < int2[0] < int1[1]:
+        return True
+    elif int1[0] < int2[1] < int1[1]:
+        return True
+    elif int2[0] < int1[0] < int2[1]:
+        return True
+    elif int2[0] < int1[1] < int2[1]:
+        return True
+    else:
+        return False
+
 def get_jumps(values):
     jumps = [(values[i][0],values[i+1][0]) for i in range(len(values)-1) if 120<(values[i+1][0]-values[i][0])]
     return [[time.ctime(d) for d in j] for j in jumps]

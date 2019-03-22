@@ -320,7 +320,8 @@ class Reader(Object,SingletonMap):
         
     @fandango.Catched
     def init_for_schema(self,schema,config='',servers=[]):
-        print('%s.init_for_schema(%s,%s)' % (self.schema,schema,config))
+        self.log.debug('%s.init_for_schema(%s,%s)' 
+                       % (self.schema,schema,config))
 
         if not config and schema in Schemas.keys():
                 #raise 'NotImplemented!, Use generic Reader() instead'

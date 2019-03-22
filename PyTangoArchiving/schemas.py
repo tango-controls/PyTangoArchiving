@@ -27,11 +27,10 @@ a singleton to detect and manage multiple archiving schemas.
 """
 
 import traceback,time,re
-import fandango
-import fandango.functional as fun
-from fandango import clmatch
+import fandango as fn
+from fandango import clmatch, time2str, str2time
 
-from PyTangoArchiving.utils import parse_property
+from PyTangoArchiving.utils import parse_property, overlap
 
 import sys
 EXPERT_MODE = True
@@ -40,36 +39,43 @@ EXPERT_MODE = True
          #'taurusfinder','ctsearch','ipython', 'test','-c',
          #'archiving2csv','archiving2plot','matlab','PyExtractor'))
          
-class SchemaDict(dict):
+class SchemaDict(dict): #fn.Struct):
+    
+    ## The .get method seems to work differently in Struct and Dict!
+    
+    #def __init__(self,other,load=False):
+        #super(SchemaDict,self).__init__(**other)
+        #self._load = load
     
     def __getitem__(self,key):
+
         if key=='reader':
-            r = dict.get(self,'reader',None)
+            r = super(SchemaDict,self).get('reader',None)
             #print('%s.get(%s)' % (self['schema'],key))
-            if isinstance(r,str):
+            
+            if self._load and isinstance(r,str):
                 self['reader'] = Schemas.getReader(self['schema'],self.copy())
                 #print(self['reader'])
-        return dict.__getitem__(self,key)
+                
+        return super(SchemaDict,self).__getitem__(key)
     
     def get(self,key,default=None):
         try:
             return self.__getitem__(key)
         except:
             return default
-        
-    #def __getattribute__(self,name):
-        #if name in dict.keys(self):
-            #return self.__getitem__(name)
-        #else:
-            #return dict.__getattribute__(self,name)
     
         
 class Schemas(object):
     """ Schemas kept in a singleton object """
     
-    SCHEMAS = fandango.SortedDict()
-    MODULES = {'fandango':fun,'fun':fun} #Limited access to fandango library
-    LOCALS = fandango.functional.__dict__.copy()
+    SCHEMAS = fn.SortedDict()
+    #Limited access to fandango library
+    MODULES = {'fandango':fn.functional,'fn':fn.functional,'fun':fn.functional} 
+    LOCALS = fn.functional.__dict__.copy()
+    
+    def __init__(self):
+        self.load()
     
     @classmethod
     def __contains__(k,o):
@@ -82,18 +88,53 @@ class Schemas(object):
         return k.SCHEMAS.keys()
     
     @classmethod
+    def values(k):
+        if not k.SCHEMAS: 
+            k.load()
+        return k.SCHEMAS.values()
+    
+    @classmethod
+    def items(k):
+        if not k.SCHEMAS: 
+            k.load()
+        return k.SCHEMAS.items()
+    
+    @classmethod
+    def __iter__():
+        return k.SCHEMAS.__iter__()
+    
+    @classmethod
+    def __contains__(k,key):
+        return k.SCHEMAS.__contains__(key)
+    
+    @classmethod
+    def __getitem__(k,key):
+        return k.SCHEMAS.__getitem__(key)
+    
+    @classmethod
+    def get(k,key,default=None):
+        return k.SCHEMAS.get(key,default)
+    
+    
+    @classmethod
     def load(k,tango='',prop='',logger=None):
-        tangodb = fandango.tango.get_database(tango)
+
+        tangodb = fn.tango.get_database(tango)
         schemas = prop or tangodb.get_property(
             'PyTangoArchiving',['DbSchemas','Schemas'])
+
         schemas = schemas.get('DbSchemas',schemas.get('Schemas',[]))
+
         if not schemas:
-          schemas = ['tdb','hdb']
-          tangodb.put_property('PyTangoArchiving',{'DbSchemas':schemas})
+            schemas = ['tdb','hdb']
+            tangodb.put_property('PyTangoArchiving',{'DbSchemas':schemas})
+
         print('Loading schemas from tango@%s ... (%s)'%
               (tangodb.get_db_host(), ','.join(schemas)))
-        [k.getSchema(schema,tango,write=True,logger=logger)
+
+        [k.getSchema(schema,tango,write=True,logger=logger) 
             for schema in schemas]
+
         return k.SCHEMAS
     
     @classmethod
@@ -106,9 +147,9 @@ class Schemas(object):
         m = rd.split('(')[0].rsplit('.',1)[0]
         c = rd[len(m)+1:]
         if m not in k.MODULES:
-            fandango.evalX('import %s'%m,modules=k.MODULES)
+            fn.evalX('import %s'%m,modules=k.MODULES)
         #print('getSchema(%s): load %s reader'%(schema,dct.get('reader')))
-        return fandango.evalX(obj, modules=k.MODULES, _locals=dct)
+        return fn.evalX(obj, modules=k.MODULES, _locals=dct)
     
     @classmethod
     def getReader(k,schema,dct):
@@ -123,7 +164,7 @@ class Schemas(object):
                 #print('Schemas.getReader(%s): instantiating reader' % schema)
                 
                 rd = k._load_object(rd,dct)
-                print('getReader(%s): %s' % (schema,type(rd)))
+                #print('getReader(%s): %s' % (schema,type(rd)))
                 if not hasattr(rd,'is_attribute_archived'):
                     rd.is_attribute_archived = lambda *a,**k:True
                 if not hasattr(rd,'get_attributes'):
@@ -131,7 +172,7 @@ class Schemas(object):
                 if not hasattr(rd,'get_attribute_values'):
                     if dct['method']:
                         rd.get_attribute_values = getattr(rd,dct['method'])
-                if not hasattr(rd,'schema'): 
+                if not hasattr(rd,'schema'):
                     rd.schema = schema
             except:
                 print('getReader(%s) failed!' % schema)
@@ -152,64 +193,100 @@ class Schemas(object):
             # Failed schemas should be also returned (to avoid unneeded retries)
             return k.SCHEMAS[schema]
         
-        dct = SchemaDict({'schema':schema,'dbname':schema,
-               'match':clmatch,'clmatch':clmatch})
+        dct = {'match':clmatch,'clmatch':clmatch}
+        if ';' in schema:
+            schema,dct = schema.split(';',1)
+            dct = dict(d.split('=',1) for d in dct.split(';'))
+        dct.update({'schema':schema,'dbname':schema})
+        dct = SchemaDict(dct)
+        props = []
 
         try:
-            tango = fandango.tango.get_database(tango)
-            props = prop or tango.get_property('PyTangoArchiving',schema)[schema]
+            tango = fn.tango.get_database(tango)
+            props = prop or tango.get_property('PyTangoArchiving',
+                                               schema)[schema]
             assert len(props)
-            if fandango.isSequence(props):
-                props = [map(str.strip,t.split('=',1)) for t in props]
+            if fn.isSequence(props):
+                props = dict(map(str.strip,t.split('=',1)) for t in props)
+            if 'check' in dct:
+                props.pop('check')
             dct.update(props)
             dct['logger'] = logger
 
         except Exception,e:
             print('getSchema(%s): failed!'%schema)
-            if logger: 
-                exc = traceback.format_exc()
-                try: logger.warning(exc)
-                except: print(exc)
+            print(dct,props)
+            exc = traceback.format_exc()
+            try: 
+                logger.warning(exc)
+            except: 
+                print(exc)
             dct = None
         
         if write:
             k.SCHEMAS[schema] = dct
+
         return dct
     
     @classmethod
-    def checkSchema(k,schema,attribute='',start=None,end=None):
-      #print('In reader.Schemas.checkSchema(%s,%s,%s,%s)'%(schema,attribute,start,end))
-      schema = k.getSchema(schema)
-      if not schema: return False
-      f = schema.get('check')
-      if not f: 
-        v = True
-      else:
+    def getSchemasForAttribute(attr,start=0,stop=fn.END_OF_TIME):
+        """
+        returns a fallback schema chain for the given dates
+        """
+        return [s for s in k.SCHEMAS if k.checkSchema(s,attr,start,stop)]
+        
+    
+    @classmethod
+    def checkSchema(k,schema,attribute='',start=None,stop=None):
+
+        # print('In reader.Schemas.checkSchema(%s,%s,%s,%s)'
+        #     % (schema,attribute,start,end))
+        schema = k.getSchema(schema)
+
+        if not schema: 
+            return False
+        
+        f = schema.get('check')
+        if not f: 
+            return True
+
         try:
-          now = time.time()
-          start = fun.notNone(start,now-1)
-          end = fun.notNone(end,now)
-          k.LOCALS.update({'attribute':attribute.lower(),
-                'match':clmatch,'clmatch':clmatch,
-                'start':start,'end':end,'now':now,
-                'reader':schema.get('reader',schema.get('api')),
-                'schema':schema.get('schema'),
-                'dbname':schema.get('dbname',schema.get('schema','')),
-                })
-          #print('(%s)%%(%s)'%(f,[t for t in k.LOCALS.items() if t[0] in f]))
-          v =fun.evalX(f,k.LOCALS,k.MODULES)
+            now = time.time()
+            start = (str2time(start) if fn.isString(start) 
+                     else fn.notNone(start,now-1))
+            stop = (str2time(stop) if fn.isString(stop) 
+                    else fn.notNone(stop,now))
+            k.LOCALS.update({'attribute':attribute.lower(),
+                    'match':clmatch,'clmatch':clmatch,
+                    'overlap':overlap,
+                    'time2str':time2str,'str2time':str2time,
+                    't2s':time2str,'s2t':str2time,
+                    'start':start,'stop':stop,'now':now,
+                    'begin':start,'end':stop,'NOW':now,
+                    'reader':schema.get('reader',schema.get('api')),
+                    'schema':schema.get('schema'),
+                    'dbname':schema.get('dbname',schema.get('schema','')),
+                    })
+            if 'reader' in f:
+                k.getReader(schema)
+            if 'api' in f:
+                k.getApi(schema)
+                
+            #print('(%s)%%(%s)'%(f,[t for t in k.LOCALS.items() if t[0] in f]))
+            v =fn.evalX(f,k.LOCALS,k.MODULES)
         except:
-          traceback.print_exc()
-          v =False
-      #print('checkSchema(%s): %s'%(schema,v))
-      return v
+            traceback.print_exc()
+            v = False
+
+        #print('checkSchema(%s): %s'%(schema,v))
+        return v
   
     @classmethod
     def getApi(k,schema):
         schema = k.getSchema(schema)
         if schema is not None:
             api = schema.get('api','PyTangoArchiving.ArchivingAPI')
-            if fun.isString(api): api = k._load_object(api,schema)
+            if fn.isString(api): api = k._load_object(api,schema)
             return api(schema['schema']) if isinstance(api,type) else api
         
 
