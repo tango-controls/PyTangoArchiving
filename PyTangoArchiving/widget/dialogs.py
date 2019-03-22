@@ -97,15 +97,19 @@ def parseTrendModel(model):
     if type(model) not in (str,):
         try: model = model.getFullName()
         except: 
-            try: model = model.getModelName()
+            try: 
+                model = model.getModelName()
             except Exception,e:
-                print e+'\n'+'getArchivedTrendValues():model(%s).getModelName() failed\, using str(model)'%model
+                print('getArchivedTrendValues(): model(%s).getModelName()'
+                      ' failed: \n\t%s'% (model, str(e)))
                 model = str(model)
     if '{' not in model: #Excluding "eval-like" models
         params = utils.parse_tango_model(model,fqdn=True)
-        tango_host,attribute = '%s:%s'%(params['host'],params['port']),'%s/%s'%(params['devicename'],params['attributename'])
+        tango_host,attribute = ('%s:%s'%(params['host'],params['port']),
+            '%s/%s'%(params['devicename'],params['attributename']))
     else:
-        tango_host,attribute='',modelobj.getSimpleName() if hasattr(modelobj,'getSimpleName') else model.split(';')[-1]
+        tango_host,attribute = '',(modelobj.getSimpleName() 
+            if hasattr(modelobj,'getSimpleName') else model.split(';')[-1])
 
     model = fn.tango.get_full_name(model,fqdn=True)
     return tango_host,attribute,model
