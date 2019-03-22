@@ -1,0 +1,14 @@
+drop index att_conf_id_data_time on att_scalar_devstring_ro;
+drop index att_conf_id_data_time on att_scalar_devlong_ro;
+drop index att_conf_id_data_time on att_array_devdouble_ro;
+drop index att_conf_id_data_time on att_scalar_devlong_rw;
+drop index att_conf_id_data_time on att_scalar_devfloat_ro;
+drop index att_conf_id_data_time on att_array_devstate_ro;
+drop index att_conf_id_data_time on att_array_devstring_ro;
+drop index att_conf_id_data_time on att_scalar_devdouble_rw;
+drop index att_conf_id_data_time on att_scalar_devshort_rw;
+drop index att_conf_id_data_time on att_scalar_devshort_ro;
+drop index att_conf_id_data_time on att_scalar_devdouble_ro;
+drop index att_conf_id_data_time on att_scalar_devstate_ro;
+drop index att_conf_id_data_time on att_array_devshort_ro;
+drop index att_conf_id_data_time on att_array_devlong_ro;
