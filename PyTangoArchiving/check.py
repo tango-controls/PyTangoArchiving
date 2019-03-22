@@ -40,7 +40,8 @@ def check_archiving_schema(
     old_period = 24*3600*old_period if old_period < 1000 \
         else (24*old_period if old_period<3600 else old_period)
     
-    allattrs = api.get_attributes() if hasattr(api,'get_attributes') else api.keys()
+    allattrs = api.get_attributes() if hasattr(api,'get_attributes') \
+        else api.keys()
     print('%s contains %d attributes' % (schema,len(allattrs)))
     
     if attributes:
@@ -75,31 +76,6 @@ def check_archiving_schema(
   
     print('\t%d attributes are archived' % len(archived))
     
-    #Getting Tango devices currently not running
-    alldevs = set(t.rsplit('/',1)[0] for t in tattrs)
-    #tdevs = filter(fn.check_device,alldevs)
-    #nodevs = [fn.tango.get_normal_name(d) for d in alldevs if d not in tdevs]
-    #if nodevs:
-        #print('\t%d devices are not running' % len(nodevs))
-        
-    archs = sorted(set(archived.values()))
-    if loads:
-        astor = fn.Astor()
-        astor.load_from_devs_list(archs)
-        loads = fn.defaultdict(list)
-        for k,s in astor.items():
-            for d in s.get_device_list():
-                d = fn.tango.get_normal_name(d)
-                for a in archived:
-                    if fn.tango.get_normal_name(archived[a]) == d:
-                        loads[k].append(a)
-        for k,s in sorted(loads.items()):
-            print('\t%s archives %d attributes'%(k,len(s)))
-    
-    noarchs = [fn.tango.get_normal_name(d) for d in archs if not fn.check_device(d)]
-    if noarchs:
-        print('\t%d archivers are not running: %s' % (len(noarchs),noarchs))
-      
     ###########################################################################
 
     if isString(values) and values.endswith('.pck'):
@@ -121,9 +97,11 @@ def check_archiving_schema(
         #tups = api.db.get_table_updates()
         ## Some tables do not update MySQL index tables
         #t0 = [a for a in archived if a in tattrs and not tups[api[a].table]]
-        #check.update((t,check_attribute(a,readable=True)) for t in t0 if not check.get(t))
+        #check.update((t,check_attribute(a,readable=True)) for t in t0 
+        #    if not check.get(t))
         #t0 = [t for t in t0 if check[t]]
-        #print('%d/%d archived attributes have indexes not updated ...'%(len(t0),len(archived)))
+        #print('%d/%d archived attributes have indexes not updated ...'
+        #   %(len(t0),len(archived)))
         #if t0 and len(t0)<100: 
             #vs = api.load_last_values(t0);
             #tups.update((api[t].table,api[t].last_date) for t in t0)
@@ -144,7 +122,37 @@ def check_archiving_schema(
         else:
             values[k] = [] if isSequence(v) else None
                 
-    print('%d values obtained' % len(values))
+    print('%d values obtained' % len(values))    
+    
+    ###########################################################################    
+    
+    #Getting Tango devices currently not running
+    alldevs = set(t.rsplit('/',1)[0] for t in tattrs)
+    #tdevs = filter(fn.check_device,alldevs)
+    #nodevs = [fn.tango.get_normal_name(d) for d in alldevs if d not in tdevs]
+    #if nodevs:
+        #print('\t%d devices are not running' % len(nodevs))
+        
+    archs = sorted(set(archived.values()))
+    if loads:
+        astor = fn.Astor()
+        astor.load_from_devs_list(archs)
+        loads = fn.defaultdict(list)
+        for k,s in astor.items():
+            for d in s.get_device_list():
+                d = fn.tango.get_normal_name(d)
+                for a in archived:
+                    if fn.tango.get_normal_name(archived[a]) == d:
+                        loads[k].append(a)
+        for k,s in sorted(loads.items()):
+            print('\t%s archives %d attrs (last at %s)' 
+                % (k,len(s),fn.time2str(max(values[a][0] 
+                    for a in loads[k] if values[a]))))
+    
+    noarchs = [fn.tango.get_normal_name(d) for d in archs 
+               if not fn.check_device(d)]
+    if noarchs:
+        print('\t%d archivers are not running: %s' % (len(noarchs),noarchs))
     
     ###########################################################################
     
@@ -170,7 +178,8 @@ def check_archiving_schema(
     except:
         print(values.items()[0])
     if tmiss:
-        print('\t%d/%d attrs with values are not archived anymore' % (len(tmiss),len(tattrs)))
+        print('\t%d/%d attrs with values are not archived anymore' % 
+              (len(tmiss),len(tattrs)))
         
     result.Excluded = excluded
     result.Schema = schema
@@ -192,8 +201,8 @@ def check_archiving_schema(
 
     tnotup = sorted(a for a in values if values[a] and values[a][0] < ti-period)
     print('\t%d archived attrs are not updated' % len(tnotup))    
-    tupnoread = [a for a in tup if not values[a][1]
-               and fn.read_attribute(a) is None]
+    tupnoread = [a for a in tup if values[a][1] is None 
+                 and fn.read_attribute(a) is None]
     
     reads = dict((a,fn.read_attribute(a)) for a in tnotup)
     tnotupread = [a for a in tnotup if reads[a] is not None]
@@ -206,7 +215,8 @@ def check_archiving_schema(
           % len([t for t in tnotupread if t.lower().endswith('/position')]))
     
     tnotupevs = [a for a in tnotupread if fn.tango.check_attribute_events(a)]
-    print('\t%d not updated attrs are readable and have events (LostEvents)' % len(tnotupevs))    
+    print('\t%d not updated attrs are readable and have events (LostEvents)' 
+          % len(tnotupevs))    
     
     tnotupnotread = [a for a in tnotup if a not in tnotupread]
     print('\t%d not updated attrs are not readable' % len(tnotupnotread))
@@ -229,26 +239,26 @@ def check_archiving_schema(
                 diffs[a] = bool(diffs[a])
         except:
             diffs[a] = None
+            
+    differ = [a for a in losts if diffs[a]] #is True]
+    print('\t%d/%d not updated attrs have also wrong values!!!' 
+          % (len(differ),len(losts)))     
+    result.LostDiff = differ    
         
+    print('\n')
     fams = fn.defaultdict(list)
     for a in tnotupread:
         fams['/'.join(a.split('/')[-4:-2])].append(a)
     for f in sorted(fams):
         print('\t%s: %d attrs not updated' % (f,len(fams[f])))
         
-    print()
-    
-    differ = [a for a in losts if diffs[a]] #is True]
-    print('\t%d/%d not updated attrs have also wrong values!!!' 
-          % (len(differ),len(losts)))
-
+    print('-'*80)
     rd = pta.Reader()
     only = [a for a in tnotupread if len(rd.is_attribute_archived(a))==1]
     print('\t%d/%d not updated attrs are archived only in %s' 
           % (len(only),len(losts),schema))
-    result.LostDiff = differ
     print()   
-        
+    print('-'*80)        
     archs = sorted(set(archived.values()))
     astor = fn.Astor()
     astor.load_from_devs_list(archs)
@@ -257,11 +267,17 @@ def check_archiving_schema(
         for d in s.get_device_list():
             d = fn.tango.get_normal_name(d)
             for a in losts:
-                if fn.tango.get_normal_name(archived[a]) == d:
-                    badloads[k].append(a)
-    for k,s in badloads.items():
+                try:
+                    if fn.tango.get_normal_name(archived[a]) == d:
+                        badloads[k].append(a)
+                except:
+                    traceback.print_exc()
+                    
+    for k,s in sorted(badloads.items()):
         if len(s):
-            print('\t%s archives %d lost attributes'%(k,len(s)))
+            t = loads and len(loads[k]) or len(s)
+            print('\t%s archives %d/%d lost attributes (%f)'%
+                  (k,len(s),t,float(len(s))/t))
         
     print('\t%d updated attrs are not readable' % len(tupnoread))    
     
@@ -332,7 +348,8 @@ def check_archiving_schema(
             fn.wait(10.)
             astor.start_servers()
             
-        #print('NO ACTIONS ARE GONNA BE EXECUTED, AS THESE ARE ONLY RECOMMENDATIONS')
+        #print('NO ACTIONS ARE GONNA BE EXECUTED, AS THESE ARE ONLY 
+        # RECOMMENDATIONS')
         #print("""
         #api = PyTangoArchiving.HDBpp(schema)
         #api.start_devices()
