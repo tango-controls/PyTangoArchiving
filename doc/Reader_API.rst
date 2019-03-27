@@ -3,6 +3,16 @@ Reader API
 
 .. contents::
 
+Reader object description
+-------------------------
+
+@TODO
+
+Reader API
+----------
+
+@TODO
+
 Previous docs
 -------------
 
