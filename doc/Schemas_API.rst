@@ -2,6 +2,8 @@
 PyTangoArchiving.Schemas
 ========================
 
+.. contents::
+
 Declaring Schemas in the database
 =================================
 
