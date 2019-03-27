@@ -136,6 +136,8 @@ If all previous conditions are met, then data retrieval starts:
 Decimation methods
 ------------------
 
+see https://github.com/tango-controls/PyTangoArchiving/blob/documentation/doc/brief/ReaderAndDecimation.rst
+
 Methods passed to reader object:
 
 * fn.arrays.notnone
