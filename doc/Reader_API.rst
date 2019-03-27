@@ -30,8 +30,8 @@ Reader test cases
  * Arrays may be present in models and aliases (like TC_3 => Thermocouples[3]); this should work for all schemas
 * Relative timestamps (moving windows) to be suported
 
-Reader and trends
------------------
+Reader and trends (as of Taurus < 4.3)
+--------------------------------------
 
 The interaction between Taurus and PyTangoArchiving is done at Reader level or using PyTangoArchiving.widget.trend.getArchivedTrendValues method:
 
@@ -63,8 +63,41 @@ The interaction between Taurus and PyTangoArchiving is done at Reader level or u
 
 * if update wasn't forced (default is False) it will be rejected if:
  * the interval is considered too small if range < MIN_WINDOW (60s) or area is below 10% in the middle
- * the current range dont differ from lasts (rounded to 1 minut)
+ * the current range dont differ from lasts and history wasnt 0 (rounded to 1 minut)
+  * @TODO: this read-by-bunches approach may have some bugs if a part of the interval had no values!
  
 If all previous conditions are met, then data retrieval starts:
 
-* 
+* preparing:
+ * trend paused is checked just to be restored at the end
+ * cursor update is modified during this querying
+ * decimation method is obtained from logger
+  * if not set, it is set to either NotNones or data_has_changed; depending on options
+
+* Reader multiprocess is currently not implemented; but an instance of ReaderProcess actually exists
+* query::
+
+  history = reader.get_attribute_values(model,start_date,stop_date,
+                N=N,asHistoryBuffer=False,decimate=decimation)
+                
+* (!?!?!?!?!?): only for bunched queries!? if a query returns values for a middle area (.11,.05?) or start was prior to bounds[0], then attribute polling is deactivated if it was not readable 
+
+* insertion to trends is finally done by updateTrendBuffers, "dataChanged(const QString &)" and "refreshData" signals
+ * But! updateTrendBuffers also perform decimation::
+
+                #No backtracking, normal insertion
+                t_index = utils.sort_array(t,decimate=True,as_index=True,
+                                            minstep=minstep)
+                t,y = t.take(t_index,0),y.take(t_index,0)   
+                
+ * afterwards, it concatenate or reorganize buffers depending on overlapping                 
+
+Decimation methods
+------------------
+
+fn.arrays.notnone
+
+PyTangoArchiving.reader.data_has_changed
+
+
+ 
