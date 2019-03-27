@@ -6,12 +6,51 @@ Reader API
 Reader object description
 -------------------------
 
-@TODO
+The Reader object is a simplified api for accessing archiving values. It is focused only on querying data within time intervals and do not perform any configuration or setup (although it can be used to extract current configuration).
+
+It can be instantiated against a single database or multiple of them (passing "*") as schema. Configuration of schemas relies in the PyTangoArchiving.Schemas singletone object (see its documentation). 
 
 Reader API
 ----------
 
-@TODO
+* set/get_preferred_schema
+* init_for_schema/universal
+
+* reset
+* get_database
+
+* check_state
+* get_extractor
+
+* get_attributes(active)
+* get_attribute_model
+* get_attribute_alias
+* get_attribute_modes
+* is_attribute_archived
+* load_last_values
+* get_last_attribute_dates
+* get_time_interva
+
+* get_attribute_values
+* get_attribute_values_from_db
+
+* extract_mysql_data
+* extract_array_index
+
+* get_attributes_values
+* export_to_text
+* value_to_tet
+* correlate_values
+* get_extractor_values
+* clean_extractor
+
+
+ReaderProcess and ReaderByBunches
+---------------------------------
+
+Reader provides the ReaderProcess subclass, that runs queries to database in a separated process to avoid interpreter locking; this feature is currently only used in the PyExtractor device.
+
+ReaderByBunches tries instead to split the query in smalle data bunches; but it is actually not used and has been replaced by a separate algorithm in PyTangoArchiving.widgets.trend.getArchivedTrendValues method
 
 Previous docs
 -------------
