@@ -8,6 +8,8 @@ Reader object description
 
 The Reader object is a simplified api for accessing archiving values. It is focused only on querying data within time intervals and do not perform any configuration or setup (although it can be used to extract current configuration).
 
+It is mainly used by archiving2csv script, PyExtractor device, TaurusTrend GUI's and other python clients.
+
 It can be instantiated against a single database or multiple of them (passing "*") as schema. Configuration of schemas relies in the PyTangoArchiving.Schemas singletone object (see its documentation). 
 
 Reader API
