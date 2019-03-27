@@ -95,9 +95,14 @@ If all previous conditions are met, then data retrieval starts:
 Decimation methods
 ------------------
 
-fn.arrays.notnone
+Methods passed to reader object:
 
-PyTangoArchiving.reader.data_has_changed
+* fn.arrays.notnone
+* PyTangoArchiving.reader.data_has_changed
+
+Methods used in updateTrendBuffer:
+
+ * PyTangoArchiving.utils.sort_array(t,decimate=True,...)
 
 
  
