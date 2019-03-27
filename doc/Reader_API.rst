@@ -62,8 +62,31 @@ This file should merge information previously available at
 * doc/brief/ReaderAndDecimation.rst
 * doc/ReaderSchemas.rst
 
+get_attributes(active) method
+-----------------------------
+
+@TODO
+
+get_attribute_values method
+---------------------------
+
+* get_time_interval(start,stop) arranges dates: negative dates become relatives to now()
+ * it returns an (str,epoch,str,epoch) tuple
+
+* every five minutes a check_state() is executed
+ * it performs check_state() on every sub-schema
+ * it may imply a database ping (e.g. describe adt) or an extractor device ping, depending on the schema
+  * or just nothing, hdb++ has not implemented this check @TODO
+
+
+ 
+ 
+
+
 Reader test cases
 -----------------
+
+@TODO
 
 * Reader should be capable to get data from multiple databases
  * When DB schemas overlap for an attribute, it should be able to apply fallback schemas
