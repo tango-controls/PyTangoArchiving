@@ -73,6 +73,9 @@ def isAttributeArchived(attribute,reader=None,schema=''):
     The attribute could be no longer archived, but if there's data to retrieve 
     it will return True
     """
+    print('isAttributeArchived is DEPRECATED, '
+        'use just Reader().is_attribute_archived instead')
+    
     reader = reader or Reader(schema)
     reader.debug('In PyTangoArchiving.reader.isAttributeArchived(%s)'%attribute)
     try:
@@ -98,7 +101,6 @@ def isAttributeArchived(attribute,reader=None,schema=''):
 
     except:
       return False
-  
     
 def getArchivingReader(attr_list=None,start_date=0,stop_date=0,
                        hdb=None,tdb=None,logger=None,tango='',schema=''): 
@@ -107,6 +109,7 @@ def getArchivingReader(attr_list=None,start_date=0,stop_date=0,
     
     It is done counting the fail/errors per schema
     """
+    print('getArchivingReader is DEPRECATED, use just Reader() instead')
     attr_list = fun.toList(attr_list or [])
     try:
       schemas = Schemas.SCHEMAS or Schemas.load()
@@ -803,7 +806,8 @@ class Reader(Object,SingletonMap):
         if not stop_time: #Query optimized to get the latest values
             stop_time,GET_LAST = time.time(),True
         else:
-            if stop_time<0: stop_time = time.time()+stop_time
+            if stop_time<0: 
+                stop_time = time.time()+stop_time
             GET_LAST = False
 
         start_date,stop_date = epoch2str(start_time),epoch2str(stop_time)
@@ -1097,6 +1101,7 @@ class Reader(Object,SingletonMap):
             raise Exception('Reader.UnableToConvertData(%s,format=%s)'
                             % (attribute,data_format),str(e))
         
+        self.log.info('get_from_db(%s)' % str(len(values) and values[0]))
         return values
     
     def extract_mysql_data(self, result, data_type, data_format, notNone):
@@ -1143,7 +1148,6 @@ class Reader(Object,SingletonMap):
 
         #@debug
         self.log.info('\tParsed [%d] in %s s'%(len(values),time.time()-t1))
-
         return values    
         
     def extract_array_index(self,values,array_index,decimate=False,asHistoryBuffer=False):
