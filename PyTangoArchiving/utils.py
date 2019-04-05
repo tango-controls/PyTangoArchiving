@@ -307,9 +307,9 @@ def get_failed(values):
         if not isNaN(values[i][1]) and isNaN(values[i+1][1]):
             print 'found error at %s' % time.ctime(values[i+1][0])
             try:
-                next = (j for j in range(i+1,len(values)) if not isNaN(values[j][1])).next()
-                failed.append((values[i][0],values[i+1][0],values[next][0]))
-                i=next
+                nxt = (j for j in range(i+1,len(values)) if not isNaN(values[j][1])).next()
+                failed.append((values[i][0],values[i+1][0],values[nxt][0]))
+                i = nxt
             except StopIteration: #Unable to find the next valid value
                 print 'no more values found afterwards ...'
                 failed.append((values[i][0],values[i+1][0],-1))
