@@ -59,6 +59,8 @@ class HDBpp(ArchivingDB,SingletonMap):
         """
         Configuration can be loaded from PyTangoArchiving.Schemas,
         an HdbConfigurationManager or another DB object.
+        
+        api = pta.HDBpp(db_name,host,user,passwd,manager)
         """
         assert db_name or manager, 'db_name/manager argument is required!'
         self.tango = get_database()
@@ -515,7 +517,7 @@ class HDBpp(ArchivingDB,SingletonMap):
         return
 
     def add_attribute(self,attribute,archiver,period=0,
-                      rel_event=None,per_event=300000,abs_event=None,
+                      rel_event=None,per_event=None,abs_event=None,
                       code_event=False, ttl=None, start=False):
         """
         set _event arguments to -1 to ignore them and not modify the database
@@ -607,7 +609,7 @@ class HDBpp(ArchivingDB,SingletonMap):
                                           for a in self.get_attributes())
           
     def start_archiving(self,attribute,archiver,period=0,
-                      rel_event=None,per_event=0,abs_event=None,
+                      rel_event=None,per_event=None,abs_event=None,
                       code_event=False, ttl=None, start=False):
         """
         See HDBpp.add_attribute.__doc__ for a full description of arguments
@@ -627,9 +629,11 @@ class HDBpp(ArchivingDB,SingletonMap):
                         per_event=per_event, abs_event=abs_event,
                         code_event=code_event, ttl=ttl, 
                         start=start)
-                    time.sleep(5.)
-                    #fullname = self.is_attribute_archived(attribute,cached=0)
-                d.AttributeStart(fullname)
+                    if start:
+                        time.sleep(5.)
+                        fullname = self.is_attribute_archived(attribute,cached=0)
+                if start:
+                    d.AttributeStart(fullname)
                 return True
         except Exception,e:
             self.error('start_archiving(%s): %s'

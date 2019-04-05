@@ -42,6 +42,7 @@ def inc_months(date,count):
 
 newc = ("alter table %s add column int_time INT "
     "generated always as (TO_SECONDS(data_time)-62167222800) PERSISTENT;")
+
 newi = ("create index i%s on %s(att_conf_id, int_time);")
 newi += ("\ndrop index att_conf_id_data_time on %s;")
 head = "ALTER TABLE %s PARTITION BY RANGE(int_time) ("
