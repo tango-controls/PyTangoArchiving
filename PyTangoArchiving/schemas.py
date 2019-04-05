@@ -53,7 +53,8 @@ class SchemaDict(dict): #fn.Struct):
             r = super(SchemaDict,self).get('reader',None)
             #print('%s.get(%s)' % (self['schema'],key))
             
-            if self._load and isinstance(r,str):
+            # if self._load and 
+            if isinstance(r,str):
                 self['reader'] = Schemas.getReader(self['schema'],self.copy())
                 #print(self['reader'])
                 
@@ -101,6 +102,7 @@ class Schemas(object):
     
     @classmethod
     def __iter__():
+        """ TODO: iter() does not work in classes!"""
         return k.SCHEMAS.__iter__()
     
     @classmethod
@@ -115,8 +117,8 @@ class Schemas(object):
     def get(k,key,default=None):
         return k.SCHEMAS.get(key,default)
     
-    
     @classmethod
+    @fn.Catched
     def load(k,tango='',prop='',logger=None):
 
         tangodb = fn.tango.get_database(tango)
@@ -129,8 +131,8 @@ class Schemas(object):
             schemas = ['tdb','hdb']
             tangodb.put_property('PyTangoArchiving',{'DbSchemas':schemas})
 
-        print('Loading schemas from tango@%s ... (%s)'%
-              (tangodb.get_db_host(), ','.join(schemas)))
+        print('Loading schemas from tango@%s ... ' % 
+              (tangodb.get_db_host()))
 
         [k.getSchema(schema,tango,write=True,logger=logger) 
             for schema in schemas]
