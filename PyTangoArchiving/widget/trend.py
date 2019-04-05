@@ -910,6 +910,8 @@ def getArchivedTrendValues(trend_set,model,start_date=0,stop_date=None,
                     ','.join([str(s) for s in history[:3]]) ))
                     
             #logger_obj.warning('%s , %s , %s' % (start_date,bounds[0],start_date<=bounds[0]))
+
+            # THIS CHECK IS ONLY FOR BUNCHED QUERIES (N!=0)
             if ((0 < len(history) < abs(N) and area>(.11,.05)[zone==ZONES.MIDDLE])
                 or start_date<=bounds[0]):
                 # Windowed query was finished, stop refreshing
