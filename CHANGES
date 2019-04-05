@@ -6,6 +6,26 @@
 @TODO Rename widgetArchivingBrowser.ModelSearchWidget to widget.browser.ArchivingBrowser
 @TODO: rename ArchivingBrowser to browser
 
+8.8.0
+
+    new DbSchemas property
+    new schemas test script
+    speed up adding attributes to archiving
+    solve bug on filtering none values
+    solve bug on loading reader from schema
+    add scripts for int-based time indexing
+    add overlap method for schema checking
+    add delete_tdb_table method
+    get_attr_errors, get_all_databases, solve order bug in load_last_values
+    add archiver statistics
+    add tango host logging
+    solve bugs on get_attributes_by_table
+    add new DbSchemas property for dict-like specs
+    use data_time as order by when transferring data
+    add parse_property method for parsing dict-like defs
+    add try/except on property parsing
+
+
 8.7.0
 
     solve bug on filtering on server side
