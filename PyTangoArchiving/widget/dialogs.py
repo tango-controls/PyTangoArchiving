@@ -100,8 +100,9 @@ def parseTrendModel(model):
             try: 
                 model = model.getModelName()
             except Exception,e:
-                print('getArchivedTrendValues(): model(%s).getModelName()'
-                      ' failed: \n\t%s'% (model, str(e)))
+                # minor error, depending on taurus version
+                #print('parseTrendModel(): model(%s).getModelName()'
+                      #' failed: \n\t%s'% (model, str(e)))
                 model = str(model)
     if '{' not in model: #Excluding "eval-like" models
         params = utils.parse_tango_model(model,fqdn=True)

@@ -6,6 +6,9 @@
 @TODO Rename widgetArchivingBrowser.ModelSearchWidget to widget.browser.ArchivingBrowser
 @TODO: rename ArchivingBrowser to browser
 
+8.8.1
+    add querying by corrected int_time, when available
+
 8.8.0
 
     new DbSchemas property

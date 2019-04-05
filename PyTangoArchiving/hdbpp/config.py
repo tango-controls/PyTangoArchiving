@@ -717,6 +717,14 @@ class HDBpp(ArchivingDB,SingletonMap):
                 "from att_conf_data_type")
             return dict(('att_'+t,self.Query("select att_name from att_conf"
                 "  where att_conf_data_type_id = %s"%i)) for t,i in types)
+        
+    def get_mysqlsecsdiff(self,date):
+        """
+        Returns the value to be added to dates when querying int_time tables
+        """
+        return self.Query(
+            "select (TO_SECONDS('%s')-62167222800) - UNIX_TIMESTAMP('%s')" 
+            % (date,date))[0][0]
           
     #@staticmethod
     #def decimate_values(values,N=540,method=None):
@@ -803,7 +811,7 @@ class HDBpp(ArchivingDB,SingletonMap):
     def get_attribute_values(self,table,start_date=None,stop_date=None,
                              desc=False,N=0,unixtime=True,
                              extra_columns='quality',decimate=0,human=False,
-                             as_double=True,aggregate='MAX',
+                             as_double=True,aggregate='MAX',int_time=True,
                              **kwargs):
         """
         This method returns values between dates from a given table.
@@ -838,25 +846,50 @@ class HDBpp(ArchivingDB,SingletonMap):
         what = 'UNIX_TIMESTAMP(data_time)' if unixtime else 'data_time'
         if as_double:
             what = 'CAST(%s as DOUBLE)' % what
+            
         if 'array' in table: what+=",idx"
         value = 'value_r' if 'value_r' in self.getTableCols(table) \
                                 else 'value'
+                            
         if decimate and aggregate in ('AVG','MAX','MIN'):
             value = '%s(%s)' % (aggregate,value)
+            
         what += ', ' + value
         if extra_columns: 
             what+=','+extra_columns
 
         interval = 'where att_conf_id = %s'%aid if aid is not None \
                                                 else 'where att_conf_id >= 0 '
+                                            
+        int_time = int_time and 'int_time' in self.getTableCols(table)
+        if int_time:
+            self.info('Using int_time indexing for %s' % table)
         if start_date or stop_date:
             start_date,start_time,stop_date,stop_time = \
                 Reader.get_time_interval(start_date,stop_date)
-            if start_date and stop_date:
-                interval += (" and data_time between '%s' and '%s'"
+            
+            if int_time:
+                
+                def str2mysqlsecs(date):
+                    rt = fn.str2time(date)
+                    return int(rt+self.get_mysqlsecsdiff(date)) #fn.str2time(date)-it
+                
+                if start_date and stop_date:
+                    interval += (" and int_time between %d and %d"
+                            %(str2mysqlsecs(start_date),
+                              str2mysqlsecs(stop_date)))
+                
+                elif start_date and fandango.str2epoch(start_date):
+                    interval += (" and int_time > %d" 
+                                 % str2mysqlsecs)
+                
+            else:
+                if start_date and stop_date:
+                    interval += (" and data_time between '%s' and '%s'"
                             %(start_date,stop_date))
-            elif start_date and fandango.str2epoch(start_date):
-                interval += " and data_time > '%s'"%start_date
+                
+                elif start_date and fandango.str2epoch(start_date):
+                    interval += " and data_time > '%s'"%start_date
             
         query = 'select %s from %s %s' % (what,table,interval)
         if decimate:
@@ -865,8 +898,9 @@ class HDBpp(ArchivingDB,SingletonMap):
             else:
                 d = int((stop_time-start_time)/10800) or 1
             # decimation on server side
-            query += 'group by FLOOR(UNIX_TIMESTAMP(data_time)/%d)' % (d)
-        query += ' order by data_time'
+            query += 'group by FLOOR(%s/%d)' % (
+                'int_time' if int_time else 'UNIX_TIMESTAMP(data_time)',d)
+        query += ' order by %s' % ('int_time' if int_time else 'data_time')
                     
         if N == 1:
             human = 1
@@ -877,10 +911,11 @@ class HDBpp(ArchivingDB,SingletonMap):
         
         ######################################################################
         # QUERY
-        self.info(query)
+        t0 = time.time()
+        self.warning(query)
         try:
             result = self.Query(query)
-            self.debug('read [%d] in %f s'%(len(result),time.time()-t0))
+            self.warning('read [%d] in %f s'%(len(result),time.time()-t0))
         except MySQLdb.ProgrammingError as e:
             result = []
             if 'DOUBLE' in str(e) and "as DOUBLE" in query:
@@ -981,9 +1016,13 @@ class HDBpp(ArchivingDB,SingletonMap):
 
     def get_attribute_rows(self,attribute,start_date=0,stop_date=0):
         aid,tid,table = self.get_attr_id_type_table(attribute)
+        int_time = 'int_time' in self.getTableCols(table)
         if start_date and stop_date:
             dates = map(time2str,(start_date,stop_date))
-            where = " and data_time between '%s' and '%s'" % tuple(dates)
+            where = " and %s between '%s' and '%s'" % (
+                'int_time' if int_time else 'data_time',
+                int(str2time(dates[0])) if int_time else dates[0],
+                int(str2time(dates[1])) if int_time else dates[1])
         else:
             where = ''
         r = self.Query('select count(*) from %s where att_conf_id = %s'
