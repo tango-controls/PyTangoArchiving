@@ -6,6 +6,16 @@
 @TODO Rename widgetArchivingBrowser.ModelSearchWidget to widget.browser.ArchivingBrowser
 @TODO: rename ArchivingBrowser to browser
 
+8.9.0
+
+    adapt trends to new reader methods
+    solve bug on decimated queries
+    add fallback by gaps in query
+    solve bug when loading tdb/hdb reader
+    increase default partitions to 30
+    add methods for split intervals (months,days,etc)
+    add querying by int_time with diff correction
+
 8.8.1
     add querying by corrected int_time, when available
 
