@@ -949,14 +949,18 @@ class Reader(Object,SingletonMap):
         
         elif self.db_name=='*':
           
-            rd = getArchivingReader(attribute,start_time,stop_time,
-                  self.configs.get('hdb',None),self.configs.get('tdb',None),
-                  logger=self.log)
+            #rd = getArchivingReader(attribute,start_time,stop_time,
+                  #self.configs.get('hdb',None),self.configs.get('tdb',None),
+                  #logger=self.log)
+            sch = self.is_attribute_archived(attribute, preferent = True,
+                start = start_time, stop = stop_time)
             
-            if not rd: 
+            if not sch: 
                 self.log.warning('In get_attribute_values(%s): '
                   'No valid schema at %s'%(attribute,start_date))
                 return []
+            
+            rd = Schemas.getReader(sch[0])            
             #@debug
             self.log.warning('In get_attribute_values(%s): '
               'Using %s schema at %s'%(attribute,rd.schema,start_date))
@@ -973,7 +977,9 @@ class Reader(Object,SingletonMap):
                     gaps = [(start_time,stop_time)]
                 else:
                     r = .1*(stop_time-start_time)
-                    gaps = get_gaps(values,r,start=start_time,stop=stop_time)
+                    gaps = get_gaps(values,r,
+                                    start = start_time if not N else 0,
+                                    stop = stop_time if not N else 0)
                     print('get_gaps: %d gaps' % len(gaps))
 
                 fallback = []

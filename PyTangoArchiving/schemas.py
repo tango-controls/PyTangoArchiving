@@ -154,7 +154,7 @@ class Schemas(object):
         return fn.evalX(obj, modules=k.MODULES, _locals=dct)
     
     @classmethod
-    def getReader(k,schema,dct):
+    def getReader(k,schema,dct=None):
         # This method initializes a reader object from Schema config
         # It does not update the Schema object, just returns a reader
         
