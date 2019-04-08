@@ -193,10 +193,6 @@ class HDBpp(ArchivingDB,SingletonMap):
                     break
                     
         dp = get_device(self.manager,keep=True) if self.manager else None
-        if not check_device(dp):
-            print('get_manager(%s): %s is not running!' 
-                  % (db_name,self.manager))
-
         return dp
       
     @Cached(depth=10,expire=60.)
@@ -898,7 +894,7 @@ class HDBpp(ArchivingDB,SingletonMap):
             else:
                 d = int((stop_time-start_time)/10800) or 1
             # decimation on server side
-            query += 'group by FLOOR(%s/%d)' % (
+            query += ' group by FLOOR(%s/%d)' % (
                 'int_time' if int_time else 'UNIX_TIMESTAMP(data_time)',d)
         query += ' order by %s' % ('int_time' if int_time else 'data_time')
                     
@@ -912,7 +908,8 @@ class HDBpp(ArchivingDB,SingletonMap):
         ######################################################################
         # QUERY
         t0 = time.time()
-        self.warning(query)
+        self.warning(query.replace('where','\nwhere').replace(
+            'group,','\ngroup'))
         try:
             result = self.Query(query)
             self.warning('read [%d] in %f s'%(len(result),time.time()-t0))
