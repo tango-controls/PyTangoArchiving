@@ -82,6 +82,14 @@ def get_table_partitions(api,table,description=''):
             print(i,l,n)
     return(data)
 
+def create_new_partitions(api,table,preffix,key,npartitions):
+    """
+    This script will create N new partitions, one for each month
+    for the given table and key
+    """
+    
+    
+
 """
 cd $FOLDER
 FILENAME=$SCHEMA.full.$(date +%F).dmp

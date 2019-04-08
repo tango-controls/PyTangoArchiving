@@ -25,7 +25,7 @@ tables = {
     }
     
 start_date = sys.argv[1] # '2017-08-01'
-npartitions = 20
+npartitions = 30
 counter = 0
 
 def inc_months(date,count):
