@@ -31,9 +31,9 @@ from random import randrange
 from collections import defaultdict
 
 import fandango
+import fandango as fn
 from fandango.objects import Object,SingletonMap,Cached
 from fandango.log import Logger
-import fandango.functional as fun
 
 from fandango.dicts import CaselessDict, SortedDict
 from fandango.linos import check_process,get_memory
@@ -110,7 +110,7 @@ def getArchivingReader(attr_list=None,start_date=0,stop_date=0,
     It is done counting the fail/errors per schema
     """
     print('getArchivingReader is DEPRECATED, use just Reader() instead')
-    attr_list = fun.toList(attr_list or [])
+    attr_list = fn.toList(attr_list or [])
     try:
       schemas = Schemas.SCHEMAS or Schemas.load()
     except:
@@ -323,7 +323,7 @@ class Reader(Object,SingletonMap):
         
     @fandango.Catched
     def init_for_schema(self,schema,config='',servers=[]):
-        self.log.debug('%s.init_for_schema(%s,%s)' 
+        self.log.info('%s.init_for_schema(%s,%s)' 
                        % (self.schema,schema,config))
 
         if not config and schema in Schemas.keys():
@@ -334,6 +334,7 @@ class Reader(Object,SingletonMap):
                 
         if not config and schema in ('hdb','tdb'):
             try:
+                self.log.info('load %sextractor properties' % self.schema)
                 prop = '%sextractor'%self.schema
                 prop = self.tango.get_class_property(prop,['DbConfig'])
                 config = '\n'.join(prop['DbConfig'] or [''])
@@ -358,20 +359,20 @@ class Reader(Object,SingletonMap):
             self.is_hdbpp = True
             c = sorted(self.configs.items())[-1][-1]
             self.db_name = c.split('/')[-1] if '/' in c else schema
-            self.log.debug("Created HDB++ reader")
+            self.log.info("Created HDB++ reader")
         else:
-            self.log.debug("Created '%s' reader"%self.db_name)
+            self.log.info("Created '%s' reader"%self.db_name)
         
-        if self.schema.lower() == 'tdb': 
-            #RetentionPeriod must be updated for all generic readers
-            try:
-                prop = self.tango.get_class_property('TdbArchiver',
-                                ['RetentionPeriod'])['RetentionPeriod']
-                prop = prop[0] if prop else 'days/3'
-                Reader.RetentionPeriod = max((Reader.RetentionPeriod,
-                                eval('1./(%s)'%prop,{'days':1./(3600*24)})))
-            except Exception,e: 
-                self.log.warning('Error on RetentionPeriod: %s'%e)
+        #if self.schema.lower() == 'tdb': 
+            ##RetentionPeriod must be updated for all generic readers
+            #try:
+                #prop = self.tango.get_class_property('TdbArchiver',
+                                #['RetentionPeriod'])['RetentionPeriod']
+                #prop = prop[0] if prop else 'days/3'
+                #Reader.RetentionPeriod = max((Reader.RetentionPeriod,
+                                #eval('1./(%s)'%prop,{'days':1./(3600*24)})))
+            #except Exception,e: 
+                #self.log.warning('Error on RetentionPeriod: %s'%e)
             
         #Initializing archiver extractors proxies
         if self.get_database() is None:
@@ -431,21 +432,32 @@ class Reader(Object,SingletonMap):
                 'PyTangoArchiving.Reader disabled')
                 
     def get_database(self,epoch=-1):
+        #self.log.info('%s.get_database(%s)' % (self.schema,epoch))
         try:
-            if epoch<0: epoch = time.time()
-            config = sorted((e,c) for e,c in self.configs.items() if e<=epoch)[-1][-1]
+            if epoch<-1: 
+                epoch = time.time()-epoch
+            else:
+                epoch = time.time()
+            config = sorted((e,c) for e,c in self.configs.items() 
+                            if e<=epoch)[-1]
+            if fn.isSequence(config):
+                config = config[-1]            
+            #self.log.info('config: %s' % str(config))
         except Exception,e:
-            #traceback.print_exc()
-            self.log.warning('Unable to get DB(%s,%s) config at %s, using Java Extractors.\n%s'%(self.db_name,self.schema,epoch,e))
+            [fn.printf(t) for t in self.configs.items()]
+            traceback.print_exc()
+            self.log.warning('Unable to get DB(%s,%s) config at %s'
+                             %(self.db_name,self.schema,epoch))
             return None
-        #print('get_database(%s)' % self.schema)
         try:
             user,host = '@' in config and config.split('@',1)\
                 or (config,os.getenv('HOSTNAME'))
             user,passwd = ':' in user and user.split(':',1) or (user,'')
             host,db_name = host.split('/') if '/' in host \
                 else (host,self.db_name)
-            #(self.log.info if len(self.configs)>1 else self.log.debug)('Accessing MySQL using config = %s:...@%s/%s' % (user,host,db_name))
+            #(self.log.info if len(self.configs)>1 else self.log.debug)(
+            # 'Accessing MySQL using config = %s:...@%s/%s' 
+            # % (user,host,db_name))
         except:
             self.log.warning('Wrong format of DB config: %s.\n%s'%(config,traceback.format_exc()))
             return None
@@ -455,7 +467,9 @@ class Reader(Object,SingletonMap):
                     from PyTangoArchiving.hdbpp import HDBpp
                     self.dbs[(host,db_name)] = HDBpp(db_name,host,user,passwd)
                 else: 
-                    self.dbs[(host,db_name)] = ArchivingDB(db_name,host,user,passwd,loglevel=self.log.getLogLevel(),default_cursor=MySQLdb.cursors.SSCursor)
+                    self.dbs[(host,db_name)] = ArchivingDB(db_name,host,user,
+                        passwd,loglevel=self.log.getLogLevel(),
+                        default_cursor=MySQLdb.cursors.SSCursor)
                 
             if '%s@%s'%(db_name,host) != self._last_db:
                 self._last_db = '%s@%s'%(db_name,host)
@@ -757,9 +771,9 @@ class Reader(Object,SingletonMap):
             for attr in attribute:
                 result[attr] = self.load_last_values(attr,schema,epoch)
             return result
-        elif schema is None or fun.isNumber(schema):
+        elif schema is None or fn.isNumber(schema):
             schemas = self.is_attribute_archived(attribute)
-            if fun.isNumber(schema):
+            if fn.isNumber(schema):
                 schemas = schemas[:schema]
         else:
             schemas = fandango.toList(schema)
@@ -769,8 +783,8 @@ class Reader(Object,SingletonMap):
             vs = vs.values() if hasattr(vs,'values') else vs
             r = vs and vs[0]
             if r and isinstance(r[0],datetime.datetime):
-                r = [fun.date2time(r[0]),r[1],(r[2:3] or [None])[0],
-                     fun.date2str(r[0])]
+                r = [fn.date2time(r[0]),r[1],(r[2:3] or [None])[0],
+                     fn.date2str(r[0])]
             result[s] = r
         return result
         
@@ -792,7 +806,9 @@ class Reader(Object,SingletonMap):
     @staticmethod
     def get_time_interval(start_date,stop_date):
         """
-        This method will take any valid input time format and will return four values:
+        This method will take any valid input time format and 
+        will return four values:
+        
         start_date,start_time,stop_date,stop_time
         """
         start_time = start_date if isinstance(start_date,(int,float)) \
@@ -945,17 +961,19 @@ class Reader(Object,SingletonMap):
                     notNone=notNone,N=N)
             
             # If no data, it just tries the next database
-            if fallback and (values is None or not len(values)): 
-                sch = self.is_attribute_archived(attribute)[1:]
-                while not len(values) and len(sch):
-                    self.log.warning('In get_attribute_values(%s,%s,%s)(%s): '
-                      'fallback to %s as %s returned no data'%(
-                        attribute,start_date,stop_date,rd.schema,
-                        sch[0], rd.schema))
-                    values = self.configs[sch[0]].get_attribute_values(
-                        attribute,start_date,stop_date,
-                        asHistoryBuffer=asHistoryBuffer,decimate=decimate,N=N)
-                    sch = sch[1:]
+            if fallback:
+                gaps = []
+                if (values is None or not len(values)): 
+                    sch = self.is_attribute_archived(attribute)[1:]
+                    while not len(values) and len(sch):
+                        self.log.warning('In get_attribute_values(%s,%s,%s)(%s): '
+                        'fallback to %s as %s returned no data'%(
+                            attribute,start_date,stop_date,rd.schema,
+                            sch[0], rd.schema))
+                        values = self.configs[sch[0]].get_attribute_values(
+                            attribute,start_date,stop_date,
+                            asHistoryBuffer=asHistoryBuffer,decimate=decimate,N=N)
+                        sch = sch[1:]
           
         # END OF GENERIC CODE
         #######################################################################
@@ -1198,7 +1216,7 @@ class Reader(Object,SingletonMap):
         self.log.debug('Query finished in %d milliseconds'%(1000*(time.time()-start)))
         if correlate or text:
             if len(attributes)>1:
-                table = self.correlate_values(values,str2time(stop_date),resolution=(correlate if correlate is not True and fun.isNumber(correlate)  else None))
+                table = self.correlate_values(values,str2time(stop_date),resolution=(correlate if correlate is not True and fn.isNumber(correlate)  else None))
             else:
                 table = values
             if trace or text: 
@@ -1268,8 +1286,8 @@ class Reader(Object,SingletonMap):
             else: resolution = 3600 #defaults
             self.log.info('correlate_values(...) resolution set to %2.3f -> %d s'%(avg,resolution))
         assert resolution>.1, 'Resolution must be > 0'
-        if rule is None: rule = fun.partial(choose_first_value,tmin=-resolution*10)
-        #if rule is None: rule = fun.partial(choose_last_max_value,tmin=-resolution*10)
+        if rule is None: rule = fn.partial(choose_first_value,tmin=-resolution*10)
+        #if rule is None: rule = fn.partial(choose_last_max_value,tmin=-resolution*10)
         
         epochs = range(int(first-resolution),int(last+resolution),int(resolution))
         for k,data in values.items():
