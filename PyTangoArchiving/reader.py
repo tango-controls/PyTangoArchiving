@@ -105,11 +105,10 @@ def isAttributeArchived(attribute,reader=None,schema=''):
 def getArchivingReader(attr_list=None,start_date=0,stop_date=0,
                        hdb=None,tdb=None,logger=None,tango='',schema=''): 
     """
+    This method is deprecated by reader.is_attribute_archived
     It returns the most suitable reader for a list of attributes
-    
     It is done counting the fail/errors per schema
     """
-    print('getArchivingReader is DEPRECATED, use just Reader() instead')
     attr_list = fn.toList(attr_list or [])
     try:
       schemas = Schemas.SCHEMAS or Schemas.load()
@@ -158,6 +157,7 @@ def getArchivingReader(attr_list=None,start_date=0,stop_date=0,
             log('getArchivingReader(%s,%s,%s): not in %s schema!'%(
               a,start_date,stop_date,name))
             failed[name]+=1
+            
           elif not data['reader'].is_attribute_archived(a):
             log('getArchivingReader(%s,%s): not archived!'%(name,a))
             failed[name]+=1
@@ -177,7 +177,9 @@ def getArchivingReader(attr_list=None,start_date=0,stop_date=0,
         rd = data[failed[0][1]].get('reader')
         if log: 
             log('getArchivingReader(): Using %s'%failed[0][1])
+
         return rd
+
     return None
     
     ##@TODO: OLD CODE, TO BE REMOVED IN NEXT RELEASE
@@ -702,7 +704,8 @@ class Reader(Object,SingletonMap):
         return self.modes[attribute]
     
     @Cached(depth=10000,expire=60.)
-    def is_attribute_archived(self,attribute,active=False,preferent=True):
+    def is_attribute_archived(self,attribute,active=False,preferent=True,
+        start = None, stop = None):
         """ 
         This method uses two list caches to avoid redundant device 
         proxy calls, launch .reset() to clean those lists. 
@@ -725,7 +728,8 @@ class Reader(Object,SingletonMap):
             pref = self.get_preferred_schema(attr)
             if preferent and pref not in (None,'*'): 
                 return [pref]
-            elif not active and len(self.attr_schemas[attr]):
+            elif not any((active, start, stop)) \
+                    and len(self.attr_schemas[attr]):
                 return self.attr_schemas[attr]
             else:
                 sch = []
@@ -733,7 +737,8 @@ class Reader(Object,SingletonMap):
                     if a == self.db_name: continue
                     try:
                         if (c and (a not in Schemas.keys() or
-                                Schemas.checkSchema(a,attr)) 
+                                Schemas.checkSchema(a, attr,
+                                    start=start, stop=stop)) 
                             and c.is_attribute_archived(attr,active)):
                             sch.append(a)
                     except: 
@@ -947,6 +952,7 @@ class Reader(Object,SingletonMap):
             rd = getArchivingReader(attribute,start_time,stop_time,
                   self.configs.get('hdb',None),self.configs.get('tdb',None),
                   logger=self.log)
+            
             if not rd: 
                 self.log.warning('In get_attribute_values(%s): '
                   'No valid schema at %s'%(attribute,start_date))
@@ -962,18 +968,39 @@ class Reader(Object,SingletonMap):
             
             # If no data, it just tries the next database
             if fallback:
-                gaps = []
+
                 if (values is None or not len(values)): 
-                    sch = self.is_attribute_archived(attribute)[1:]
-                    while not len(values) and len(sch):
+                    gaps = [(start_time,stop_time)]
+                else:
+                    r = .1*(stop_time-start_time)
+                    gaps = get_gaps(values,r,start=start_time,stop=stop_time)
+                    print('get_gaps: %d gaps' % len(gaps))
+
+                fallback = []
+                for gap0,gap1 in gaps:
+                    prev = rd.schema
+                    sch = [s for s in self.is_attribute_archived(attribute, 
+                        start = gap0, stop = gap1, preferent=False)
+                        if s != prev]
+                    self.log.warning('trying fallbacks: %s' % str(sch))
+                    gapvals = []
+                    while not len(gapvals) and len(sch):
                         self.log.warning('In get_attribute_values(%s,%s,%s)(%s): '
-                        'fallback to %s as %s returned no data'%(
-                            attribute,start_date,stop_date,rd.schema,
-                            sch[0], rd.schema))
-                        values = self.configs[sch[0]].get_attribute_values(
-                            attribute,start_date,stop_date,
-                            asHistoryBuffer=asHistoryBuffer,decimate=decimate,N=N)
-                        sch = sch[1:]
+                        'fallback to %s as %s returned no data in (%s,%s)'%(
+                            attribute,gap0,gap1,prev,sch[0],
+                            rd.schema,time2str(gap0),time2str(gap1)))
+                        gapvals = self.configs[sch[0]
+                            ].get_attribute_values(attribute,gap0,gap1,N=N,
+                            asHistoryBuffer=asHistoryBuffer,decimate=decimate)
+                        prev,sch = sch[0],sch[1:]
+                    fallback.extend(gapvals)
+
+                if len(fallback):
+                    tf = fn.now()
+                    values = sorted(values+fallback)
+                    self.log.warning('Adding %d values from fallback took '
+                        '%f seconds' % (len(fallback),fn.now()-tf))
+                    
           
         # END OF GENERIC CODE
         #######################################################################

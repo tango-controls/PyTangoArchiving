@@ -357,12 +357,25 @@ def split_interval(start,stop,jump):
              #if 120<(values[i+1][0]-values[i][0])]
     #return [[time.ctime(d) for d in j] for j in jumps]
 
-def get_gaps(values, min_gap=5*24*3600):
+def get_gaps(values, min_gap=5*24*3600, start=None, stop=None):
     """
     return time intervals in buffer where time distance is bigger than min_gap
     """
+    if not any((len(values),start,stop)):
+        print('get_gaps, no values')
+        return []
+    elif start and stop and not len(values):
+        print('get_gaps, no values in interval')
+        return [(start,stop)]
+        
     gaps = [(values[i][0],v[0]) for i,v in enumerate(values[1:])
                 if min_gap < (v[0]-values[i][0])]
+    
+    if start and values[0][0] >  start + min_gap:
+        gaps.insert(0,(start,values[0][0]))
+    if stop and values[-1][0] < stop - min_gap:
+        gaps.append((values[-1][0],stop))
+    
     return gaps
 
 def get_failed(values):

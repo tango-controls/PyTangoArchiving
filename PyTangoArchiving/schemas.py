@@ -122,17 +122,17 @@ class Schemas(object):
     def load(k,tango='',prop='',logger=None):
 
         tangodb = fn.tango.get_database(tango)
-        schemas = prop or tangodb.get_property(
-            'PyTangoArchiving',['DbSchemas','Schemas'])
+        schemas = prop or tangodb.get_property('PyTangoArchiving',
+                    ['DbSchemas','Schemas'])
 
-        schemas = schemas.get('DbSchemas',schemas.get('Schemas',[]))
+        pname = 'DbSchemas' if 'DbSchemas' in schemas else 'Schemas'
+        schemas = schemas.get(pname,[])
 
         if not schemas:
             schemas = ['tdb','hdb']
             tangodb.put_property('PyTangoArchiving',{'DbSchemas':schemas})
 
-        print('Loading schemas from tango@%s ... ' % 
-              (tangodb.get_db_host()))
+        print('Loading %s from tango@%s ... ' % (pname, tangodb.get_db_host()))
 
         [k.getSchema(schema,tango,write=True,logger=logger) 
             for schema in schemas]
@@ -239,17 +239,14 @@ class Schemas(object):
         
     
     @classmethod
-    def checkSchema(k,schema,attribute='',start=None,stop=None):
-
-        # print('In reader.Schemas.checkSchema(%s,%s,%s,%s)'
-        #     % (schema,attribute,start,end))
+    def checkSchema(k, schema, attribute='', start=None, stop=None):
         schema = k.getSchema(schema)
-
         if not schema: 
             return False
         
         f = schema.get('check')
         if not f: 
+            print('%s has no check function' % str(schema))
             return True
 
         try:
@@ -274,9 +271,12 @@ class Schemas(object):
             if 'api' in f:
                 k.getApi(schema)
                 
+            #print('In reader.Schemas.checkSchema(%s,%s,%s,%s): %s'
+                #% (schema,attribute,start,stop,f))                
             #print('(%s)%%(%s)'%(f,[t for t in k.LOCALS.items() if t[0] in f]))
             v =fn.evalX(f,k.LOCALS,k.MODULES)
         except:
+            print('checkSchema(%s,%s) failed!' % (schema,attribute))
             traceback.print_exc()
             v = False
 
