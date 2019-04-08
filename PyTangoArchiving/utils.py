@@ -297,9 +297,73 @@ def overlap(int1,int2):
     else:
         return False
 
-def get_jumps(values):
-    jumps = [(values[i][0],values[i+1][0]) for i in range(len(values)-1) if 120<(values[i+1][0]-values[i][0])]
-    return [[time.ctime(d) for d in j] for j in jumps]
+def get_days_in_interval(*args):
+    """
+    args may be a list of timestamps or just start,stop dates
+    """
+    if len(args)==2:
+        if fun.isString(args[0]):
+            start,stop = str2time(args[0]),str2time(args[1])
+        else:
+            start,stop = args[0],args[1]
+        times = range(int(start),int(stop),86400)
+    else:
+        times = args[0]
+    days = sorted(set(list(d.split()[0] for d in map(time2str,times))))
+    return days
+
+def get_months_in_interval(*args):
+    """
+    args may be a list of timestamps or just start,stop dates
+    """
+    days = get_days_in_interval(*args)
+    return sorted(set(d.rsplit('-',1)[0]+'-01' for d in days))
+
+def get_next_month(date):
+    if not fun.isString(date):
+        date = time2str(date)
+    year,month,day = map(int,date.split()[0].split('-'))
+    if month<12:
+        return '%04d-%02d-%02d' % (year,month+1,1)
+    else:
+        return '%04d-%02d-%02d' % (year+1,1,1)
+
+def split_interval_in_months(start,stop,cut=True):
+    """
+    returns a list of start,stop tuples for each month in the interval
+    if cut is True, then first and last interval are adjusted to start,stop
+    """
+    
+    months = get_months_in_interval(start,stop)
+    months.append(get_next_month(months[-1]))
+    months = zip(months,months[1:])
+    months = list(list((str2time(b),str2time(e)-1)) for b,e in months)
+    if cut:
+        months[0][0],months[-1][-1] = start,stop
+    return months
+
+def split_interval(start,stop,jump):
+    starts = range(int(start),int(stop),int(jump))
+    print(starts)
+    return [(s,starts[i+1]) for i,s in enumerate(starts[:-1])]
+    
+#def get_jumps(values):
+    #"""
+    ###DEPRECATED by get_gaps
+    #return time in ctime format whenever two points are separated 
+    #for more than 2 minutes
+    #"""
+    #jumps = [(values[i][0],values[i+1][0]) for i in range(len(values)-1) 
+             #if 120<(values[i+1][0]-values[i][0])]
+    #return [[time.ctime(d) for d in j] for j in jumps]
+
+def get_gaps(values, min_gap=5*24*3600):
+    """
+    return time intervals in buffer where time distance is bigger than min_gap
+    """
+    gaps = [(values[i][0],v[0]) for i,v in enumerate(values[1:])
+                if min_gap < (v[0]-values[i][0])]
+    return gaps
 
 def get_failed(values):
     i,failed = 0,[]
