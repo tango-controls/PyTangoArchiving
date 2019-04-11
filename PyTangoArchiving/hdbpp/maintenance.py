@@ -64,6 +64,53 @@ def get_attributes_row_counts(db,attrs='*',start=-86400,stop=-1,limit=0):
             r[a] = c
     return r
 
+#@staticmethod
+#def decimate_values(values,N=540,method=None):
+    #"""
+    #values must be a sorted (time,...) array
+    #it will be decimated in N equal time intervals 
+    #if method is not provided, only the first value of each interval will be kept
+    #if method is given, it will be applied to buffer to choose the value to keep
+    #first value of buffer will always be the last value kept
+    #"""
+    #tmin,tmax = sorted((values[0][0],values[-1][0]))
+    #result,buff = [values[0]],[values[0]]
+    #interval = float(tmax-tmin)/N
+    #if not method:
+        #for v in values:
+        #if v[0]>=(interval+float(result[-1][0])):
+            #result.append(v)
+    #else:
+        #for v in values:
+        #if v[0]>=(interval+float(result[-1][0])):
+            #result.append(method(buff))
+            #buff = [result[-1]]
+        #buff.append(v)
+
+    #print(tmin,tmax,N,interval,len(values),len(result),method)
+    #return result
+    
+def decimate_table(att_id,table):
+    """
+    @TODO
+    """
+    hours = [t0+i*3600 for i in range(24*30)]
+    days = [t0+i*86400 for i in range(30)]
+    dvalues = {}
+    q = ("select count(*) from %s where att_conf_id = %d "
+        "and data_time between '%s' and '%s'")
+    for d in days:
+        s = fn.time2str(d)
+        q = hdbpp.Query(q%(table,att_id,s,fn.time2str(d+86400))
+                        +" and (data_time %% 5) < 2;")
+    sorted(values.items())
+    3600/5
+    for h in hours:
+        s = fn.time2str(h)
+        q = hdbpp.Query("select count(*) from att_scalar_devdouble_ro "
+            "where att_conf_id = 1 and data_time between '%s' and '%s' "
+            "and (data_time %% 5) < 2;"%(s,fn.time2str(h+3600)))
+
 def get_table_partitions(api,table,description=''):
     """
     DUPLICATED BY pta.dbs.get_partitions_from_query !!!

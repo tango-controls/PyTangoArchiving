@@ -42,7 +42,7 @@ def get_search_model(model):
     model = clsub('[:][0-9]+','%:%',model)
     return model
 
-class HDBpp(ArchivingDB,SingletonMap):
+class HDBppDB(ArchivingDB,SingletonMap):
     """
     Python API for accessing HDB++
     
@@ -104,40 +104,6 @@ class HDBpp(ArchivingDB,SingletonMap):
         except:
             traceback.print_exc()
             print('Unable to get manager')
-            
-    def keys(self):
-        if not self.attributes:
-            self.get_attributes()
-        return self.attributes.keys()
-    
-    def has_key(self,k):
-        self.keys();
-        k = fn.tango.get_full_name(k).lower()
-        return k in self.attributes
-    
-    def __contains__(self,k):
-        return self.has_key(k)
-    
-    def __len__(self):
-        self.keys();
-        return len(self.attributes)
-    
-    def values(self):
-        self.keys();       
-        return self.attributes.values()
-    
-    def items(self):
-        self.keys();       
-        return self.attributes.items()
-    
-    def __getitem__(self,key):
-        self.keys();
-        key = fn.tango.get_full_name(key).lower()
-        return self.attributes[key]
-    
-    def __iter__(self):
-        self.keys();
-        return self.attributes.__iter__()
     
     @staticmethod
     def get_all_databases(regexp='*'):
@@ -194,110 +160,6 @@ class HDBpp(ArchivingDB,SingletonMap):
                     
         dp = get_device(self.manager,keep=True) if self.manager else None
         return dp
-      
-    @Cached(depth=10,expire=60.)
-    def get_archived_attributes(self,search=''):
-        """
-        It gets attributes currently assigned to archiver and updates
-        internal attribute/archiver index.
-        
-        DONT USE Manager.AttributeSearch, it is limited to 1024 attrs!
-        """
-        #print('get_archived_attributes(%s)'%str(search))
-        attrs = []
-        [self.get_archiver_attributes(d,from_db=True) 
-            for d in self.get_archivers()]
-        for d,dattrs in self.dedicated.items():
-            for a in dattrs:
-                self.attributes[a].archiver = d
-                if not search or fn.clsearch(search,a):
-                    attrs.append(a)
-        return attrs
-
-    @Cached(depth=2,expire=60.)
-    def get_attributes(self,active=None):
-        """
-        Alias for Reader API
-        """
-        if active:
-            return self.get_archived_attributes()
-        else:
-            # Inactive attributes must be read from Database
-            return self.get_attribute_names(False)
-    
-    def get_attributes_errors(self, regexp='*', timeout=3*3600, 
-                              from_db=False, extend = False):
-        """
-        Returns a dictionary {attribute, error/last value}
-        
-        If from_db=True and extend=True, it performs a full attribute check
-        """
-        if regexp == '*':
-            self.status = fn.defaultdict(list)
-        if from_db or extend:
-            timeout = fn.now()-timeout
-            attrs = self.get_attributes(True)
-            attrs = fn.filtersmart(attrs,regexp)
-            print('get_attributes_errors([%d/%d])' 
-                  % (len(attrs),len(self.attributes)))
-            vals = self.load_last_values(attrs)
-            for a,v in vals.items():
-                if v and v[0] > timeout:
-                    self.status['Updated'].append(a)
-                    if v[1] is not None:
-                        self.status['Readable'].append(a)
-                    else:
-                        rv = fn.read_attribute(a)
-                        if rv is not None:
-                            self.status['WrongNone'].append(a)
-                        else:
-                            self.status['None'].append(a)
-                    vals.pop(a)
-
-            if not extend:
-                self.status['NotUpdated'] = vals.keys()
-            else:
-                for a,v in vals.items():
-                    c = fn.check_attribute(a)
-                    if c is None:
-                        vals[a] = 'Unreadable'
-                        self.status['Unreadable'].append(a)
-                    elif isinstance(c,Exception):
-                        vals[a] = str(c)
-                        self.status['Exception'].append(a)
-                    else:
-                        ev = fn.tango.check_attribute_events(a)
-                        if not ev:
-                            vals[a] = 'NoEvents'
-                            self.status['NoEvents'].append(a)
-                        else:
-                            d = self.get_attribute_archiver(a)
-                            e = self.get_archiver_errors(d)
-                            if a in e:
-                                vals[a] = e[a]
-                                self.status['ArchiverError'].append(a)
-                            else:
-                                rv = fn.read_attribute(a)
-                                if v and str(rv) == str(v[1]):
-                                    vals[a] = 'NotChanged'
-                                    self.status['NotChanged'].append(a)
-                                else:
-                                    self.status['NotUpdated'].append(a)
-                                
-            if regexp == '*':
-                for k,v in self.status.items():
-                    print('%s: %s' % (k,len(v)))
-            
-            return vals
-        else:
-            # Should inspect the Subscribers Error Lists
-            vals = dict()
-            for d in self.get_archivers():
-                err = self.get_archiver_errors(d)
-                for a,e in err.items():
-                    if fn.clmatch(regexp,a):
-                        vals[a] = e
-            return vals
     
     @Cached(expire=60.)
     def get_archivers(self, from_db = True):
@@ -311,30 +173,6 @@ class HDBpp(ArchivingDB,SingletonMap):
           return self.get_manager().ArchiverList
         else:
           raise Exception('%s Manager not running'%self.manager)
-      
-    @Cached(expire=60.)
-    def get_archivers_attributes(self,archs=None,from_db=True,full=False):
-        """
-        If not got from_db, the manager may limit the list available
-        """        
-        archs = archs or self.get_archivers()
-        dedicated = fn.defaultdict(list)
-        if from_db:
-            for a in archs:
-                dedicated[a] = [str(l) for l in 
-                    get_device_property(a,'AttributeList')]
-                if not full:
-                    dedicated[a] = [str(l).split(';')[0] for l in 
-                        dedicated[a]]
-        else:
-            for a in archs:
-                try:
-                    dedicated[a].extend(get_device(a, keep=True).AttributeList)
-                except:
-                    dedicated[a] = []
-                    
-        self.dedicated.update(dedicated)
-        return dedicated
     
     @Cached(expire=60.)
     def get_archiver_attributes(self, archiver, from_db=False, full=False):
@@ -360,13 +198,126 @@ class HDBpp(ArchivingDB,SingletonMap):
         self.dedicated[archiver] = attrs
             
         return attrs
+    
+    @Cached(expire=60.)
+    def get_archivers_attributes(self,archs=None,from_db=True,full=False):
+        """
+        If not got from_db, the manager may limit the list available
+        """        
+        archs = archs or self.get_archivers()
+        dedicated = fn.defaultdict(list)
+        if from_db:
+            for a in archs:
+                dedicated[a] = [str(l) for l in 
+                    get_device_property(a,'AttributeList')]
+                if not full:
+                    dedicated[a] = [str(l).split(';')[0] for l in 
+                        dedicated[a]]
+        else:
+            for a in archs:
+                try:
+                    dedicated[a].extend(get_device(a, keep=True).AttributeList)
+                except:
+                    dedicated[a] = []
+                    
+        self.dedicated.update(dedicated)
+        return dedicated    
         
     @Cached(expire=10.)
     def get_archiver_errors(self,archiver):
         dp = fn.get_device(archiver,keep=True)
         al = dp.AttributeList
         er = dp.AttributeErrorList
-        return dict((a,e) for a,e in zip(al,er) if e)
+        return dict((a,e) for a,e in zip(al,er) if e)    
+
+    @Cached(depth=2,expire=60.)
+    def get_attributes(self,active=None):
+        """
+        Alias for Reader API
+        """
+        if active:
+            return self.get_archived_attributes()
+        else:
+            # Inactive attributes must be read from Database
+            return self.get_attribute_names(False)
+        
+    def get_attribute_names(self,active=False):
+        if not active:
+            [self.attributes[a[0].lower()] for a 
+                in self.Query('select att_name from att_conf')]
+            return self.attributes.keys()
+        else:
+            return self.get_archived_attributes()   
+        
+    def get_attributes_by_table(self,table=''):
+        if table:
+            table = table.replace('att_','')
+            return self.Query(
+                "select att_name from att_conf,att_conf_data_type where "
+                "data_type like '%s' and att_conf.att_conf_data_type_id "
+                "= att_conf_data_type.att_conf_data_type_id" % table)
+        else:
+            types = self.Query("select data_type,att_conf_data_type_id "
+                "from att_conf_data_type")
+            return dict(('att_'+t,self.Query("select att_name from att_conf"
+                "  where att_conf_data_type_id = %s"%i)) for t,i in types)        
+        
+    @Cached(depth=10,expire=60.)
+    def get_archived_attributes(self,search=''):
+        """
+        It gets attributes currently assigned to archiver and updates
+        internal attribute/archiver index.
+        
+        DONT USE Manager.AttributeSearch, it is limited to 1024 attrs!
+        """
+        #print('get_archived_attributes(%s)'%str(search))
+        attrs = []
+        [self.get_archiver_attributes(d,from_db=True) 
+            for d in self.get_archivers()]
+        for d,dattrs in self.dedicated.items():
+            for a in dattrs:
+                self.attributes[a].archiver = d
+                if not search or fn.clsearch(search,a):
+                    attrs.append(a)
+        return attrs        
+    
+    def get_attribute_ID(self,attr):
+        # returns only 1 ID
+        return self.get_attributes_IDs(attr,as_dict=0)[0][1]
+      
+    def get_attributes_IDs(self,name='%',as_dict=1):
+        # returns all matching IDs
+        name = name.replace('*','%')
+        ids = self.Query("select att_name,att_conf_id from att_conf "\
+            +"where att_name like '%s'"%get_search_model(name))
+        if not ids: return None
+        elif not as_dict: return ids
+        else: return dict(ids)
+      
+    def get_table_name(self,attr):
+        return get_attr_id_type_table(attr)[-1]
+      
+    def get_attr_id_type_table(self,attr):
+        if fn.isNumber(attr):
+            where = 'att_conf_id = %s'%attr
+        else:
+            where = "att_name like '%s'"%get_search_model(attr)
+        q = "select att_name,att_conf_id,att_conf_data_type_id from att_conf"\
+            " where %s"%where
+        ids = self.Query(q)
+        self.debug(str((q,ids)))
+        if not ids: 
+            return None,None,''
+        
+        attr,aid,tid = ids[0]
+        table = self.Query("select data_type from att_conf_data_type "\
+            +"where att_conf_data_type_id = %s"%tid)[0][0]
+
+        self.attributes[attr].id = aid
+        self.attributes[attr].type = table
+        self.attributes[attr].table = 'att_'+table
+        self.attributes[attr].modes = {'MODE_E':True}
+        return aid,tid,'att_'+table    
     
     @Cached(depth=1000,expire=60.)
     def get_attribute_archiver(self,attribute):
@@ -380,6 +331,30 @@ class HDBpp(ArchivingDB,SingletonMap):
                 if m in l.split(';'):
                     return k
         return None
+    
+    def is_attribute_archived(self,attribute,active=None,cached=True):
+        # @TODO active argument not implemented
+        model = parse_tango_model(attribute,fqdn=True)
+        d = self.get_manager()
+        if d and cached:
+            self.get_archived_attributes()
+            if any(m in self.attributes for m 
+                   in (attribute,model.fullname,model.normalname)):
+                return model.fullname
+            else:
+                return False
+        elif d:
+            attributes = d.AttributeSearch(model.fullname)
+            a = [a for a in attributes if a.lower().endswith(attribute.lower())]
+            if len(attributes)>1: 
+                raise Exception('MultipleAttributesMatched!')
+            if len(attributes)==1:
+                return attributes[0]
+            else:
+                return False
+        else:
+            return any(a.lower().endswith('/'+attribute.lower())
+                                          for a in self.get_attributes())    
     
     def start_servers(self,host='',restart=True):
         import fandango.servers
@@ -488,29 +463,6 @@ class HDBpp(ArchivingDB,SingletonMap):
         print(dev)
         dp.ArchiverAdd(dev)
         return dev
-    
-    def add_attributes(self,attributes,*args,**kwargs):
-        """
-        Call add_attribute sequentially with a 1s pause between calls
-        :param start: True by default, will force Start() in related archivers
-        See add_attribute? for more help on arguments
-        """
-        try:
-          start = kwargs.get('start',True)
-          for a in attributes:
-            kwargs['start'] = False #Avoid recursive start
-            self.add_attribute(a,*args,**kwargs)
-          time.sleep(3.)
-            
-          if start:
-            archs = set(map(self.get_attribute_archiver,attributes))
-            for h in archs:
-                self.info('%s.Start()' % h)
-                fn.get_device(h, keep=True).Start()
-                
-        except Exception,e:
-            print('add_attribute(%s) failed!: %s'%(a,traceback.print_exc()))
-        return
 
     def add_attribute(self,attribute,archiver,period=0,
                       rel_event=None,per_event=None,abs_event=None,
@@ -580,34 +532,35 @@ class HDBpp(ArchivingDB,SingletonMap):
           d.unlock()
         print('%s added'%attribute)
         
-    def is_attribute_archived(self,attribute,active=None,cached=True):
-        # @TODO active argument not implemented
-        model = parse_tango_model(attribute,fqdn=True)
-        d = self.get_manager()
-        if d and cached:
-            self.get_archived_attributes()
-            if any(m in self.attributes for m 
-                   in (attribute,model.fullname,model.normalname)):
-                return model.fullname
-            else:
-                return False
-        elif d:
-            attributes = d.AttributeSearch(model.fullname)
-            a = [a for a in attributes if a.lower().endswith(attribute.lower())]
-            if len(attributes)>1: 
-                raise Exception('MultipleAttributesMatched!')
-            if len(attributes)==1:
-                return attributes[0]
-            else:
-                return False
-        else:
-            return any(a.lower().endswith('/'+attribute.lower())
-                                          for a in self.get_attributes())
+    def add_attributes(self,attributes,*args,**kwargs):
+        """
+        Call add_attribute sequentially with a 1s pause between calls
+        :param start: True by default, will force Start() in related archivers
+        See add_attribute? for more help on arguments
+        """
+        try:
+          start = kwargs.get('start',True)
+          for a in attributes:
+            kwargs['start'] = False #Avoid recursive start
+            self.add_attribute(a,*args,**kwargs)
+          time.sleep(3.)
+            
+          if start:
+            archs = set(map(self.get_attribute_archiver,attributes))
+            for h in archs:
+                self.info('%s.Start()' % h)
+                fn.get_device(h, keep=True).Start()
+                
+        except Exception,e:
+            print('add_attribute(%s) failed!: %s'%(a,traceback.print_exc()))
+        return        
           
     def start_archiving(self,attribute,archiver,period=0,
                       rel_event=None,per_event=None,abs_event=None,
                       code_event=False, ttl=None, start=False):
         """
+        Method provided for compatibility with HDB/TDB API
+
         See HDBpp.add_attribute.__doc__ for a full description of arguments
         """
         try:
@@ -635,407 +588,6 @@ class HDBpp(ArchivingDB,SingletonMap):
             self.error('start_archiving(%s): %s'
                         %(attribute,traceback.format_exc().replace('\n','')))
         return False        
-
-    def get_attribute_ID(self,attr):
-        # returns only 1 ID
-        return self.get_attributes_IDs(attr,as_dict=0)[0][1]
-      
-    def get_attributes_IDs(self,name='%',as_dict=1):
-        # returns all matching IDs
-        name = name.replace('*','%')
-        ids = self.Query("select att_name,att_conf_id from att_conf "\
-            +"where att_name like '%s'"%get_search_model(name))
-        if not ids: return None
-        elif not as_dict: return ids
-        else: return dict(ids)
-      
-    def get_attribute_names(self,active=False):
-        if not active:
-            [self.attributes[a[0].lower()] for a 
-                in self.Query('select att_name from att_conf')]
-            return self.attributes.keys()
-        else:
-            return self.get_archived_attributes()
-    
-    @Cached(depth=10000,expire=60.)
-    def get_attribute_modes(self,attr,force=None):
-        """ force argument provided just for compatibility, replaced by cache
-        """
-        aid,tid,table = self.get_attr_id_type_table(attr)
-        r = {'ID':aid, 'MODE_E':fn.tango.get_attribute_events(attr)}
-        r['archiver'] = self.get_attribute_archiver(attr)
-        return r
-      
-    def get_table_name(self,attr):
-        return get_attr_id_type_table(attr)[-1]
-      
-    def get_attr_id_type_table(self,attr):
-        if fn.isNumber(attr):
-            where = 'att_conf_id = %s'%attr
-        else:
-            where = "att_name like '%s'"%get_search_model(attr)
-        q = "select att_name,att_conf_id,att_conf_data_type_id from att_conf"\
-            " where %s"%where
-        ids = self.Query(q)
-        self.debug(str((q,ids)))
-        if not ids: 
-            return None,None,''
-        
-        attr,aid,tid = ids[0]
-        table = self.Query("select data_type from att_conf_data_type "\
-            +"where att_conf_data_type_id = %s"%tid)[0][0]
-
-        self.attributes[attr].id = aid
-        self.attributes[attr].type = table
-        self.attributes[attr].table = 'att_'+table
-        self.attributes[attr].modes = {'MODE_E':True}
-        return aid,tid,'att_'+table
-      
-    def set_attr_event_config(self,attr,polling=0,abs_event=0,
-                              per_event=0,rel_event=0):
-        ac = get_attribute_config(attr)
-        raise Exception('@TODO')
-      
-    #def get_default_archiving_modes(self,attr):
-        #if isString(attr) and '/' in attr:
-          #attr = read_attribute(attr)
-          #pytype = type(attr)
-          
-    def get_attributes_by_table(self,table=''):
-        if table:
-            table = table.replace('att_','')
-            return self.Query(
-                "select att_name from att_conf,att_conf_data_type where "
-                "data_type like '%s' and att_conf.att_conf_data_type_id "
-                "= att_conf_data_type.att_conf_data_type_id" % table)
-        else:
-            types = self.Query("select data_type,att_conf_data_type_id "
-                "from att_conf_data_type")
-            return dict(('att_'+t,self.Query("select att_name from att_conf"
-                "  where att_conf_data_type_id = %s"%i)) for t,i in types)
-        
-    def get_mysqlsecsdiff(self,date):
-        """
-        Returns the value to be added to dates when querying int_time tables
-        """
-        return self.Query(
-            "select (TO_SECONDS('%s')-62167222800) - UNIX_TIMESTAMP('%s')" 
-            % (date,date))[0][0]
-          
-    #@staticmethod
-    #def decimate_values(values,N=540,method=None):
-        #"""
-        #values must be a sorted (time,...) array
-        #it will be decimated in N equal time intervals 
-        #if method is not provided, only the first value of each interval will be kept
-        #if method is given, it will be applied to buffer to choose the value to keep
-        #first value of buffer will always be the last value kept
-        #"""
-        #tmin,tmax = sorted((values[0][0],values[-1][0]))
-        #result,buff = [values[0]],[values[0]]
-        #interval = float(tmax-tmin)/N
-        #if not method:
-          #for v in values:
-            #if v[0]>=(interval+float(result[-1][0])):
-              #result.append(v)
-        #else:
-          #for v in values:
-            #if v[0]>=(interval+float(result[-1][0])):
-              #result.append(method(buff))
-              #buff = [result[-1]]
-            #buff.append(v)
-
-        #print(tmin,tmax,N,interval,len(values),len(result),method)
-        #return result
-        
-    def decimate_table(att_id,table):
-        """
-        @TODO
-        """
-        hours = [t0+i*3600 for i in range(24*30)]
-        days = [t0+i*86400 for i in range(30)]
-        dvalues = {}
-        q = ("select count(*) from %s where att_conf_id = %d "
-            "and data_time between '%s' and '%s'")
-        for d in days:
-            s = fn.time2str(d)
-            q = hdbpp.Query(q%(table,att_id,s,fn.time2str(d+86400))
-                            +" and (data_time %% 5) < 2;")
-        sorted(values.items())
-        3600/5
-        for h in hours:
-            s = fn.time2str(h)
-            q = hdbpp.Query("select count(*) from att_scalar_devdouble_ro "
-                "where att_conf_id = 1 and data_time between '%s' and '%s' "
-                "and (data_time %% 5) < 2;"%(s,fn.time2str(h+3600)))
-
-      
-    def get_last_attribute_values(self,table,n=1,
-                                  check_table=False,epoch=None):
-        if epoch is None:
-            start,epoch = None,fn.now()+600
-        elif epoch < 0:
-            start,epoch = fn.now()+epoch,fn.now()+600
-        if start is None:
-            #Rounding to the last month partition
-            start = fn.str2time(
-                fn.time2str().split()[0].rsplit('-',1)[0]+'-01')
-        vals = self.get_attribute_values(table, N=n, human=True, desc=True,
-                                            start_date=start, stop_date=epoch)
-        if len(vals):
-            return vals[0] if abs(n)==1 else vals
-        else: 
-            return vals
-    
-    def load_last_values(self,attributes=None,n=1,epoch=None):
-        if attributes is None:
-            attributes = self.get_archived_attributes()
-        vals = dict((a,self.get_last_attribute_values(a,n=n,epoch=epoch)) 
-                    for a in fn.toList(attributes))
-        for a,v in vals.items():
-            if n!=1:
-                v = v and v[0]
-            self.attributes[a].last_date = v and v[0]
-            self.attributes[a].last_value = v and v[1]
-            
-        return vals
-        
-    __test__['get_last_attribute_values'] = \
-        [(['bl01/vc/spbx-01/p1'],None,lambda r:len(r)>0)] #should return array
-            
-    @CatchedAndLogged(throw=True)
-    def get_attribute_values(self,table,start_date=None,stop_date=None,
-                             desc=False,N=0,unixtime=True,
-                             extra_columns='quality',decimate=0,human=False,
-                             as_double=True,aggregate='MAX',int_time=True,
-                             **kwargs):
-        """
-        This method returns values between dates from a given table.
-        If stop_date is not given, then anything above start_date is returned.
-        desc controls the sorting of values
-        
-        unixtime = True enhances the speed of querying by a 60%!!!! 
-            #(due to MySQLdb implementation of datetime)
-        
-        If N is specified:
-        
-            * Query will return last N values if there's no stop_date
-            * If there is, then it will return the first N values (windowing?)
-            * IF N is negative, it will return the last N values instead
-            
-        start_date and stop_date must be in a format valid for SQL
-        """
-        t0 = time.time()
-        self.debug('HDBpp.get_attribute_values(%s,%s,%s,%s,decimate=%s,%s)'
-              %(table,start_date,stop_date,N,decimate,kwargs))
-        if fn.isSequence(table):
-            aid,tid,table = table
-        else:
-            aid,tid,table = self.get_attr_id_type_table(table)
-            
-        if not all((aid,tid,table)):
-            self.warning('%s is not archived' % table)
-            return []
-            
-        human = kwargs.get('asHistoryBuffer',human)
-            
-        what = 'UNIX_TIMESTAMP(data_time)' if unixtime else 'data_time'
-        if as_double:
-            what = 'CAST(%s as DOUBLE)' % what
-            
-        if 'array' in table: what+=",idx"
-        value = 'value_r' if 'value_r' in self.getTableCols(table) \
-                                else 'value'
-                            
-        if decimate and aggregate in ('AVG','MAX','MIN'):
-            value = '%s(%s)' % (aggregate,value)
-            
-        what += ', ' + value
-        if extra_columns: 
-            what+=','+extra_columns
-
-        interval = 'where att_conf_id = %s'%aid if aid is not None \
-                                                else 'where att_conf_id >= 0 '
-                                            
-        int_time = int_time and 'int_time' in self.getTableCols(table)
-        if int_time:
-            self.info('Using int_time indexing for %s' % table)
-        if start_date or stop_date:
-            start_date,start_time,stop_date,stop_time = \
-                Reader.get_time_interval(start_date,stop_date)
-            
-            if int_time:
-                
-                def str2mysqlsecs(date):
-                    rt = fn.str2time(date)
-                    return int(rt+self.get_mysqlsecsdiff(date)) #fn.str2time(date)-it
-                
-                if start_date and stop_date:
-                    interval += (" and int_time between %d and %d"
-                            %(str2mysqlsecs(start_date),
-                              str2mysqlsecs(stop_date)))
-                
-                elif start_date and fandango.str2epoch(start_date):
-                    interval += (" and int_time > %d" 
-                                 % str2mysqlsecs)
-                
-            else:
-                if start_date and stop_date:
-                    interval += (" and data_time between '%s' and '%s'"
-                            %(start_date,stop_date))
-                
-                elif start_date and fandango.str2epoch(start_date):
-                    interval += " and data_time > '%s'"%start_date
-            
-        query = 'select %s from %s %s' % (what,table,interval)
-        if decimate:
-            if isinstance(decimate,(int,float)):
-                d = int(decimate) or 1
-            else:
-                d = int((stop_time-start_time)/10800) or 1
-            # decimation on server side
-            query += ' group by FLOOR(%s/%d)' % (
-                'int_time' if int_time else 'UNIX_TIMESTAMP(data_time)',d)
-        query += ' order by %s' % ('int_time' if int_time else 'data_time')
-                    
-        if N == 1:
-            human = 1
-        if N < 0 or desc: 
-            query+=" desc" # or (not stop_date and N>0):
-        if N: 
-            query+=' limit %s'%abs(N if 'array' not in table else N*1024)
-        
-        ######################################################################
-        # QUERY
-        t0 = time.time()
-        self.warning(query.replace('where','\nwhere').replace(
-            'group,','\ngroup'))
-        try:
-            result = self.Query(query)
-            self.warning('read [%d] in %f s'%(len(result),time.time()-t0))
-        except MySQLdb.ProgrammingError as e:
-            result = []
-            if 'DOUBLE' in str(e) and "as DOUBLE" in query:
-                return self.get_attribute_values((aid,tid,table),start_date,
-                    stop_date,desc,N,unixtime,extra_columns,decimate,human,
-                    as_double=False,**kwargs)
-            else:
-                traceback.print_exc()
-            
-        if not result or not result[0]: 
-            return []
-        ######################################################################
-        
-        t0 = time.time()
-        if 'array' in table:
-            data = fandango.dicts.defaultdict(list)
-            for t in result:
-                data[float(t[0])].append(t[1:])
-            result = []
-            for k,v in sorted(data.items()):
-                l = [0]*(1+max(t[0] for t in v))
-                for i,t in enumerate(v):
-                    if None in t: 
-                        l = None
-                        break
-                    l[t[0]] = t[1] #Ignoring extra columns (e.g. quality)
-                result.append((k,l))
-            if N > 0: 
-                #for k,l in result:
-                    #print((k,l and len(l)))
-                result = result[-N:]
-            if N < 0 or desc:
-                result = list(reversed(result))
-            self.debug('array arranged [%d] in %f s'
-                         % (len(result),time.time()-t0))
-            t0 = time.time()
-          
-        # Converting the timestamp from Decimal to float
-        # Weird results may appear in filter_array comparison if not done
-        # Although it is INCREDIBLY SLOW!!!
-        #result = []
-        #nr = []
-        #if len(result[0]) == 2: 
-            #for i,t in enumerate(result):
-                #result[i] = (float(t[0]),t[1])
-        #elif len(result[0]) == 3: 
-            #for i,t in enumerate(result):
-                #result[i] = (float(t[0]),t[1],t[2])
-        #elif len(result[0]) == 4: 
-           #for i,t in enumerate(result):
-                #result[i] = ((float(t[0]),t[1],t[2],t[3]))
-        #else:
-            #for i,t in enumerate(result):
-                #result[i] = ([float(t[0])]+t[1:])
-        
-        self.debug('timestamp arranged [%d] in %f s'
-                     % (len(result),time.time()-t0))
-        t0 = time.time()
-            
-        # Decimation to be done in Reader object
-        #if decimate:
-            ## When called from trends, decimate may be the decimation method
-            ## or the maximum sample number
-            #try:
-                #N = int(decimate)
-                ##decimate = data_has_changed
-                #decimate = 
-                #result = PyTangoArchiving.reader.decimation(
-                                        #result,decimate,window=0,N=N)                
-            #except:
-                ##N = 1080
-                #result = PyTangoArchiving.reader.decimation(result,decimate) 
-        
-        if human: 
-            result = [list(t)+[fn.time2str(t[0])] for t in result]
-
-        if not desc and ((not stop_date and N>0) or (N<0)):
-            #THIS WILL BE APPLIED ONLY WHEN LAST N VALUES ARE ASKED
-            self.warning('reversing ...' )
-            result = list(reversed(result))
-        #else:
-            ## why
-            #self.getCursor(klass=MySQLdb.cursors.SSCursor)
-
-        self.debug('result arranged [%d]'%len(result))            
-        return result
-        
-    def get_attributes_values(self,tables='',start_date=None,stop_date=None,
-                desc=False,N=0,unixtime=True,extra_columns='quality',
-                decimate=0,human=False):
-        
-        if not fn.isSequence(tables):
-            tables = self.get_archived_attributes(tables)
-            
-        return dict((t,self.get_attribute_values(t,start_date,stop_date,desc,
-                N,unixtime,extra_columns,decimate,human))
-                for t in tables)
-
-    def get_attribute_rows(self,attribute,start_date=0,stop_date=0):
-        aid,tid,table = self.get_attr_id_type_table(attribute)
-        int_time = 'int_time' in self.getTableCols(table)
-        if start_date and stop_date:
-            dates = map(time2str,(start_date,stop_date))
-            where = " and %s between '%s' and '%s'" % (
-                'int_time' if int_time else 'data_time',
-                int(str2time(dates[0])) if int_time else dates[0],
-                int(str2time(dates[1])) if int_time else dates[1])
-        else:
-            where = ''
-        r = self.Query('select count(*) from %s where att_conf_id = %s'
-                          % ( table, aid) + where)
-        return r[0][0] if r else 0
-    
-    def get_failed_attributes(self,t=7200):
-        vals = self.load_last_values(self.get_attributes())
-        nones = [k for k,v in vals.items() 
-                    if (not v or v[1] is None)]
-        nones = [k for k in nones if fn.read_attribute(k) is not None]
-        lost = [k for k,v in vals.items() 
-                if k not in nones and v[0] < fn.now()-t]
-        lost = [k for k in lost if fn.read_attribute(k) is not None]
-        failed = nones+lost
-        return sorted(failed)
     
     def restart_attribute(self,attr, d=''):
         try:
@@ -1060,44 +612,7 @@ class HDBpp(ArchivingDB,SingletonMap):
             self.restart_attribute(a)
             
         print('%d attributes restarted' % len(attributes))
-    
-    def check_attributes(self,attrs = '', load = False, t0 = 0):
-        
-        db,t0,result,vals = self,t0 or fn.now(),{},{}
-        print('Checking %s' % str(db))
 
-        if fn.isDictionary(attrs):
-            attrs,vals = attrs.keys(),attrs
-            if isinstance(vals.values()[0],dict):
-                vals = dict((k,v.values()[0]) for k,v in vals.items())
-        else:
-            if fn.isString(attrs):
-                attrs = fn.filtersmart(db.get_attributes(),attrs)
-                load = True
-
-        if load:
-            [vals.update(db.load_last_values(a)) for a in attrs]
-
-        print('\t%d attributes'%len(attrs))
-        result['attrs'] = attrs
-        result['vals'] = vals
-        result['novals'] = [a for a,v in vals.items() if not v]
-        result['nones'],result['down'],result['lost'] = [],[],[]
-        for a,v in vals.items():
-            if not v or [1] is None:
-                if not fn.read_attribute(a): #USE read not check!!
-                    result['down'].append(a)
-                else:
-                    result['novals' if not v else 'nones'].append(a)
-            elif v[0] < (t0 - 7200):
-                result['lost'].append(a)
-        
-        print('\t%d attributes have no values'%len(result['novals']))
-        print('\t%d attributes are not readable'%len(result['down']))
-        print('\t%d attributes are not updated'%len(result['lost']))
-        print('\t%d attributes have None values'%len(result['nones']))
-        
-        return result
     
     
     
