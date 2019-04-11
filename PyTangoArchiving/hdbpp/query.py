@@ -4,6 +4,13 @@ from fandango.tango import *
 import MySQLdb,traceback,re
 from PyTango import AttrQuality
 
+import PyTangoArchiving
+from PyTangoArchiving.dbs import ArchivingDB
+from PyTangoArchiving.common import CommonAPI
+from PyTangoArchiving.reader import Reader
+from PyTangoArchiving.utils import CatchedAndLogged
+from PyTangoArchiving.schemas import Schemas
+
 from .config import HDBppDB
 
 __test__ = {}
