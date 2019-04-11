@@ -104,6 +104,11 @@ class HDBppDB(ArchivingDB,SingletonMap):
         except:
             traceback.print_exc()
             print('Unable to get manager')
+            
+    @staticmethod
+    def get_hdbpp_libname():
+        r = fn.shell_command('locate libhdb++mysql.so')
+        return r.split()[0]
     
     @staticmethod
     def get_all_databases(regexp='*'):
@@ -122,6 +127,7 @@ class HDBppDB(ArchivingDB,SingletonMap):
             #manager = self.get_manager(db_name).name()
             
         prop = get_device_property(manager,'LibConfiguration')
+
         if prop:
             print('getting config from %s/LibConfiguration' % manager)
             config = dict((map(str.strip,l.split('=',1)) for l in prop))
@@ -167,12 +173,14 @@ class HDBppDB(ArchivingDB,SingletonMap):
         If not got from_db, the manager may limit the list available
         """
         if from_db:
-            return list(self.tango.get_device_property(
+            p = list(self.tango.get_device_property(
                 self.manager,'ArchiverList')['ArchiverList'])
         elif self.manager and check_device(self.manager):
-          return self.get_manager().ArchiverList
+            p = self.get_manager().ArchiverList
         else:
-          raise Exception('%s Manager not running'%self.manager)
+            raise Exception('%s Manager not running'%self.manager)
+
+        return [d for d in p if d.strip()]
     
     @Cached(expire=60.)
     def get_archiver_attributes(self, archiver, from_db=False, full=False):
@@ -228,7 +236,24 @@ class HDBppDB(ArchivingDB,SingletonMap):
         dp = fn.get_device(archiver,keep=True)
         al = dp.AttributeList
         er = dp.AttributeErrorList
-        return dict((a,e) for a,e in zip(al,er) if e)    
+        return dict((a,e) for a,e in zip(al,er) if e)
+    
+    def get_archiver_load(self,archiver,use_freq=True):
+        if use_freq:
+            return fn.tango.read_attribute(archiver+'/recordfreq')
+        else:
+            return len(self.get_archiver_attributes(archiver))
+    
+    def get_next_archiver(self,errors=False):
+        loads = dict(fn.kmap(self.get_archiver_load,self.get_archivers()))
+        if errors:
+            # Errors count twice as load
+            for a,v in loads.items():
+                errs = self.get_archiver_errors(a)
+                loads[a] += 10*len(errs)
+
+        loads = sorted((v,k) for k,v in loads.items())
+        return loads[-1][-1]
 
     @Cached(depth=2,expire=60.)
     def get_attributes(self,active=None):
@@ -409,49 +434,53 @@ class HDBppDB(ArchivingDB,SingletonMap):
                 
         return off        
     
-    def add_archiving_manager(self,srv,dev):
+    def add_archiving_manager(self,srv,dev,libname=None):
         if '/' not in srv: srv = 'hdb++cm-srv/'+srv
+        libname = libname or self.get_hdbpp_libname()
         add_new_device(srv,'HdbConfigurationManager',dev)
-        prev = get_device_property(dev,'ArchiverList') or []
+        prev = get_device_property(dev,'ArchiverList') or ''
         put_device_property(dev,'ArchiverList',prev)
-        put_device_property(dev,'ArchiveName','MySQL')
+        #put_device_property(dev,'ArchiveName','MySQL')
         put_device_property(dev,'DbHost',self.host)
         put_device_property(dev,'DbName',self.db_name)
-        put_device_property(dev,'DbUser',self.user)
-        put_device_property(dev,'DbPassword',self.passwd)
-        put_device_property(dev,'DbPort','3306')
+        #put_device_property(dev,'DbUser',self.user)
+        #put_device_property(dev,'DbPassword',self.passwd)
+        #put_device_property(dev,'DbPort','3306')
         put_device_property(dev,'LibConfiguration',[
-          'user='+self.user,
-          'password='+self.passwd,
-          'port='+self.port,
-          'host='+self.host,
-          'dbname='+self.db_name,])
+            'libname='+libname,
+            'lightschema=1',
+            'user='+self.user,
+            'password='+self.passwd,
+            'port='+self.port,
+            'host='+self.host,
+            'dbname='+self.db_name,])
         self.get_manager()
         return dev
 
     def add_event_subscriber(self,srv,dev,libpath=''):
+        if not fn.check_device(self.manager):
+            raise Exception('%s not running!' % self.manager)
         if '/' not in srv: srv = 'hdb++es-srv/'+srv
+        libname = libname or self.get_hdbpp_libname()
         add_new_device(srv,'HdbEventSubscriber',dev)
         manager,dp = self.manager,self.get_manager()
         props = Struct(get_matching_device_properties(manager,'*'))
-        prev = get_device_property(dev,'AttributeList') or []
+        prev = get_device_property(dev,'AttributeList') or ''
         put_device_property(dev,'AttributeList',prev)
-        #put_device_property(dev,'DbHost',self.host)
-        #put_device_property(dev,'DbName',self.db_name)
+        put_device_property(dev,'DbHost',self.host)
+        put_device_property(dev,'DbName',self.db_name)
         #put_device_property(dev,'DbUser',self.user)
         #put_device_property(dev,'DbPassword',self.passwd)
         #put_device_property(dev,'DbPort','3306')
         #put_device_property(dev,'DbStartArchivingAtStartup','true')
         
-        libpath = (libpath or \
-                '/homelocal/sicilia/src/hdbpp.git/lib/libhdb++mysql.so')
         put_device_property(dev,'LibConfiguration',[
           'user='+self.user,
           'password='+self.passwd,
           'port='+getattr(self,'port','3306'),
           'host='+self.host,
           'dbname='+self.db_name,
-          'libname='+libpath,
+          'libname='+libname,
           'ligthschema=1',
           ])
         if 'ArchiverList' not in props:
@@ -464,7 +493,7 @@ class HDBppDB(ArchivingDB,SingletonMap):
         dp.ArchiverAdd(dev)
         return dev
 
-    def add_attribute(self,attribute,archiver,period=0,
+    def add_attribute(self,attribute,archiver=None,period=0,
                       rel_event=None,per_event=None,abs_event=None,
                       code_event=False, ttl=None, start=False):
         """
@@ -473,7 +502,9 @@ class HDBppDB(ArchivingDB,SingletonMap):
         
         """
         attribute = parse_tango_model(attribute,fqdn=True).fullname
-        self.info('add_attribute(%s)'%attribute)
+        archiver = archiver or self.get_next_archiver()
+        self.info('add_attribute(%s, %s) to %s' 
+                  % (attribute,archiver,self.db_name))
         config = get_attribute_config(attribute)
         #if 'spectrum' in str(config.data_format).lower():
           #raise Exception('Arrays not supported yet!')
