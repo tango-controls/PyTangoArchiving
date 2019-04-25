@@ -81,6 +81,11 @@ class HDBppPeriodic(HDBppDB):
     @fn.Catched
     def add_periodic_attribute(self,attribute,period,archiver=None,wait=1.5):
         
+        arch = self.get_periodic_attribute_archiver(attribute)
+        if arch:
+            print('%s is already archived by %s!' % (attribute,arch))
+            return False
+        
         attribute = parse_tango_model(attribute,fqdn=True).fullname
         archiver = archiver or self.get_next_periodic_archiver(
                             attrexp = fn.tango.get_dev_name(attribute)+'/*')

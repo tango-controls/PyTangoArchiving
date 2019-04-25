@@ -55,7 +55,8 @@ class HDBppDB(ArchivingDB,SingletonMap):
     
     def __init__(self,db_name='',host='',user='',
                  passwd='', manager='',
-                 other=None, port = '3306'):
+                 other=None, port = '3306',
+                 log_level = 'WARNING'):
         """
         Configuration can be loaded from PyTangoArchiving.Schemas,
         an HdbConfigurationManager or another DB object.
@@ -98,7 +99,7 @@ class HDBppDB(ArchivingDB,SingletonMap):
         self.dedicated = {}
         self.status = fn.defaultdict(list)
         ArchivingDB.__init__(self,db_name,host,user,passwd,)
-        self.setLogLevel('INFO')
+        self.setLogLevel(log_level)
         try:
             self.get_manager()
             self.get_attributes()
@@ -666,7 +667,7 @@ class HDBppDB(ArchivingDB,SingletonMap):
         
     def restart_attributes(self,attributes=None):
         if attributes is None:
-            attributes = self.get_failed_attributes()
+            attributes = self.get_attributes_not_updated()
             
         devs = dict(fn.kmap(self.get_attribute_archiver,attributes))
 

@@ -126,6 +126,7 @@ class HDBppReader(HDBppDB):
                                             
         #self.info('%s : %s' % (table, self.getTableCols(table)))
         int_time = int_time and 'int_time' in self.getTableCols(table)
+        if self.db_name == 'hdbrf': int_time = False #@TODO HACK
         if int_time:
             self.info('Using int_time indexing for %s' % table)
         if start_date or stop_date:
@@ -180,11 +181,11 @@ class HDBppReader(HDBppDB):
         ######################################################################
         # QUERY
         t0 = time.time()
-        self.warning(query.replace('where','\nwhere').replace(
+        self.info(query.replace('where','\nwhere').replace(
             'group,','\ngroup'))
         try:
             result = self.Query(query)
-            self.warning('read [%d] in %f s'%(len(result),time.time()-t0))
+            self.info('read [%d] in %f s'%(len(result),time.time()-t0))
         except MySQLdb.ProgrammingError as e:
             result = []
             if 'DOUBLE' in str(e) and "as DOUBLE" in query:
@@ -419,7 +420,7 @@ class HDBppReader(HDBppDB):
         
         return result    
     
-    def get_failed_attributes(self,t=7200):
+    def get_attributes_not_updated(self,t=7200):
         vals = self.load_last_values(self.get_attributes())
         nones = [k for k,v in vals.items() 
                     if (not v or v[1] is None)]
