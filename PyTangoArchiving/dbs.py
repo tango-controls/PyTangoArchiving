@@ -321,8 +321,11 @@ def mysqldump_by_date(schema, user, passwd, folder, start, stop,
         filename = ('%s/%s-%s-%s-%s.dmp' 
             % (folder,schema,t,start.split()[0],stop.split()[0]))
         cols = db.getTableCols(t)
-        col = [c for c in ('time','data_time') if c in cols] 
-        if col:
+        col = [c for c in ('int_time','time','data_time') if c in cols] 
+        if col and col[0] == 'int_time':
+            where = " %s >= %s and %s < %s " % (
+                col[0],fn.str2time(start),col[0],fn.str2time(stop))
+        elif col:
             where = " %s >= '%s' and %s < '%s' " % (col[0],start,col[0],stop)
         else:
             where = ""

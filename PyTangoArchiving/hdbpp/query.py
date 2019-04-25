@@ -47,7 +47,7 @@ class HDBppReader(HDBppDB):
             start = fn.str2time(
                 fn.time2str().split()[0].rsplit('-',1)[0]+'-01')
         vals = self.get_attribute_values(table, N=n, human=True, desc=True,
-                                            start_date=start, stop_date=epoch)
+                        start_date=start, stop_date=epoch)
         if len(vals):
             return vals[0] if abs(n)==1 else vals
         else: 
@@ -92,8 +92,9 @@ class HDBppReader(HDBppDB):
         start_date and stop_date must be in a format valid for SQL
         """
         t0 = time.time()
-        self.debug('HDBpp.get_attribute_values(%s,%s,%s,%s,decimate=%s,%s)'
-              %(table,start_date,stop_date,N,decimate,kwargs))
+        self.debug('HDBpp.get_attribute_values(%s,%s,%s,%s,decimate=%s,'
+                   'int_time=%s,%s)'
+              %(table,start_date,stop_date,N,decimate,int_time,kwargs))
         if fn.isSequence(table):
             aid,tid,table = table
         else:
@@ -123,6 +124,7 @@ class HDBppReader(HDBppDB):
         interval = 'where att_conf_id = %s'%aid if aid is not None \
                                                 else 'where att_conf_id >= 0 '
                                             
+        #self.info('%s : %s' % (table, self.getTableCols(table)))
         int_time = int_time and 'int_time' in self.getTableCols(table)
         if int_time:
             self.info('Using int_time indexing for %s' % table)
@@ -159,9 +161,13 @@ class HDBppReader(HDBppDB):
                 d = int(decimate) or 1
             else:
                 d = int((stop_time-start_time)/10800) or 1
+            def next_power_of_2(x):  
+                return 1 if x == 0 else 2**int(x - 1).bit_length()
+            d = next_power_of_2(d/2)
             # decimation on server side
             query += ' group by FLOOR(%s/%d)' % (
                 'int_time' if int_time else 'UNIX_TIMESTAMP(data_time)',d)
+            
         query += ' order by %s' % ('int_time' if int_time else 'data_time')
                     
         if N == 1:
