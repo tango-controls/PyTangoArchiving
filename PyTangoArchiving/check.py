@@ -33,9 +33,11 @@ def check_archiving_schema(
         export=None):
 
     ti = fn.now() if ti is None else str2time(ti) if isString(ti) else ti
-    
     api = pta.api(schema)
     is_hpp = isinstance(api,pta.HDBpp)
+    attributes = list(attributes)
+    values = dict(values)
+    
     check = dict()
     old_period = 24*3600*old_period if old_period < 1000 \
         else (24*old_period if old_period<3600 else old_period)
@@ -388,6 +390,17 @@ def check_archiving_schema(
         
     return result 
 
+CheckState = fn.Struct(
+    ON = 0, # archived
+    OFF = 1, # not archived
+    OK = 2, # device up and running, values updated
+    NO_READ = 3, # device not running
+    STALL = 4, # value not changing
+    NO_EVENTS = 5, # not sending events
+    LOST = 6, # value changed, but not updated in db
+    UNK = 7, # value cannot be evaluated
+    )
+
 def check_db_schema(schema,tref = None):
     
     r = fn.Struct()
@@ -421,6 +434,7 @@ def check_db_schema(schema,tref = None):
     fbool = lambda x: all(x) if fn.isSequence(x) else bool(x)
     
     for a,v in r.check.items():
+        state = check_archived_attribute(a,v,default=CheckState.LOST)
         # Get current value/timestamp
         vv,t = getattr(v,'value',v),getattr(v,'time',0)
         t = t and fn.ctime2time(t)
@@ -450,45 +464,48 @@ def check_db_schema(schema,tref = None):
                 
     return r
 
-CheckState = fn.Struct(
-    on = 0, # archived
-    off = 1, # not archived
-    ok = 2, # device up and running, values updated
-    nok = 3, # device not running
-    stall = 4, # value not changing
-    noev = 5, # not sending events
-    lost = 6, # value changed, but not updated in db
-    )
-
-def check_archived_attribute():
-
+def check_archived_attribute(attribute, value = False, state = CheckState.OK, 
+        default = CheckState.UNK, cache = None):
+    """
+    generic method to check the state of an attribute
+    """
     # Get current value/timestamp
-    vv,t = getattr(v,'value',v),getattr(v,'time',0)
+    if cache:
+        stored, evs = cache.vals[attribute], cache.evs[attribute]
+        
+    if value is False:
+        value = fn.read_attribute(attribute, brief=False)
+        
+    vv,t = getattr(value,'value',v),getattr(value,'time',0)
     t = t and fn.ctime2time(t)
     
     if isinstance(vv,(type(None),Exception)):
         # attribute is not readable
-        r.nok.append(a)
-    elif r.vals[a] and 0<t<=r.vals[a][0]:
+        state = CheckState.NO_READ
+    elif cache and stored and 0 < t <= stored[0]:
         # attribute timestamp doesnt change
-        r.stall.append(a)
-    elif r.vals[a] and fbool(vv==r.vals[a][1]):
+        state = CheckState.STALL
+    elif cache and stored and fbool(vv == stored[1]):
         # attribute value doesnt change
-        r.stall.append(a)
+        state = CheckState.STALL
     else:
-        r.evs[a] = fn.tango.check_attribute_events(a)
-        if not r.evs[a]:
+        evs = fn.tango.check_attribute_events(a)
+        if cache:
+            cache.evs[attribute] = evs
+        if not evs:
             # attribute doesnt send events
-            r.noev.append(a)
+            state = CheckState.NO_EVENTS
         else:
-            # archiving failure (events or polling)
-            r.lost.append(a)
+            # no reason known for archiving failure
+            state = default
 
     return state
 
 def check_table_data(db, att_id, table, start, stop, gap, period):
     """
     db must be a fandango.FriendlyDB object
+    
+    NOTE: count(*) seems to be a very unefficient method to do this!!
     
     this method will check different intervals within the table to 
     see whether there is available data or not for the attribute
@@ -519,10 +536,15 @@ def check_table_data(db, att_id, table, start, stop, gap, period):
 
 
 def save_schema_values(schema, filename='', folder=''):
+    """
+    This method saves all last values from a given schema into a file
+    it can be called from crontab to generate daily reports
+    """
     t0 = fn.now()
     print('Saving %s attribute values' % schema)
-    filename = filename or '%s_values.pck' % schema
-    if folder: filename = '/'.join(folder,filename)
+    date = fn.time2str().split()[0].replace('-','')
+    filename = filename or '%s_%s_values.pck' % (schema,date)
+    if folder: filename = '/'.join((folder,filename))
     api = pta.api(schema)
     attrs = api.keys() if hasattr(api,'keys') else api.get_attributes()
     print('%d attributes in %s' % (len(attrs),schema))
