@@ -119,6 +119,7 @@ class Schemas(object):
     
     @classmethod
     @fn.Catched
+    @fn.Cached(expire=60.)
     def load(k,tango='',prop='',logger=None):
 
         tangodb = fn.tango.get_database(tango)
@@ -255,8 +256,13 @@ class Schemas(object):
                      else fn.notNone(start,now-1))
             stop = (str2time(stop) if fn.isString(stop) 
                     else fn.notNone(stop,now))
-            k.LOCALS.update({'attribute':attribute.lower(),
-                    'match':clmatch,'clmatch':clmatch,
+            xmatch = lambda e,a: clmatch(e,a,extend=True)
+            k.LOCALS.update({
+                    'attr':attribute.lower(),
+                    'attribute':attribute.lower(),
+                    'device':attribute.lower().rsplit('/',1)[0],
+                    'match':lambda r: xmatch(r,attribute),
+                    'clmatch':xmatch,
                     'overlap':overlap,
                     'time2str':time2str,'str2time':str2time,
                     't2s':time2str,'s2t':str2time,
