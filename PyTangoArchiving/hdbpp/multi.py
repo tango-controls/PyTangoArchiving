@@ -4,18 +4,13 @@ import fandango as fn
 import fandango.db as fdb
 import fandango.tango as ft
 from fandango.functional import *
+from fandango import Cached
 
 import PyTangoArchiving
 import PyTangoArchiving as pta
 ##############################################################################    
 
    
-def get_archivers_filters(archiver='archiving/es/*'):
-    filters = fn.SortedDict(sorted((k,v['AttributeFilters']) for k,v in 
-                    fn.tango.get_matching_device_properties(
-                    archiver,'AttributeFilters').items()))
-    return filters
-
 def get_schema_attributes(schema='*'):
     rd = pta.Reader(schema)
     alls = rd.get_attributes(active=True)
@@ -45,7 +40,7 @@ def is_attribute_code_pushed(device,attribute,\
         return None
         
 
-def get_hdbpp_databases(archivers=[],dbs={}):
+def get_hdbpp_databases(active=True): #archivers=[],dbs={}):
     """
     Method to obtain list of dbs/archivers; it allows to match any 
     archiver list against existing dbs.
@@ -57,46 +52,33 @@ def get_hdbpp_databases(archivers=[],dbs={}):
             db = get_hdbpp_databases(a,dbs).keys()[0]
       
     """
-    if not dbs:
-        dbs = {}
-        print('Loading databases from Tango')
-        cms = ft.get_class_devices('HdbConfigurationManager')
-        for c in cms:
+    schemas = pta.Schemas.load()
+    hdbpp = sorted(k for k in schemas if fn.clsearch('hdbpp',str(schemas[k])))
+    if active:
+        r = []
+        for h in hdbpp:
             try:
-                props = ['LibConfiguration','ArchiverList']
-                props = ft.get_database().get_device_property(c,props)
-                db = dict(t.split('=') 
-                          for t in props['LibConfiguration'])['dbname']
-                dbs[db] = {c:None}
-                for c in props['ArchiverList']:
-                    dbs[db][c] =  ft.get_device_property(c,'AttributeList')
+                if fn.check_device(pta.api(h).manager):
+                    r.append(h)
             except:
-                print('Unable to load %s config' % str(c))
-                traceback.print_exc()
+                pass
+        return r
     else:
-        dbs = dbs.copy()
-            
-    if archivers:
-        archivers = list(archivers) #Don't use toList here!
-        targets = []
-        for a in archivers:
-            m = fn.parse_tango_model(a,fqdn=True)
-            targets.extend((m.fullname, m.devicename, m.devicemodel))
-            
-        print(targets)
+        return hdbpp
+    
+def get_hdbpp_filters():
+    dbs = get_hdbpp_databases(active=True)
+    sch = pta.Schemas.load()
+    return dict((d,sch[d].get('filters','*')) for d in dbs)
 
-        for db,archs in dbs.items():
-            narchs = {}
-            for a in archs.keys():
-                if fn.inCl(a,targets):
-                    m = fn.parse_tango_model(a,fqdn=True).fullname
-                    narchs[m] = archs[a]
-            if not narchs:
-                dbs.pop(db)
-            else:
-                dbs[db] = narchs
-            
-    return dbs
+def get_hdbpp_for_attributes(attrlist):
+    filters = get_hdbpp_filters()
+    r = fn.defaultdict(list)
+    for a in attrlist:
+        for d,f in filters.items():
+            if fn.clmatch(f,a,extend=True):
+                r[d].append(a)
+    return r
 
 def merge_csv_attrs(exported = True, currents = True, check_dups = True):
     """
@@ -180,6 +162,27 @@ def check_attribute_in_all_dbs(attr_regexp,reader = None,
             result.append((a,s,v and len(v)))
     return result
 
+## DEPRECATED
+#def get_managers_filters(archiver=''):
+    ##filters = fn.SortedDict(sorted((k,v['AttributeFilters']) for k,v in 
+                    ##fn.tango.get_matching_device_properties(
+                    ##archiver,'AttributeFilters').items()))
+    #managers = fn.tango.get_class_devices('HdbConfigurationManager')
+    #filters = [fn.tango.get_device_property(m,'AttributeFilters')
+                   #for m in managers]
+    #filters = zip(managers,map(fn.toList,filters))
+    #return filters
+
+## DEPRECATED
+#@Cached(expire=60.)
+#def get_database_for_attributes(attrs):
+    #result = dict()
+    #filters = get_managers_filters()
+    #for a in attrs:
+        #for m,f in filters.items():
+            #pass
+            
+
 def get_archivers_for_attributes(attrs=[],archs='archiving/es/*'):
     """
     This method returns matching archivers for a list of attributes
@@ -201,11 +204,12 @@ def get_archivers_for_attributes(attrs=[],archs='archiving/es/*'):
     archattrs = {}
     
     for i,k in enumerate(filters):
-        v = filters[k]
+        v = filters[k] # k is the archiver name
         k = fn.tango.parse_tango_model(k, fqdn = True).fullname
         if 'DEFAULT' in v:
             df = k
         else:
+            #filtersmart(list,regexp): returns a clsearch on the list
             m = fn.filtersmart(r,v)
             currattrs = set(fn.join(*[devattrs[d] for d in m]))
             if len(currattrs):
@@ -276,25 +280,20 @@ def start_archiving_for_attributes(attrs,*args,**kwargs):
 
     See HDBpp.add_attribute.__doc__ for a full description of arguments
     """    
-    archs = get_archivers_for_attributes(attrs)
-    dbs = get_hdbpp_databases(archs.keys())
+    #archs = get_archivers_for_attributes(attrs)
+    #dbs = get_hdbpp_databases(archs.keys())
     done = []
     
     if not args and not kwargs:
         kwargs['code_event'] = True
     
-    for db,devs in dbs.items():
+    dbs = get_hdbpp_for_attributes(attrs)
+    
+    for db,attrlist in dbs.items():
+        print('Launching %d attributes in %s'%(len(attrlist),db))
         api = PyTangoArchiving.Schemas.getApi(db)
-        devs = [d for d in devs if d in archs]
-        for d in devs:
-            ts = archs[d]
-            print('Launching %d attributes in %s.%s'%(len(ts),db,d))
-            for t in ts:
-                api.start_archiving(t,d,*args,**kwargs)            
-                done.append(fn.tango.get_full_name(t))
-
-            if not kwargs.get('start'):
-                fn.get_device(d).Start()
+        api.add_attributes(attrlist,*args,**kwargs)
+        done.extend(map(fn.tango.get_full_name,attrlist))
 
     if len(done)!=len(attrs):
         print('No hdbpp database match for: %s' % str(
@@ -450,10 +449,3 @@ def migrate_matching_attributes(regexp,simulate=True):
     for a in hdb,tdb:
         pass
 
-
-__all__ = [
-    'get_archivers_for_attributes',
-    'get_archivers_filters', 'get_hdbpp_databases',
-    'get_class_archiving', 
-    'is_attribute_code_pushed', 'check_attribute_in_all_dbs',
-    ]
