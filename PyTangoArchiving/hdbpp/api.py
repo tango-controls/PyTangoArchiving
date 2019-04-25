@@ -1,3 +1,4 @@
+import fandango as fn
 from .query import HDBppReader
 from .periodic import HDBppPeriodic
 
