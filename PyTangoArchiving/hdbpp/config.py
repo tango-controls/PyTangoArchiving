@@ -39,6 +39,7 @@ __test__ = {}
 def get_search_model(model):
     if model.count(':')<2:
         model = '%/'+model
+    model = model.split('[')[0]
     model = clsub('[:][0-9]+','%:%',model)
     return model
 

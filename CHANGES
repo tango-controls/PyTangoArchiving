@@ -6,6 +6,10 @@
 @TODO Rename widgetArchivingBrowser.ModelSearchWidget to widget.browser.ArchivingBrowser
 @TODO: rename ArchivingBrowser to browser
 
+
+8.9.2
+    solve several bugs on extracting data from arrays (to csv and trends)
+
 8.9.0
 
     adapt trends to new reader methods

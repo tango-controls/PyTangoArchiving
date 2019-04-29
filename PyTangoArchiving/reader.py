@@ -862,6 +862,10 @@ class Reader(Object,SingletonMap):
         
         :return: a list with values (History or tuple values depending of args)
         '''
+        self.log.debug('get_attribute_values(%s, %s, %s, %s, %s, %s, %s, %s, %s)'
+            % (attribute, start_date, stop_date, asHistoryBuffer, decimate, 
+               notNone, N, cache, fallback))
+            
         if not self.check_state(): 
             self.log.info('In PyTangoArchiving.Reader.get_attribute_values:'
                 ' Archiving not available!')
@@ -969,6 +973,9 @@ class Reader(Object,SingletonMap):
             values = rd.get_attribute_values(attribute,start_date,stop_date,
                     asHistoryBuffer=asHistoryBuffer,decimate=decimate,
                     notNone=notNone,N=N)
+            if len(values):
+                self.log.debug('%d values: %s,...'
+                    % (len(values),str(values[0])))
             
             # If no data, it just tries the next database
             if fallback:
@@ -976,11 +983,11 @@ class Reader(Object,SingletonMap):
                 if (values is None or not len(values)): 
                     gaps = [(start_time,stop_time)]
                 else:
-                    r = .1*(stop_time-start_time)
+                    r = max((300,.1*(stop_time-start_time)))
                     gaps = get_gaps(values,r,
                                     start = start_time if not N else 0,
                                     stop = stop_time if not N else 0)
-                    print('get_gaps: %d gaps' % len(gaps))
+                    print('get_gaps(%d): %d gaps' % (len(values),len(gaps)))
 
                 fallback = []
                 for gap0,gap1 in gaps:
@@ -1047,7 +1054,8 @@ class Reader(Object,SingletonMap):
         #DECIMATION IS DONE HERE
         
         l0,t1 = len(values),time.time()
-        if l0 > 128 and decimate:
+        
+        if l0 > 128 and decimate: 
             decimate,window = decimate if isSequence(decimate) \
                                         else (decimate,'0')
             if isString(decimate):
@@ -1069,11 +1077,11 @@ class Reader(Object,SingletonMap):
         #Simulating DeviceAttributeHistory structs
         if asHistoryBuffer:
             values = [FakeAttributeHistory(*v) for v in values]                
-                    
+            
         #Array index is an string or None
         if array_index: 
             values = self.extract_array_index(values,array_index,
-                                                decimate,asHistoryBuffer)
+                                                decimate) #,asHistoryBuffer)
                 
         #######################################################################
         # SAVE THE CACHE

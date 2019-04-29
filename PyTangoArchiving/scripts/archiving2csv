@@ -46,7 +46,7 @@ filename = ''
 print arrsep*80
 
 def is_filename(a):
-    return (not fn.isRegexp(a) 
+    return (not pta.utils.is_regexp(a) 
             and ('/' not in a or os.path.exists(a.rsplit('/',1)[0])))
 
 try:
@@ -74,7 +74,7 @@ try:
         [a.split('/')[2] for a in attrs]
             
     if attrs:
-        ext = [a for a in attrs if fn.isRegexp(a)]
+        ext = [a for a in attrs if pta.utils.is_regexp(a)]
         if ext:
             [attrs.remove(e) for e in ext]
             rd = pta.Reader()

@@ -216,6 +216,14 @@ def parse_property(name,value):
     r.update((v[0],v[-1]) for v in value)
 
     return r
+
+WILDCARDS = '^$*+?{\|' #r'[]()
+def is_regexp(seq,wildcards=WILDCARDS):
+    """ 
+    This function is just a hint, use it with care. 
+    This function is an overload of the one in fandango, for convenience
+    """
+    return anyone(c in wildcards for c in seq)
     
 def translate_attribute_alias(attribute):
     full = 'tango://' in attribute

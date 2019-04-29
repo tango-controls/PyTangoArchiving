@@ -590,6 +590,7 @@ def updateTrendBuffers(self,data,logger=None):
     """
     self.warning('In updateTrendBuffers(...)')
     t = []
+    ntrends = 1
     try:
         #self.curves_lock.acquire()
         import numpy,datetime,PyTangoArchiving.utils as utils
@@ -604,14 +605,14 @@ def updateTrendBuffers(self,data,logger=None):
             ###Adding archiving values
             try:
                 #It may clean existing buffers!
-                ntrends = self._checkDataDimensions(data[0].value 
-                                if fromHistoryBuffer else data[0][1]) 
+                value = data[0].value if fromHistoryBuffer else data[0][1]
+                ntrends = self._checkDataDimensions(value) 
             except:
                 logmsg(str(data[0]))
                 raise
             
             newsize = checkTrendBuffers(self,data,logger)
-            logger.warning('reader.updateTrendBuffers(): filling Buffer')
+            logger.warning('reader.updateTrendBuffers(%s): filling Buffer with %s' % (ntrends, newsize))
             try:
                 if fromHistoryBuffer:
                     t = numpy.zeros(len(data), dtype=float)
@@ -755,7 +756,6 @@ def getArchivedTrendValues(trend_set,model,start_date=0,stop_date=None,
     logger_obj = trend_set
     t00 = time.time()
     N = 0
-    trend_set.debug('In getArchivedTrendValues(%s) ...' % str(model))
     
     try:
         tango_host,attribute,model = parseTrendModel(model)

@@ -98,6 +98,13 @@ class HDBppReader(HDBppDB):
         if fn.isSequence(table):
             aid,tid,table = table
         else:
+            index = None
+            if '[' in table:
+                try:
+                    table = table.split('[')[0]
+                    index = int(fn.clsearch('\[([0-9]+)\]',table).groups()[0])
+                except:
+                    pass
             aid,tid,table = self.get_attr_id_type_table(table)
             
         if not all((aid,tid,table)):
@@ -110,11 +117,15 @@ class HDBppReader(HDBppDB):
         if as_double:
             what = 'CAST(%s as DOUBLE)' % what
             
-        if 'array' in table: what+=",idx"
         value = 'value_r' if 'value_r' in self.getTableCols(table) \
                                 else 'value'
-                            
-        if decimate and aggregate in ('AVG','MAX','MIN'):
+            
+        if 'array' in table: 
+            what+=",idx"
+            # arrays cannot be aggregated !
+            decimate = False
+            
+        elif decimate and aggregate in ('AVG','MAX','MIN'):
             value = '%s(%s)' % (aggregate,value)
             
         what += ', ' + value
@@ -181,7 +192,7 @@ class HDBppReader(HDBppDB):
         ######################################################################
         # QUERY
         t0 = time.time()
-        self.info(query.replace('where','\nwhere').replace(
+        self.debug(query.replace('where','\nwhere').replace(
             'group,','\ngroup'))
         try:
             result = self.Query(query)
@@ -219,6 +230,9 @@ class HDBppReader(HDBppDB):
                 result = result[-N:]
             if N < 0 or desc:
                 result = list(reversed(result))
+
+            if index is not None:
+                result = [r[index] for r in result]
             self.debug('array arranged [%d] in %f s'
                          % (len(result),time.time()-t0))
             t0 = time.time()
