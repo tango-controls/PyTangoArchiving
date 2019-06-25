@@ -39,7 +39,7 @@ def is_attribute_code_pushed(device,attribute,\
         # No events available
         return None
         
-
+@fn.Cached(expire=300,depth=2)
 def get_hdbpp_databases(active=True): #archivers=[],dbs={}):
     """
     Method to obtain list of dbs/archivers; it allows to match any 
