@@ -202,6 +202,7 @@ class HDBppDB(ArchivingDB,SingletonMap):
             try:
                 attrs = get_device(archiver, keep=True).AttributeList or []
             except:
+                print('Unable to get %s attributes' % archiver)
                 traceback.print_exc()
                 attrs = []
         
