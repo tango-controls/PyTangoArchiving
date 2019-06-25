@@ -65,7 +65,7 @@ try:
     elif '--list' in args:
         pass
 
-    else:
+    elif attrs:
         #assert filename and len(attrs)>3, "Dates and filename required!"
         start,stop = attrs[-2:]
         attrs = map(str.lower,attrs[:-2])
