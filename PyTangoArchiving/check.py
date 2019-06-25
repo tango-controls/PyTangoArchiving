@@ -30,7 +30,8 @@ def check_archiving_schema(
         loads = True,
         action=False,
         trace=True,
-        export=None):
+        export=None,
+        n = 1):
 
     ti = fn.now() if ti is None else str2time(ti) if isString(ti) else ti
     api = pta.api(schema)
@@ -80,51 +81,7 @@ def check_archiving_schema(
     
     ###########################################################################
 
-    if isString(values) and values.endswith('.pck'):
-        print('\nLoading last values from %s file\n' % values)
-        import pickle
-        values = pickle.load(open(values))
-        
-    elif isString(values) and values.endswith('.json'):
-        print('\nLoading last values from %s file\n' % values)
-        values = fn.json2dict(values)        
-
-    else: #if not use_index or is_hpp:
-        print('\nGetting last values ...\n')
-        for a in tattrs:
-            values[a] = api.load_last_values(a)
-        
-    #else:
-        #print('\nGetting updated tables from database ...\n')
-        #tups = api.db.get_table_updates()
-        ## Some tables do not update MySQL index tables
-        #t0 = [a for a in archived if a in tattrs and not tups[api[a].table]]
-        #check.update((t,check_attribute(a,readable=True)) for t in t0 
-        #    if not check.get(t))
-        #t0 = [t for t in t0 if check[t]]
-        #print('%d/%d archived attributes have indexes not updated ...'
-        #   %(len(t0),len(archived)))
-        #if t0 and len(t0)<100: 
-            #vs = api.load_last_values(t0);
-            #tups.update((api[t].table,api[t].last_date) for t in t0)
-
-        #for a in tattrs:
-            #if a in tups:
-                #values[a] = [tups[api[a].table],0]
-            
-    for k,v in values.items():
-        if (len(v) if isSequence(v) else v):
-            if isinstance(v,dict): 
-                v = v.values()[0]
-            if isSequence(v) and len(v)==1:
-                v = v[0]
-            if v and not isNumber(v[0]):
-                v = [date2time(v[0]),v[1]]
-            values[k] = v
-        else:
-            values[k] = [] if isSequence(v) else None
-                
-    print('%d values obtained' % len(values))    
+    values = load_schema_values(schema,attributes,values,n)
     
     ###########################################################################    
     
@@ -386,9 +343,53 @@ def check_archiving_schema(
                     pickle.dump(result.dict(),f)
                 else:
                     f.write(fn.dict2str(result.dict()))
-                f.close()
+                f.close()        
         
     return result 
+
+def load_schema_values(schema, attributes = None, values = None, n = 1):
+    
+    api = schema if not isString(schema) else pta.api(schema)
+    
+    if isString(values) and values.endswith('.pck'):
+        print('\nLoading last values from %s file\n' % values)
+        import pickle
+        values = pickle.load(open(values))
+        
+    elif isString(values) and values.endswith('.json'):
+        print('\nLoading last values from %s file\n' % values)
+        values = fn.json2dict(values)        
+
+    elif values is None: #if not use_index or is_hpp:
+
+        print('\nGetting last values ...\n')
+        if n==1 and not isinstance(api,pta.HDBpp):
+            ups = api.db.get_table_updates()
+            values = dict((k,(ups[api[k].table],None)) for k in attributes)
+        else:
+            value = {}
+            values = dict((a,api.load_last_values(a,n=n)) for a in attributes)
+            
+    for k,v in values.items():
+        # each value can be either a tuple (t,v), a list of t,v values or None
+        if isinstance(v,dict): 
+            v = v.values()[0]
+        if not (len(v) if isSequence(v) else v):
+            values[k] = [] if n>1 else None
+        else:
+            if n > 1:
+                v = v[0]
+            if v and not isNumber(v[0]):
+                try:
+                    v = [date2time(v[0]),v[1]]
+                except:
+                    print('unable to parse %s' % str(v))
+            values[k] = v
+                
+    print('%d values obtained' % len(values))
+    
+    return values
+    
 
 CheckState = fn.Struct(
     ON = 0, # archived
@@ -401,82 +402,110 @@ CheckState = fn.Struct(
     UNK = 7, # value cannot be evaluated
     )
 
-def check_db_schema(schema,tref = None):
+def check_db_schema(schema, attributes = None, values = None,
+                    tref = None, n = 1, filters = '*', export = 'json'):
+    """
+    tref is the time that is considered updated (e.g. now()-86400)
+    """
     
+    ti = fn.now()
     r = fn.Struct()
     r.api = api = pta.api(schema)
     r.tref = fn.notNone(tref,fn.now()-3600)
     
-    r.attrs = api.keys()
-    r.on = api.get_archived_attributes()
+    r.attrs = [a for a in (attributes or api.get_attributes())
+                if fn.clmatch(filters,a)]
+    r.on = [a for a in api.get_archived_attributes() if a in r.attrs]
     r.off = [a for a in r.attrs if a not in r.on]
+    
+    r.archs = fn.defaultdict(list)
+    r.vals = load_schema_values(api,r.on,values,n)
+    
     if schema in ('tdb','hdb'):
-        ups = api.db.get_table_updates()
-        r.vals = dict((k,(ups[api[k].table],None)) for k in r.on)
+        [r.archs[api[k].archiver].append(k) for k in r.on]
     else:
-        r.vals = dict(fn.kmap(api.load_last_values,r.on))
-        r.vals = dict((k,v and v.values()[0]) for k,v in r.vals.items())
-
-    dups = fn.defaultdict(list)
-    if getattr(api,'dedicated',None):
-        [dups[a].append(k) for a in r.on 
-            for k,v in api.dedicated.items() if a in v]
-        nups = [a for a,v in dups.items() if len(v)<=1]
-        [dups.pop(a) for a in nups]
-    r.dups = dict(dups)
+        r.rvals = r.vals
+        r.freq, r.vals = {}, {}
+        for k,v in r.rvals.items():
+            try:
+                r.vals[k] = v[0] if isSequence(v) and len(v) else v
+                if n > 1:
+                    v = v[0] if isSequence(v) and len(v) else v
+                    r.freq[k] = v and float(len(v))/abs(v[0][0]-v[-1][0])
+            except Exception as e:
+                print(k,v)
+                print(fn.except2str())
+                
+        for k in api.get_archivers():
+            r.archs[k] = api.get_archiver_attributes(k)
+        r.pers = api.get_periodic_archivers_attributes(k)
 
     # Get all updated attributes
     r.ok = [a for a,v in r.vals.items() if v and v[0] > r.tref]
     # Try to read not-updated attributes
-    r.check = dict((a,fn.check_attribute(a)) for a in r.on if a not in r.ok)
+    r.check = dict((a,fn.check_attribute(a)
+                    ) for a in r.on if a not in r.ok)
+    r.novals = [a for a,v in r.vals.items() if not v]
     r.nok, r.stall, r.noev, r.lost, r.evs = [],[],[],[],{}
     # Method to compare numpy values
     fbool = lambda x: all(x) if fn.isSequence(x) else bool(x)
     
     for a,v in r.check.items():
-        state = check_archived_attribute(a,v,default=CheckState.LOST)
-        # Get current value/timestamp
-        vv,t = getattr(v,'value',v),getattr(v,'time',0)
-        t = t and fn.ctime2time(t)
+        state = check_archived_attribute(a, v, default=CheckState.LOST, 
+                    cache=r, tref=tref)
         
-        if isinstance(vv,(type(None),Exception)):
-            # attribute is not readable
-            r.nok.append(a)
-        elif r.vals[a] and 0<t<=r.vals[a][0]:
-            # attribute timestamp doesnt change
-            r.stall.append(a)
-        elif r.vals[a] and fbool(vv==r.vals[a][1]):
-            # attribute value doesnt change
-            r.stall.append(a)
-        else:
-            r.evs[a] = fn.tango.check_attribute_events(a)
-            if not r.evs[a]:
-                # attribute doesnt send events
-                r.noev.append(a)
-            else:
-                # archiving failure (events or polling)
-                r.lost.append(a)
+        { #CheckState.OK : r.ok, #Shouldn't be any ok in check list
+         CheckState.NO_READ : r.nok,
+         CheckState.STALL : r.stall,
+         CheckState.NO_EVENTS : r.noev,
+         CheckState.UNK : r.lost}[state].append(a)
                 
     # SUMMARY
     print(schema)
-    for k in 'attrs on off dups ok nok noev stall lost'.split():
+    for k in 'attrs on off ok nok noev stall lost'.split():
         print('\t%s:\t:%d' % (k,len(r.get(k))))
+        
+    print('\nfinished in %d seconds\n\n'%(fn.now()-ti))
+    
+    if export is not None:
+        if export is True:
+            export = 'txt'
+        for x in (export.split(',') if isString(export) else export):
+            if x in ('json','pck','pickle','txt'):
+                x = '/tmp/%s.%s' % (schema,x)
+            print('Saving %s file with keys:\n%s' % (x,r.keys()))
+            if 'json' in x:
+                fn.dict2json(r.dict(),x)
+            else:
+                f = open(x,'w')
+                if 'pck' in x or 'pickle' in x:
+                    pickle.dump(r.dict(),f)
+                else:
+                    f.write(fn.dict2str(r.dict()))
+                f.close()        
                 
     return r
 
 def check_archived_attribute(attribute, value = False, state = CheckState.OK, 
-        default = CheckState.UNK, cache = None):
+        default = CheckState.UNK, cache = None, tref = None):
     """
-    generic method to check the state of an attribute
+    generic method to check the state of an attribute (readability/events)
+    
+    this method will not query the database; database values should be 
+    given using the chache dictionary argument
     """
     # Get current value/timestamp
     if cache:
-        stored, evs = cache.vals[attribute], cache.evs[attribute]
+        stored = cache.vals[attribute]
+        #evs = cache.evs[attribute]
+        if tref is not None and stored[0] >= tref and not isinstance(
+                stored[0],(type(None),Exception)):
+            return CheckState.OK
         
     if value is False:
         value = fn.read_attribute(attribute, brief=False)
         
-    vv,t = getattr(value,'value',v),getattr(value,'time',0)
+    vv,t = getattr(value,'value',value),getattr(value,'time',0)
     t = t and fn.ctime2time(t)
     
     if isinstance(vv,(type(None),Exception)):
@@ -489,7 +518,7 @@ def check_archived_attribute(attribute, value = False, state = CheckState.OK,
         # attribute value doesnt change
         state = CheckState.STALL
     else:
-        evs = fn.tango.check_attribute_events(a)
+        evs = fn.tango.check_attribute_events(attribute)
         if cache:
             cache.evs[attribute] = evs
         if not evs:
