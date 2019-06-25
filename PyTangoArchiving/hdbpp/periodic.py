@@ -79,7 +79,7 @@ class HDBppPeriodic(HDBppDB):
         return loads[0][-1]    
     
     @fn.Catched
-    def add_periodic_attribute(self,attribute,period,archiver=None,wait=1.5):
+    def add_periodic_attribute(self,attribute,period,archiver=None,wait=3.):
         
         arch = self.get_periodic_attribute_archiver(attribute)
         if arch:
@@ -101,7 +101,7 @@ class HDBppPeriodic(HDBppDB):
         fn.wait(wait)
         return v
     
-    def add_periodic_attributes(self,attributes,periods,wait=1.5):
+    def add_periodic_attributes(self,attributes,periods,wait=3.):
         """
         attributes must be a list, periods a number, list or dict
         """
