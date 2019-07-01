@@ -500,7 +500,7 @@ class HDBppDB(ArchivingDB,SingletonMap):
           'host='+self.host,
           'dbname='+self.db_name,
           'libname='+libname,
-          'ligthschema=1',
+          'lightschema=1',
           ])
         if 'ArchiverList' not in props:
             props.ArchiverList = []
