@@ -5,22 +5,25 @@ assert sys.argv[1:], 'Start date required (e.g. 2017-08-01)'
 
 tables = {
 
-    'att_array_devdouble_ro':'adr',
-    'att_array_devlong_ro':'alr',
-    'att_array_devshort_ro':'ahr',
-    'att_array_devstring_ro':'asr',
-    'att_array_devstate_ro':'atr',
+    #'att_array_devdouble_ro':'adr',
+    #'att_array_devlong_ro':'alr',
+    #'att_array_devshort_ro':'ahr',
+    #'att_array_devstring_ro':'asr',
+    #'att_array_devstate_ro':'atr',
 
-    'att_scalar_devdouble_ro':'sdr',
-    'att_scalar_devdouble_rw':'sdw',
+    #'att_scalar_devdouble_ro':'sdr',
+    #'att_scalar_devdouble_rw':'sdw',
     
-    'att_scalar_devfloat_ro':'sfr',
-    'att_scalar_devlong_ro':'slr',
-    'att_scalar_devlong_rw':'slw',
-    'att_scalar_devstate_ro':'str',
-    'att_scalar_devstring_ro':'ssr',
-    'att_scalar_devshort_ro':'shr',
-    'att_scalar_devshort_rw':'shw',
+    #'att_scalar_devfloat_ro':'sfr',
+    #'att_scalar_devlong_ro':'slr',
+    #'att_scalar_devlong_rw':'slw',
+    #'att_scalar_devstate_ro':'str',
+    #'att_scalar_devstring_ro':'ssr',
+    #'att_scalar_devshort_ro':'shr',
+    #'att_scalar_devshort_rw':'shw',
+    
+    'att_array_devfloat_rw':'afw',
+    'att_scalar_devstring_rw':'ssw',
     
     }
     
