@@ -32,6 +32,8 @@ def check_archiving_schema(
         trace=True,
         export=None,
         n = 1):
+    
+    raise Exception('deprecated!, use check_db_schema')
 
     ti = fn.now() if ti is None else str2time(ti) if isString(ti) else ti
     api = pta.api(schema)
@@ -406,6 +408,7 @@ def check_db_schema(schema, attributes = None, values = None,
                     tref = None, n = 1, filters = '*', export = 'json'):
     """
     tref is the time that is considered updated (e.g. now()-86400)
+    n is used to consider multiple values
     """
     
     ti = fn.now()
@@ -428,10 +431,12 @@ def check_db_schema(schema, attributes = None, values = None,
         r.freq, r.vals = {}, {}
         for k,v in r.rvals.items():
             try:
-                r.vals[k] = v[0] if isSequence(v) and len(v) else v
                 if n > 1:
                     v = v[0] if isSequence(v) and len(v) else v
+                    r.vals[k] = v[0] if isSequence(v) and len(v) else v
                     r.freq[k] = v and float(len(v))/abs(v[0][0]-v[-1][0])
+                else:
+                    r.vals[k] = v
             except Exception as e:
                 print(k,v)
                 print(fn.except2str())
@@ -445,27 +450,32 @@ def check_db_schema(schema, attributes = None, values = None,
     # Try to read not-updated attributes
     r.check = dict((a,fn.check_attribute(a)
                     ) for a in r.on if a not in r.ok)
-    r.novals = [a for a,v in r.vals.items() if not v]
-    r.nok, r.stall, r.noev, r.lost, r.evs = [],[],[],[],{}
+    #r.novals = [a for a,v in r.vals.items() if not v]
+    r.nok, r.stall, r.noev, r.lost, r.novals, r.evs = [],[],[],[],[],{}
     # Method to compare numpy values
-    fbool = lambda x: all(x) if fn.isSequence(x) else bool(x)
     
     for a,v in r.check.items():
         state = check_archived_attribute(a, v, default=CheckState.LOST, 
                     cache=r, tref=tref)
         
-        { #CheckState.OK : r.ok, #Shouldn't be any ok in check list
-         CheckState.NO_READ : r.nok,
-         CheckState.STALL : r.stall,
-         CheckState.NO_EVENTS : r.noev,
-         CheckState.UNK : r.lost}[state].append(a)
+        {
+            #CheckState.ON : r.on,
+            #CheckState.OFF : r.off,
+            #CheckState.OK : r.ok, #Shouldn't be any ok in check list               
+            CheckState.NO_READ : r.nok,
+            CheckState.STALL : r.stall,
+            CheckState.NO_EVENTS : r.noev,
+            CheckState.LOST : r.lost,
+            CheckState.UNK : r.novals,
+         }[state].append(a)
                 
     # SUMMARY
-    print(schema)
-    for k in 'attrs on off ok nok noev stall lost'.split():
-        print('\t%s:\t:%d' % (k,len(r.get(k))))
+    r.summary = schema + '\n\n'
+    for k in 'attrs on off ok nok noev stall lost novals'.split():
+        r.summary += ('\t%s:\t:%d\n' % (k,len(r.get(k))))
         
-    print('\nfinished in %d seconds\n\n'%(fn.now()-ti))
+    r.summary += '\nfinished in %d seconds\n\n'%(fn.now()-ti)
+    print(r.summary)
     
     if export is not None:
         if export is True:
@@ -498,8 +508,8 @@ def check_archived_attribute(attribute, value = False, state = CheckState.OK,
     if cache:
         stored = cache.vals[attribute]
         #evs = cache.evs[attribute]
-        if tref is not None and stored[0] >= tref and not isinstance(
-                stored[0],(type(None),Exception)):
+        if (tref is not None and stored and stored[0] >= tref and 
+                not isinstance(stored[0],(type(None),Exception))):
             return CheckState.OK
         
     if value is False:
@@ -518,6 +528,7 @@ def check_archived_attribute(attribute, value = False, state = CheckState.OK,
         # attribute value doesnt change
         state = CheckState.STALL
     else:
+        # NOT STORED WILL ARRIVE HERE
         evs = fn.tango.check_attribute_events(attribute)
         if cache:
             cache.evs[attribute] = evs
@@ -525,7 +536,7 @@ def check_archived_attribute(attribute, value = False, state = CheckState.OK,
             # attribute doesnt send events
             state = CheckState.NO_EVENTS
         else:
-            # no reason known for archiving failure
+            # no values and/or no reason known for archiving failure
             state = default
 
     return state
