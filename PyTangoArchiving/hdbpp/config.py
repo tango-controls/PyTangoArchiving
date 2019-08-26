@@ -296,10 +296,10 @@ class HDBppDB(ArchivingDB,SingletonMap):
     def get_attributes_by_table(self,table=''):
         if table:
             table = table.replace('att_','')
-            return self.Query(
+            return [l[0] for l in self.Query(
                 "select att_name from att_conf,att_conf_data_type where "
                 "data_type like '%s' and att_conf.att_conf_data_type_id "
-                "= att_conf_data_type.att_conf_data_type_id" % table)
+                "= att_conf_data_type.att_conf_data_type_id" % table)]
         else:
             types = self.Query("select data_type,att_conf_data_type_id "
                 "from att_conf_data_type")
