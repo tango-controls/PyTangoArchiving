@@ -48,6 +48,12 @@ class SchemaDict(dict): #fn.Struct):
         #self._load = load
     
     def __getitem__(self,key):
+        
+        if key=='dbname':
+            v = super(SchemaDict,self).get('db_name',None)
+            if v is none:
+                v = super(SchemaDict,self).get('schema',None)
+            return v
 
         if key=='reader':
             r = super(SchemaDict,self).get('reader',None)
@@ -200,7 +206,7 @@ class Schemas(object):
         if ';' in schema:
             schema,dct = schema.split(';',1)
             dct = dict(d.split('=',1) for d in dct.split(';'))
-        dct.update({'schema':schema,'dbname':schema})
+        dct['schema'] = schema
         dct = SchemaDict(dct)
         props = []
 
@@ -270,7 +276,8 @@ class Schemas(object):
                     'begin':start,'end':stop,'NOW':now,
                     'reader':schema.get('reader',schema.get('api')),
                     'schema':schema.get('schema'),
-                    'dbname':schema.get('dbname',schema.get('schema','')),
+                    'dbname':schema.get('dbname',
+                        schema.get('db_name',schema.get('schema',''))),
                     })
             if 'reader' in f:
                 k.getReader(schema)
