@@ -48,6 +48,27 @@ class HDBppPeriodic(HDBppDB):
                 return a
         return ''
     
+    @Cached(depth=10000,expire=60.)
+    def get_periodic_attribute_period(self,attribute):
+        attribute = fn.tango.get_full_name(attribute,fqdn=True)
+        archivers = self.get_periodic_archivers_attributes()
+        for a,v in archivers.items():
+            if attribute in v:
+                return self.get_periodic_archiver_periods(a).get(attribute,0)
+        return 0
+    
+    @Cached(depth=100,expire=60.)
+    def get_periodic_archiver_periods(self,archiver):
+        prop = fn.tango.get_device_property(archiver,'AttributeList')
+        periods = dict()
+        for p in prop:
+            p = p.split(';')
+            period = [k for k in p if 'period' in k]
+            if not period: continue
+            period = float(period[0].split('=')[-1].strip()) if period else 0
+            periods[p[0]] = period
+        return periods
+    
     is_periodic_archived = get_periodic_attribute_archiver
     
     @Cached(expire=10.)
@@ -78,13 +99,16 @@ class HDBppPeriodic(HDBppDB):
         loads = sorted((len(v),k) for k,v in loads.items())
         return loads[0][-1]    
     
-    @fn.Catched
     def add_periodic_attribute(self,attribute,period,archiver=None,wait=3.):
         
         arch = self.get_periodic_attribute_archiver(attribute)
         if arch:
-            print('%s is already archived by %s!' % (attribute,arch))
-            return False
+            p = self.get_periodic_attribute_period(attribute)
+            if p == period:
+                print('%s is already archived by %s!' % (attribute,arch))
+                return False
+            else:
+                archiver = arch
         
         attribute = parse_tango_model(attribute,fqdn=True).fullname
         archiver = archiver or self.get_next_periodic_archiver(
