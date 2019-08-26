@@ -730,7 +730,7 @@ class SnapDB(FriendlyDB,Singleton):
                             or 'localhost',user,passwd)
         assert hasattr(self,'db'),'SnapDB_UnableToCreateConnection'
         [self.getTableCols(t) for t in self.getTables()]
-        self.setLogLevel('DEBUG')
+        self.setLogLevel('INFO')
 
 
     def check_snap_db(self):
@@ -750,6 +750,7 @@ class SnapDB(FriendlyDB,Singleton):
         """ Get all elements from context table
         @return A dictionary with all context table columns is returned
         """
+        print('In search_context(%s, %s)' % (id_context,clause))
         if not id_context:
             clause1=''
         elif type(id_context) is int:
@@ -765,7 +766,9 @@ class SnapDB(FriendlyDB,Singleton):
         else:
             raise Exception("SnapDB_getContextList_ArgTypeNotSuported")
 
-        return self.Select('*','context',clause1,asDict=True)
+        values = self.Select('*','context',clause1,asDict=True)
+        print('%d contexts found' % len(values))
+        return values
 
     def get_context_ids(self,context):
         """returns all the context IDs with a name matching the given string or regular expression"""

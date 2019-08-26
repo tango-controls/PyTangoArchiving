@@ -294,21 +294,32 @@ class SnapForm(Snap_Core_Ui_Form, SnapDialog):
         #self.contextComboBox.blockSignals(True)
         #self.contextComboBox.clear()
         contexts = None
-        self._Form.setWindowTitle(QtGui.QApplication.translate("Form",'!'+str(os.getenv('TANGO_HOST')).split(':',1)[0]+' -> Snapshoting', None, QtGui.QApplication.UnicodeUTF8))
+        self._Form.setWindowTitle(QtGui.QApplication.translate("Form",
+            fandango.get_tango_host().split(':',1)[0]+
+            ' -> Snapshoting', None, QtGui.QApplication.UnicodeUTF8))
+        print('SnapForm.initContexts(%s(%s),%s(%s))' 
+            % (type(attrlist),attrlist,type(sid),sid))
         try:
             if attrlist:
-                if type(attrlist) is int and type(sid) is int:
+                if all(map(fandango.isNumber,(attrlist,sid))):
+                    print('SnapForm.initContexts(int(%s),%s)' % (attrlist,sid))
                     contexts={attrlist: self.snapapi.get_context(attrlist)}
-                    self._Form.setWindowTitle(QtGui.QApplication.translate("Form",str(os.getenv('TANGO_HOST')).split(':',1)[0]+' -> Snapshots for Context "'+str(self.snapapi.db.get_id_contexts(attrlist)[0]['name'])+'"', None, QtGui.QApplication.UnicodeUTF8))
-                elif type(attrlist) is list:
+                    self._Form.setWindowTitle(QtGui.QApplication.translate("Form",
+                        fandango.get_tango_host().split(':',1)[0]+' -> Snapshots for Context "'
+                        +str(self.snapapi.db.get_id_contexts(attrlist)[0]['name'])+'"', 
+                        None, QtGui.QApplication.UnicodeUTF8))
+                elif fandango.isSequence(attrlist):
                     contexts=dict((ID,self.snapapi.get_context(ID)) for ID in self.snapapi.db.find_context_for_attribute(attrlist))
-                    self._Form.setWindowTitle(QtGui.QApplication.translate("Form",str(os.getenv('TANGO_HOST')).split(':',1)[0]+' -> Snapshots filtered by window content', None, QtGui.QApplication.UnicodeUTF8))
+                    self._Form.setWindowTitle(QtGui.QApplication.translate("Form",
+                        fandango.get_tango_host().split(':',1)[0]
+                        +' -> Snapshots filtered by window content', 
+                        None, QtGui.QApplication.UnicodeUTF8))
             else:
                 contexts=self.snapapi.get_contexts()
         except:
             Qt.QMessageBox.critical(self,"Tango Archiving Problem",
-                                    "Could not talk with SnapManager DS.<br>" + \
-                                    "Please check if DS is running.")
+                "Could not talk with SnapManager DS.<br>" + \
+                    "Please check if DS is running.")
 
         if contexts is not None:
             ctxs=sorted(contexts.values(), key=lambda s:s.name.lower())
