@@ -42,6 +42,8 @@ class HDBppReader(HDBppDB):
             start,epoch = None,fn.now()+600
         elif epoch < 0:
             start,epoch = fn.now()+epoch,fn.now()+600
+        else:
+            start,epoch = epoch, fn.now()+600
         if start is None:
             #Rounding to the last month partition
             start = fn.str2time(
@@ -54,6 +56,11 @@ class HDBppReader(HDBppDB):
             return vals
     
     def load_last_values(self,attributes=None,n=1,epoch=None):
+        """
+        attributes: attribute name or list
+        n: the number of last values to be retorned
+        epoch: time from which start searching values (now-600 by default)
+        """
         if attributes is None:
             attributes = self.get_archived_attributes()
         vals = dict((a,self.get_last_attribute_values(a,n=n,epoch=epoch)) 
@@ -180,7 +187,8 @@ class HDBppReader(HDBppDB):
             query += ' group by FLOOR(%s/%d)' % (
                 'int_time' if int_time else 'UNIX_TIMESTAMP(data_time)',d)
             
-        query += ' order by %s' % ('int_time' if int_time else 'data_time')
+        query += ' order by %s' % ('int_time, data_time' 
+                            if int_time else 'data_time')
                     
         if N == 1:
             human = 1
