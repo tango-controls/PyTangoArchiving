@@ -707,6 +707,8 @@ class Reader(Object,SingletonMap):
     def is_attribute_archived(self,attribute,active=False,preferent=True,
         start = None, stop = None):
         """ 
+        is_attribute_archived(attribute, active=False, preferent=True, 
+            start = None, stop = None)
         This method uses two list caches to avoid redundant device 
         proxy calls, launch .reset() to clean those lists. 
         """
@@ -769,7 +771,7 @@ class Reader(Object,SingletonMap):
                 
         return False
                 
-    def load_last_values(self,attribute,schema=None,epoch=None):
+    def load_last_values(self,attribute,schema=None,epoch=None,active=True):
         """ Returns the last values stored for each schema """
         result = dict()
         if fandango.isSequence(attribute):
@@ -777,14 +779,14 @@ class Reader(Object,SingletonMap):
                 result[attr] = self.load_last_values(attr,schema,epoch)
             return result
         elif schema is None or fn.isNumber(schema):
-            schemas = self.is_attribute_archived(attribute)
+            schemas = self.is_attribute_archived(attribute, active)
             if fn.isNumber(schema):
                 schemas = schemas[:schema]
         else:
             schemas = fandango.toList(schema)
         for s in schemas:
             api = Schemas.getApi(s)
-            vs = api.load_last_values(attribute)
+            vs = api.load_last_values(attribute, active)
             vs = vs.values() if hasattr(vs,'values') else vs
             r = vs and vs[0]
             if r and isinstance(r[0],datetime.datetime):
