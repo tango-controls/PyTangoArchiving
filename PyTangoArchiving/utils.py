@@ -314,7 +314,7 @@ def get_days_in_interval(*args):
             start,stop = str2time(args[0]),str2time(args[1])
         else:
             start,stop = args[0],args[1]
-        times = range(int(start),int(stop),86400)
+        times = range(int(start),int(stop+86400),86400)
     else:
         times = args[0]
     days = sorted(set(list(d.split()[0] for d in map(time2str,times))))
