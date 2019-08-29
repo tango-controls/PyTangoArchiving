@@ -6,8 +6,9 @@
 @TODO Rename widgetArchivingBrowser.ModelSearchWidget to widget.browser.ArchivingBrowser
 @TODO: rename ArchivingBrowser to browser
 
-8.10.0 Adds method for DB decimation, solves bugs in panic widges
+8.10.1 Adds method for DB decimation, solves bugs in panic widges
 
+    solve PyExtractor bugs, remove getenv(TANGO_HOST) calls
     depends on fandango 14.6
     add methods to decimate partitioned tables
     improve searches on int_time columns
