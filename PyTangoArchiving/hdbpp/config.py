@@ -337,6 +337,16 @@ class HDBppDB(ArchivingDB,SingletonMap):
         if not ids: return None
         elif not as_dict: return ids
         else: return dict(ids)
+    
+    def get_attribute_by_ID(self,ID):
+        try:
+            ids = []
+            ids = self.Query("select att_name,att_conf_id from att_conf "\
+                +"where att_conf_id = %s" % ID)
+            return ids[0][0]
+        except:
+            print(ids)
+            raise Exception('wrong ID %s' % ID)
       
     def get_table_name(self,attr):
         return get_attr_id_type_table(attr)[-1]
@@ -528,62 +538,68 @@ class HDBppDB(ArchivingDB,SingletonMap):
                   % (attribute,archiver,self.db_name))
         config = get_attribute_config(attribute)
         #if 'spectrum' in str(config.data_format).lower():
-          #raise Exception('Arrays not supported yet!')
+            #raise Exception('Arrays not supported yet!')
         data_type = str(PyTango.CmdArgType.values[config.data_type])
+
         if not self.manager: 
-          return False
+            return False
       
         try:
-          d = self.get_manager()
-          d.lock()
-          print('SetAttributeName: %s'%attribute)
-          d.write_attribute('SetAttributeName',attribute)
-          time.sleep(0.2)
-
-          if period>0:
-            d.write_attribute('SetPollingPeriod',period)
-
-          if per_event not in (None,-1,0):
-            d.write_attribute('SetPeriodEvent',per_event)
-
-          if not any((abs_event,rel_event,code_event)):
-            code_event = True
-
-          if abs_event not in (None,-1,0):
-            print('SetAbsoluteEvent: %s'%abs_event)
-            d.write_attribute('SetAbsoluteEvent',abs_event)
-
-          if rel_event not in (None,-1,0):
-            d.write_attribute('SetRelativeEvent',rel_event)
-
-          if ttl not in (None,-1):
-            d.write_attribute('SetTTL',ttl)
             
-          d.write_attribute('SetCodePushedEvent',code_event)
+            d = self.get_manager()
+            d.lock()
+            print('SetAttributeName: %s'%attribute)
+            d.write_attribute('SetAttributeName',attribute)
+            time.sleep(0.2)
 
-          d.write_attribute('SetArchiver',archiver)
-          time.sleep(.2)
-          d.AttributeAdd()
+            if period>0:
+                d.write_attribute('SetPollingPeriod',period)
+
+            if per_event not in (None,-1,0):
+                d.write_attribute('SetPeriodEvent',per_event)
+
+            if not any((abs_event,rel_event,code_event)):
+                code_event = True
+
+            if abs_event not in (None,-1,0):
+                print('SetAbsoluteEvent: %s'%abs_event)
+                d.write_attribute('SetAbsoluteEvent',abs_event)
+
+            if rel_event not in (None,-1,0):
+                d.write_attribute('SetRelativeEvent',rel_event)
+
+            if ttl not in (None,-1):
+                d.write_attribute('SetTTL',ttl)
+                
+            d.write_attribute('SetCodePushedEvent',code_event)
+
+            d.write_attribute('SetArchiver',archiver)
+            time.sleep(.2)
+            d.AttributeAdd()
           
-          if start:
-              try:
-                arch = archiver # self.get_attribute_archiver(attribute)
-                self.info('%s.Start()' % (arch))
-                fn.get_device(arch, keep=True).Start()
-              except:
-                traceback.print_exc()
+            if start:
+                try:
+                    arch = archiver # self.get_attribute_archiver(attribute)
+                    self.info('%s.Start()' % (arch))
+                    fn.get_device(arch, keep=True).Start()
+                except:
+                    traceback.print_exc()
               
         except Exception,e:
-          if 'already archived' not in str(e).lower():
-            self.error('add_attribute(%s,%s,%s): %s'
-                       %(attribute,archiver,period,
-                         traceback.format_exc().replace('\n','')))
-          else:
-            self.warning('%s already archived!' % attribute)
-          return False
+            
+            if 'already archived' not in str(e).lower():
+                self.error('add_attribute(%s,%s,%s): %s'
+                        %(attribute,archiver,period,
+                            traceback.format_exc().replace('\n','')))
+            else:
+                self.warning('%s already archived!' % attribute)
+            
+            return False
+
         finally:
-          #self.warning('unlocking %s ..'%self.manager)
-          d.unlock()
+            #self.warning('unlocking %s ..'%self.manager)
+            d.unlock()
+
         print('%s added'%attribute)
         
     def add_attributes(self,attributes,*args,**kwargs):
