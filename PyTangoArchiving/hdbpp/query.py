@@ -123,6 +123,7 @@ class HDBppReader(HDBppDB):
         what = 'UNIX_TIMESTAMP(data_time)' if unixtime else 'data_time'
         if as_double:
             what = 'CAST(%s as DOUBLE)' % what
+        what += ' AS DTS'
             
         value = 'value_r' if 'value_r' in self.getTableCols(table) \
                                 else 'value'
@@ -187,7 +188,7 @@ class HDBppReader(HDBppDB):
             query += ' group by FLOOR(%s/%d)' % (
                 'int_time' if int_time else 'UNIX_TIMESTAMP(data_time)',d)
             
-        query += ' order by %s' % ('int_time, data_time' 
+        query += ' order by %s' % ('int_time' #, DTS' # much slower!
                             if int_time else 'data_time')
                     
         if N == 1:
@@ -311,10 +312,12 @@ class HDBppReader(HDBppDB):
         int_time = 'int_time' in self.getTableCols(table)
         if start_date and stop_date:
             dates = map(time2str,(start_date,stop_date))
-            where = " and %s between '%s' and '%s'" % (
-                'int_time' if int_time else 'data_time',
-                int(str2time(dates[0])) if int_time else dates[0],
-                int(str2time(dates[1])) if int_time else dates[1])
+            if int_time:
+                where = " and int_time between %d and %d" % (
+                    str2mysqlsecs(dates[0]),str2mysqlsecs(dates[1]))
+            else:
+                where = " and data_time between '%s' and '%s'" % (
+                    dates[0],dates[1])            
         else:
             where = ''
         r = self.Query('select count(*) from %s where att_conf_id = %s'
