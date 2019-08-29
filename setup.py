@@ -46,7 +46,7 @@ f+'archiving_service',
 
 entry_points = {
         'console_scripts': [
-            'PyExtractor = PyTangoArchiving.servers.PyExtractor.main',
+            'PyExtractor = PyTangoArchiving.servers.PyExtractor.PyExtractor',
         ],
 }
 
