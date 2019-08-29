@@ -95,6 +95,6 @@ setup(
     entry_points=entry_points,
     include_package_data=True,
     #package_data=package_data,
-    install_requires=['fandango','PyTango'],
+    install_requires=['fandango>=14.6.0','PyTango'],
     zip_safe=False
   )
