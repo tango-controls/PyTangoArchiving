@@ -39,6 +39,7 @@ f+'archiving2csv',
 f+'archiving2plot',
 #f+'archiving_report.py',
 f+'archiving_service',
+f+'PyExtractor',
 #f+'archiver_health_check.py',
 #f+'cleanTdbFiles',
 #f+'db_repair.py',
@@ -46,7 +47,7 @@ f+'archiving_service',
 
 entry_points = {
         'console_scripts': [
-            'PyExtractor = PyTangoArchiving.servers.PyExtractor.PyExtractor',
+            #'PyExtractor = PyTangoArchiving.servers.PyExtractor.PyExtractor',
         ],
 }
 
