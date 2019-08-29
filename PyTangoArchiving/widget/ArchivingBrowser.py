@@ -862,7 +862,7 @@ def main(args=None):
     
     #from taurus.qt.qtgui.container import TaurusMainWindow
     tmw = Qt.QMainWindow() #TaurusMainWindow()
-    tmw.setWindowTitle('Tango Attribute Search (%s)'%(os.getenv('TANGO_HOST')))
+    tmw.setWindowTitle('Tango Attribute Search (%s)'%(fn.get_tango_host()))
     table = ArchivingBrowser(domains=args,USE_SCROLL=True,USE_TREND=True)
     tmw.setCentralWidget(table)
     

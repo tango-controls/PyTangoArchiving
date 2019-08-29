@@ -182,7 +182,7 @@ class SnapForm(Snap_Core_Ui_Form, SnapDialog):
         self.snapapi = SnapAPI()
         
         self._Form=Form
-        Form.setWindowTitle(QtGui.QApplication.translate("Form",'!:'+str(os.getenv('TANGO_HOST')).split(':',1)[0]+' Snaps', None, QtGui.QApplication.UnicodeUTF8))
+        Form.setWindowTitle(QtGui.QApplication.translate("Form",'!:'+fandango.get_tango_host().split(':',1)[0]+' Snaps', None, QtGui.QApplication.UnicodeUTF8))
         self.contextComboBox.setToolTip(QtGui.QApplication.translate("Form", "Choose a Context", None, QtGui.QApplication.UnicodeUTF8))
         print 'connecting signals ...'
         QtCore.QObject.connect(self.contextComboBox,QtCore.SIGNAL("currentIndexChanged(int)"), self.onContextChanged)

@@ -46,7 +46,7 @@ f+'archiving_service',
 
 entry_points = {
         'console_scripts': [
-            #'CopyCatDS = PyTangoArchiving.interface.CopyCatDS:main',
+            'PyExtractor = PyTangoArchiving.servers.PyExtractor.main',
         ],
 }
 

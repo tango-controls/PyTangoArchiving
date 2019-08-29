@@ -578,9 +578,11 @@ class PyExtractorClass(PyTango.DeviceClass):
 #    PyExtractor class main method
 #
 #==================================================================
-if __name__ == '__main__':
+
+def main(args = []):
     try:
-        py = PyTango.Util(sys.argv)
+        args = args or sys.argv
+        py = PyTango.Util(args)
         py.add_TgClass(PyExtractorClass,PyExtractor,'PyExtractor')
 
         U = PyTango.Util.instance()
@@ -588,6 +590,9 @@ if __name__ == '__main__':
         U.server_run()
 
     except PyTango.DevFailed,e:
-        print '-------> Received a DevFailed exception:',e
+        print('-------> Received a DevFailed exception:',e)
     except Exception,e:
-        print '-------> An unforeseen exception occured....',e
+        print('-------> An unforeseen exception occured....',e)
+    
+if __name__ == '__main__':
+    main()

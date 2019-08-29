@@ -381,7 +381,7 @@ class Reader(Object,SingletonMap):
             from fandango.servers import ServersDict
             self.servers = servers or ServersDict(logger=self.log)
             #self.servers.log.setLogLevel(log)
-            if self.tango_host == os.getenv('TANGO_HOST'):
+            if self.tango_host == fn.get_tango_host():
                 self.servers.load_by_name('%sextractor'%schema)
                 self.extractors = self.servers.get_class_devices(
                     ['TdbExtractor','HdbExtractor'][schema=='hdb'])
@@ -1621,7 +1621,7 @@ class ReaderProcess(Logger,SingletonMap): #,Object,SingletonMap):
         self.available_attributes,self.failed_attributes,self.asked_attributes = [],[],[]
         self.last_dates = defaultdict(lambda:(1e10,0))
         self.updated,self.last_retry = 0,0
-        self.tango_host = tango_host or os.getenv('TANGO_HOST')
+        self.tango_host = tango_host or fn.get_tango_host()
         self.tango = PyTango.Database(*self.tango_host.split(':'))
 
         try:
