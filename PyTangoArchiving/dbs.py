@@ -287,6 +287,8 @@ class ArchivingDB(FriendlyDB):
 # DB Methods
 
 SCHEMAS = ('hdb','tdb','snap')
+CONFIG_TABLES = ('adt apt att_conf att_conf_data_type att_parameter '
+            'att_error_desc ast context list snapshot').split()
 
 from fandango import time2date,str2time
 
@@ -317,7 +319,7 @@ def mysqldump_by_date(schema, user, passwd, folder, start, stop,
         print('mkdir %s' % folder)
         os.mkdir(folder)
         
-    for t in tables:
+    for t in sorted(tables):
         filename = ('%s/%s-%s-%s-%s.dmp' 
             % (folder,schema,t,start.split()[0],stop.split()[0]))
         cols = db.getTableCols(t)
@@ -329,7 +331,11 @@ def mysqldump_by_date(schema, user, passwd, folder, start, stop,
             where = " %s >= '%s' and %s < '%s' " % (col[0],start,col[0],stop)
         else:
             where = ""
-        mysqldump(schema,user,passwd,filename,t,where)
+        if t in CONFIG_TABLES:
+            options = " --add-drop-table "
+        else:
+            options = ""
+        mysqldump(schema,user,passwd,filename,t,where,options=options)
         
     ext = ('part.' if fn.str2time(stop) > fn.now() else '') + 'tgz'
     if compress:
@@ -344,9 +350,10 @@ def mysqldump_by_date(schema, user, passwd, folder, start, stop,
         fn.linos.shell_command(cmd)
     return filename
 
-def mysqldump(schema,user,password,filename,tables='',where=''):
-    cmd = "mysqldump --single-transaction --force --compact --no-create-db "\
-        "--skip-lock-tables --complete-insert --quick -u %s -p%s" % (user,password)
+def mysqldump(schema,user,password,filename,tables='',where='',options=''):
+    cmd = ("mysqldump --single-transaction --force --compact --no-create-db "
+            "--skip-lock-tables --complete-insert --quick %s -u %s -p%s" 
+            % (options,user,password))
     cmd += " " + schema
     if where:
         cmd += ' --where=" %s"' % where
