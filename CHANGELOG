@@ -1,0 +1,724 @@
+@todo PyExtractor/CppExtractor device as alternative to HdbExtractor
+@todo trends: Use ReaderByBunches to use shorter queries and concatenate buffers in callbacks (+bg thread)
+@todo taurustrend.ArchivingSchema proposal!!:  add HistoryBuffer, ArchivingConfig, SnapComments as tooltip, ...
+
+@TODO Snap.CreateNewContext do not work in Tango8 (when triggered from Panic)
+@TODO Rename widgetArchivingBrowser.ModelSearchWidget to widget.browser.ArchivingBrowser
+@TODO: rename ArchivingBrowser to browser
+
+
+8.9.2
+    solve several bugs on extracting data from arrays (to csv and trends)
+
+8.9.0
+
+    adapt trends to new reader methods
+    solve bug on decimated queries
+    add fallback by gaps in query
+    solve bug when loading tdb/hdb reader
+    increase default partitions to 30
+    add methods for split intervals (months,days,etc)
+    add querying by int_time with diff correction
+
+8.8.1
+    add querying by corrected int_time, when available
+
+8.8.0
+
+    new DbSchemas property
+    new schemas test script
+    speed up adding attributes to archiving
+    solve bug on filtering none values
+    solve bug on loading reader from schema
+    add scripts for int-based time indexing
+    add overlap method for schema checking
+    add delete_tdb_table method
+    get_attr_errors, get_all_databases, solve order bug in load_last_values
+    add archiver statistics
+    add tango host logging
+    solve bugs on get_attributes_by_table
+    add new DbSchemas property for dict-like specs
+    use data_time as order by when transferring data
+    add parse_property method for parsing dict-like defs
+    add try/except on property parsing
+
+
+8.7.0
+
+    solve bug on filtering on server side
+    add script to restart archivers if dead
+    correct transfer limits
+    solve bug on filtering on server side
+    adapt browser to fqdn names
+    clean up dates dialog
+    template file for adding db users
+    working on optmizing data transfer
+    add column names to backups
+
+
+8.6.2
+
+    reenable snap widgets
+    add methods for checking/transferring/repairing tables between databases
+    add mysqldump_by_date method for partial hdb++ backups
+    remove default periodic ivents from hdb++
+    add _rg attributes to pyextractor
+    testing aggregation/decimation methods on hdb++ queries
+    solve packaging issues
+    enable regexps on archiving2csv --list
+    add --schema argument to archiving2csv
+    add MaxIV pull request #10 (add missing ui)
+    
+
+8.5.0
+
+    Add SchemaManager device server for monitoring attribute availability
+    Accelerate Reader.get_attributes/is_attribute_archived/load_last_values
+    Add dict-like methods to hdb++
+    Add check.check_db_schema for fast schema checking
+    
+
+8.4.0
+
+    Solve date refresh issues on ArchivingBrowser
+    Add methods for check/restart of HDB++ attributes
+    Solve bugs for loading multi-schema properties into Reader
+    Add check.py for schema checking, improve checks on HDB++
+    Add script for mysql dumps
+    update dependencies
+    Solve bugs in last value attribute, add try/except
+    solve bug on starting multiple attributes
+    Add exceptions on failing manager
+    Merge pull request #7 from jcmarrucho/master
+    Fix PyTangoArchiving documentation link
+    solve exceptions in dialogs, add DB cache check
+    solve bugs on model parsing for tables
+
+8.3.1 update dialogs and refresh options
+	solve import bug on pta.widget.tree
+
+8.2.x New Browser layout with Tree (in Taurus 4)
+    solve import bug on pta.widget.tree
+    solve bug on loading range argument
+    Forced refresh with raw decimation
+    Refactor Browser panel to solve resizing and add tree selection
+    Enable PyTangoArchiving.AliasFile on Reader(*).get_attributes
+    Solve bug on alias translation with full names
+    added new info and update buttons for refresh
+    embed config dialog in ctarchiving
+    solve tango host fqdn errors, add Advanced button
+    dialog methods moved from trend to widget.dialogs
+
+8.1, Improved plotting, removed redundant checkScale calls,
+    Add get_last_values/start_archiving_for_attributes for multi-archiving module
+    Reorganization of helper methods in utils/common/dbs
+    Last and LastDate attributes added to PyExtractor
+
+8.0.0 Trends solved issues on loading/refreshing data
+
+Added backtracking when N<0
+
+7.9.3 HDB++ multi module and new api access
+
+Added new Schema API, properties and docs
+dict-like methods moved to CommonAPI (snap bug)
+AddToTrend action^Cdded to context menu
+PyTangoArchiving.api() now allows access to all declared Schemas
+Solved bugs in loading data into trends
+Solved bugs in load_last_values method for hdb++
+Solved bugs in using long/short tango uris
+Solved bugs in testing events availability
+
+7.8.1 HDB++ decimation with ms resolution
+
+Add float resolution to decimation methods
+Solve bugs/slowness on getting current attributes
+Add getApi() methods do Schemas
+Solve bugs in multi-db apis
+Add DB creation scripts
+
+7.8 Multi-db, Decimation, HDB++ tuning
+
+Requires fandango 13.5.2
+Decimation improved to deal with HDB++ data
+First API methods for multiple Tango hosts and/or HDB++ databases
+Many improvements on HDB++ setup scripts
+
+7.7 Bugfixes, ctarchiving, pyextractor
+
+Requires fandango 13.4
+PyExtractor with dates
+ctarchiving start/stop of attributes, 
+Qt imports bugfixes, 
+remove hdb/tdb dependencies, 
+decimation and dates in PyExtractor
+add archiving2csv/plot in Debian packages
+
+7.6, bugfixes on HDB++, taurus3, API object exit
+
+7.5.0 Added Schema chooser on ArchivingBrowser
+
+7.4 Solve bugs on HDB++ queries - September 2017
+
+Solve bugs on HDB++ queries
+Solve Taurus deprecation warnings
+
+7.3 Identify multiples schemas (including HDB++) - May 2017
+
+ctarchiving: updated launcher
+ctarchiving: reduce logging for shell-launched commands
+files: solve ParseCSV exceptions when called from bash
+hdbpp: fix bug in start_archiving, pull request #1 from cmft/patch-1
+reader.get_attribute_values: make cache usage optional
+schemas.Schemas: identify new archiving schemas, property based
+schemas.Schemas: filter out unreachable Schemas
+servers.PyExtractor: enable as submodule
+taurusfinder: adapt imports to taurus4 (unfinished)
+utils.decimate_db_tables: adapt to hdbpp, move decimate_array to fandango
+utils.get_attributes_as_events_list: accept result of Reader() as argument
+widget: adapt to Taurus4, include TaurusAttributeChooser widget
+
+7.2 First release from git - 2017/01/13
+
+Add --log-x option to archiving2plot
+Rename ctfinder to ctsearch
+Added safer methods for HDBpp.config initialization
+Adding array management and get_full_attribute_name method
+
+PyExtractor device:
+Add GetCachedAttribute command 
+Add AddPeriodicQuery(), rename Dynamic to Cached Attributes, 
+Add Polling by default
+Add X/Y 2D attributes
+
+Added PyTangoArchiving.Schemas as Tango free property
+
+
+7.1
+
+Added extra arguments to Reader.export_to_text (archiving2csv / history widget)
+Added ShowHistoryDialog class to have persistency on dates for data export
+
+FANDANGO UPDATE NEEDED (QOptionDialog)
+
+7.0 New ArchivingTrend widget, bugs solved in snaps, archiver and history widgets
+
+
+6.9 Solved bugs in hdb++, ctsnaps and trends 
+
+in HDB++ API add_attribute and get_attribute_values
+in ctsnaps (import csv file, modify context dialog
+trend: fixed a bug on missing logger_obj in parseTrendModel
+
+6.7  Solved bugs in Snaps Import/Export/Load from CSV
+
+6.6, May 2016, bug fixes in reader/trend, added check_archiving_performance
+-------------------------------------------------------------------------------
+
+fixed a bug on missing logger_obj in parseTrendModel
+
+6.5, April 2016; HDB++ support, bug fixes and new archiving check 
+-------------------------------------------------------------------------------
+
+utils: check_archiving_performance(schema) added
+archiving: ArchivingAPI modified to have faster load and api creation
+archiving: modified to use remote logging (for QArchivingMode widget)
+hdbpp: Support for new HDB++ archiving
+common: API modified to have faster load and api creation
+reader: solved bugs with indexes on model name
+reader: solved bugs with aliases and model case
+reader: better hdb/tdb exclusion
+files: added CheckConfigFiles for Schema
+scripts: launchers refactoring and cleanup
+widget.panel: added dialogs for configuring Archiving
+widget.browser: modified to allow archiving configuration from the browser
+widget.snaps/snapdialogs: enabling loading from file (test pending)
+archiving2csv: added --config option to export archiving settings
+snap: Solved multiple context bug that caused Snapshots to fail in PyAlarm
+snap: added LoadFromFile hook on GUI
+utils: Added method to check for renamed attributes
+
+Widget specific:
+
+history: added value filtering in show_history() dialog
+start_archiving forced to process attributes one by one, to avoid exceptions
+reader: added get_date_interval method(), added date change on retries to avoid empty queries
+reader: added compatibility with new hdb++ schema (lite)
+archiver_health_check: refactored
+
+
+
+6.4 July 2015
+-------------------------------------------------------------------------------
+
+PyTangoArchiving and PyTangoArchiving.widget become a single bliss package; it will not be needed to install them separately anymore.
+
+get_context(ID) will update attribut lists from DB
+Snap widgets: Better error management, load values with diff on read values and allows edit; added tooltip to show multiline comments in saps, added multiline editor.
+files: Added parse_raw_file method, to load unformatted files into snap widget
+reader: added filter for active attributes in get_Attributes()
+snaps: All load* and get* methods improved for accessing attribute values from snaps.
+widget.snaps: Solved many bugs on snap dialogs, added SnapButton and TakeSnaphot from Sebastien Gara
+widget.history: added filter by value
+
+6.2-6.3 May 2015
+-------------------------------------------------------------------------------
+
+archiving: Solved continuous exceptions with Archiving>2013; reduced time of start_archiving execution
+files: added help when called from shell
+snap: Added image support to snaps
+widgets: Solved bugs with snaps and last taurus/qt releases.
+widgets: Added proper window titles to dialogs.
+
+6.1 March 2015
+-------------------------------------------------------------------------------
+
+reader:solved bugs on array decimation, working on ReaderByBunches
+snap: solved bugs on initialization
+trend: solved bugs on event filtering
+ArchivingBrowser: adapted to be compatible with Taurus GUI
+ArchivingBrowser: Solved layout issues in SuSE>12; added ShowArchivingInfo()
+archiving2csv: solved bug on argument parsing
+show_history: Added SendByEmail option
+
+6.0 January 2015
+-------------------------------------------------------------------------------
+
+db_repair: modified to check number of
+db_repair: Added "force" to valid arguments list
+reader: When asking very recent values TDB will be ignored during ExportPeriod. values stored in the last days
+archiving2csv: solved bug that mixed attributes order in reports
+Adding new checks for comparing retrieved values Vs indexed values
+
+utils: get_table_updates, get_average_read_time moved to utils module
+utils: get_attributes_as_events_list method added
+utils: tdb_to_hdb import method added
+archiving: load_last_values, start_archiving, allowed to be called w/out arguments
+reader: capable of filtering only active attributes 
+reader: ReaderProcess class enabled to get archiving values using multiprocessing
+reader: When asking very recent values TDB will be ignored during ExportPeriod.
+reader: taurus.eval is finally supported ( eval://{sr/ct/plc-01/tc1} * 0.1 )
+reader: Decimation using fandango.arrays methods added to get_attribute_values method in Reader
+reader: Improved poll/alive checks in ReaderProcess to reduce cpu usage
+Reader.cache enabled to reuse buffers when zooming
+Reader.parse_instance_key added to use singletones more efficiently
+Reader.extract_array_index moved to a separate method
+dbs: added check(),get_attribute_ID,get_attribute_IDs,get_table_updates methods.
+dbs: Default DB cursor changed to SSCursor to minimize client memory usage (and leaks in MySQLdb module)
+
+widgets: BROWSER: Several updates, Server Filter added
+widgets: BROWSER: Added additional tab for filtering options
+widgets: TREND: enabled Multiprocess, controlled using HdbExtractor.Multiprocess property (match by hostname)
+widgets: TREND: added NONE values filtering
+widgets: TREND: added additional reloading/clear buffer options to context menu
+widgets: trends: Decimation moved to Reader class
+widgets: trends: Multiprocess is now enabled/disabled for each host using HdbExtractor.Multiprocess property
+
+5.4 - May 2015
+
+Many Qt/Taurus compatibility issues solved in snaps widgets.
+
+5.3 - March 2015
+
+trend: solved bugs on event filtering
+ArchivingBrowser: adapted to be compatible with Taurus GUI
+trend: solved bugs on event filtering
+ArchivingBrowser: adapted to be compatible with Taurus GUI
+ArchivingBrowser: Solved layout issues in SuSE>12; added ShowArchivingInfo()
+archiving2csv: solved bug on argument parsing
+show_history: Added SendByEmail option
+
+TODO: Add checkbox to select whether matching attribute names disables searching on labels
+TODO: Snaps changed done by Sebastien GARA doesn't work, must be tested before commit
+
+5.2 - January 2015
+
+widgets: BROWSER: Several updates, Server Filter added
+widgets: BROWSER: Added additional tab for filtering options
+widgets: TREND: enabled Multiprocess reader by default
+widgets: TREND: added NONE values filtering
+widgets: TREND: added additional reloading/clear buffer options to context menu
+widgets: trends: Decimation moved to Reader class
+widgets: trends: Multiprocess is now enabled/disabled for each host using HdbExtractor.Multiprocess property
+
+Importing Qt from taurus.external.qt
+ctarchiving:   Browsing only archived attributes by default
+widget/trend: getArchivedTrendValues under FULL refactoring, added ArchivedTrendLogger class to keep archiving logging and configuration in background.
+browser: renamed to ctfinder, added server filter and extended regexp (needs last fandango), added context menu on table
+
+Trends: 
+ Added STARTUP and STARTUP_DELAY=30, it will delay the first loading of data
+
+ArchivingBrowser:
+ Added ContextMenu
+ Added filter by Device Server name
+ Added delayed loading of Taurus models (to not lock UI)
+ Added additional warning popup messages
+
+
+
+5.1 - August 2014
+
+Added extra warning messages and Cancel button on searches
+Trend-related methods moved from reader.py to widget/trend.py
+tdbwidget modified to get user/password from tango DB
+
+2.1 - Solved problems with snaps
+--------------------------------
+
+Device and Attribute filtered separated in two widgets.
+Added filter to show only archived attributes.
+Solved bugs on sorting the attributes
+Solved bug in resizing of attribute form
+
+Snaps moved to its own sub-package
+Snaps widgets reshaped, added edit/delete for context/snaps
+
+trend; tau-dependent parts moved to a try/except clause
+
+
+5.1 August 2014
+-------------------------------------------------------------------------------
+
+FIXED: problems with multiple trends in a same Taurus instance
+ArchivingAPI; added get_dedicated_archivers method
+reader: Solved bug when reading spectrums with None values
+Solved bugs in repair_dedicated_attributes method
+
+5.0  July 2014 - New Unified Reader for all schemas; trends refactored, added eval:// schema
+------------------------------------------------------------------------------------------
+
+These changes need an update of Fandango (11.0)
+
+dbs: all query methods moved from all modules to here
+dbs: Dependency of new Fandango 10.10!!! (FriendlyDB)
+dbs/reader: using UNIX_TIMESTAMP(time) instead of time in queries reduced 60% query time (7 seconds to 2)
+reader: improved casting types of all spectrum/bool/str types
+reader: using timestamp instead of strying for chache index, normalizing to 60s.
+reader: Added '*' as schema to access all databases
+reader: Added parsing of eval:///{...} formulas from Taurus models!
+widget/reader: trend-related methods moved to widget.trend
+widget/trend: access to archiving from trends completely rewritten; added ArchivedTrendLogger class to keep archiving logging and configuration in background.
+widget/trend: ArchivedTrendLogger provides archived buffer decimation/clear/reload/export/logging for trends
+utils: All attributes modes method moved here
+utils: added numpy-based decimation methods for trends
+archiving2csv: solved bug on getting the attribute list
+utils,__init__,archiving: solved import issues, added licences
+files: added main
+
+Changes in Reader:
+
+If db_name or schema equals to '*' then the Reader object will search for attribute values in all valid schemas (HDB, TDB and SNAP)
+
+This behavior affects the following methods:
+
+ * get_extractor
+ * get_attributes
+ * get_attribute_alias
+ * get_attribute_modes
+ * is_attribute_archived
+ * get_last_attribute_dates
+ * get_attribute_values
+
+
+
+
+-----------------------------------------------------------------------
+4.3 May 2014
+
+utils: Added method to restart dedicated attributes
+utils: Solved wrong manager bug in rename_archived_attribute
+reader: added getArchivingReader; it returns hdb/tdb reader depending on requested date
+reader: getArchivedTrendValues; disabled the overriding of curve buffer due to bugs observed
+files: Dedicated archiving setup: added filter for unexisting attributes, TDB archiving limited to 20 attrs/archiver
+archiving: get_attributes_archiver/get_attributes_modes : modified to not depend on Java servers
+snap: many changes to solve bugs in the snap widgets applications
+snap: get_context returns newest context matching the given name
+snap: command arguments adapted to last SnapManager release
+snap: modify_context available with last Java release
+snap: modify_snapshot available in api
+snap: take_snapshot; improved methods to guess next SnapID and updateComment
+snap.db : improved search methods
+snap.db : solved bugs in remove/modify/update context/snapshot/attributes
+snap : added __test__() method for the API
+snap: solved bug on dbhost property not defined
+widgets.snap: migrated to taurus
+scripts.archiving2csv:Modified to extract archiving configuration instead of values when using --modes argument
+scripts.archiving2plot:Modified to use both HDB or TDB
+scripts.archiving_report:refactoring ongoing, focused on reducing execution time and MySQL cpu peaks
+script.archiver_health_check: new lightweight report added
+
+-----------------------------------------------------------------------
+4.2 November 2013
+
+reader: Added choose_first_value method to be used by default when correlating between two values
+reader: removed tango_host on get_attribute_alias(model)
+trend: added check of values length before decimating
+trend: added check for xBuffer/yBuffer not initialized
+trend: added check for ConfigDialog before overriding DynScale option
+trend: set MaxBuffer to max size of all buffers (and not only currrent buffer)
+trend: return empty array on error
+reader: added retries when querying MySQL db
+reader: solved bug when using GetArchivedValues with a 2012 taurustrend 
+reader/utils/files: parsing of device alias added to Reader, ParseCSV and utils.translate_attribute_alias
+files: remove unreadable attributes from CheckArchivingConfiguration stats
+utils: added import_into_db method for importing raw tables
+archiving2plot: bugs solved
+
+4.1 August 2013
+-----------------------------------------------------------------------
+Changes in Reader:
+
+Done several optimizations in the PyTangoArchiving.Reader class to 
+ solve the hung/scale issues:
+ 
+ - Using simple tuples instead of AttributeHistory structs in 
+ utils.patch_boolean, getArchivedTrendValues and updateTrendBuffer methods.
+ 
+ - Reorganizing some for loops in methods
+ 
+ - Avoid hung by considering any trend with stop_date>now() to be a 
+ dynamic trend.
+ 
+ - Avoid hung by disabling dynamic scale whenever now() is not in the 
+ actual display range (it caused weird effects on zooming).
+ 
+ - Avoid hung by not querying archiving when the total scale to be 
+ shown is less than 60s and includes some value in the future.
+
+4.0 July 2013
+-----------------------------------------------------------
+
+web: script for generating plots with jqplot
+widgets: added ArchivingBroser: Tool for searching/plotting/exporting attribute values from Tango and Tango archiving
+widgets: history table now provides export to .csv files
+files: added methods used by show_history widget
+reader: Replaced None values with zeroes when reading integer/float spectrums. This must not be applied to scalar values!!
+reader: Discard of any request of date<now-10years (START_OF_TIME); to prevent requests on time=0 to block the database
+reader: Decimation 40x faster by creating a new list instead of doing .pop() on existing one
+reader: Refresh of plots improved using emitHistoryChanged method 
+reader: solved bug on ArrayBuffer import
+reader: accepting components and attributes objects as models (before component worked and attribute failed)
+reader: _read_last_args kept to be able to concatenate buffers on rescaling
+reader: MARGIN used to recall query is now dependent on time scale range
+archiving2plot: Many changes done in data parsing, filtering and import/export from files using matplotlib
+
+3.9 February 2013 CREATED ... 
+-----------------------------------------------------------
+Removed repeated timestamps from archiving2csv
+Removed last date retrieval based on limits (failed on beamlines)
+utils: refactore rename_archived_attributes
+reader: bug in if...else solved when getting temperatures
+
+3.8 January 2013
+-----------------------------------------------------------
+common: Solved bug that was using same host for hdb and tdb apis
+reader: adapted to multiple db hosts in DbConfig / switching by date requested in get_database() method
+reader: decimation algorithm updated, added decimation by buffer size in getArchivedTrendValues()
+reader: added bug when not all attributes in hdb/tdb; added hdb fallback if tdb is down
+reader: insertion into trends buffers moved here from taurus
+dbs: 
+ added methods to automatically create new tables from attribute description table
+ Added MyISAM engine for newly created tables (CRITICAL!)
+
+
+Bliss 3.7 December 2012
+-----------------------------------------------------------
+
+utils: decimation methods moved to fandango.arrays
+files/report: refactored check_archiving methods
+reader: solved bug when TDB not used
+reader: solved bug when alias file defined but not loadable
+scripts: added flush hosts to db_repair
+db: optimized get_attr_values
+archiving: corrected to allow small periods in TDB
+
+Bliss 3.6 October 2012
+-----------------------------------------------------------
+
+files: CheckArchivingConfiguration and ArchivingAPI.load_last_values improved to reduce time needed for reports
+reader: All traces moved to debug loglevel
+archiving: Added absolute change >= correction in check_modes, start_archiving and extractModeString methods.
+utils: decimate_array method added
+3.6b: common/snap: removing tau dependencies
+
+-----------------------------------------------------------
+Bliss 3.5 July 2012
+-----------------------------------------------------------
+General bug-fixing
+
+Bliss 3.4 April 2012
+-----------------------------------------------------------
+reader: modified is_attribute_archived to seatch alias and deactivated attributes.
+reader: patched get_attribute_values to properly convert DevLongSpectrum values
+
+Bliss 3.3 March 2012
+-----------------------------------------------------------
+Files: Bugs patched in CheckArchivingConfiguration, LoadArchivingConfiguration return values are now optional (to not hide summary)
+DBS: get_attribute_modes accepts an attribute name as argument.
+API: Added load_labels/modes per attribute, Added retries in stop_archiving command
+Utils: Patched to parse boolean values stored in MySQL, Renamed methods to repair attribute names in tables, Taurus attribute name parsing using regexp only.
+archiving2plot/archiving2csv/reader: improved to have better offline archiving reports
+
+3.1
+-----------------------------------------------------------
+ReaderProcess: exceptions better catched
+Snap: solved bug in get_context(id=0)
+
+Bliss 3.0 Feb 2012
+-----------------------------------------------------------
+PyExtractor device added
+ParseCSV: improved time parsing, solved bugs in default mode initialization
+API: added API.get_servers() method, servers dict initialized to None
+ReaderProcess improved to  not hung when existing PyExtractor device
+Added trend replot on history loading
+utils: decimate, check_backtracking, force_stop_attributes methods patched
+Added utils.parse_tango_model method to manage new taurus URI's
+Solved indentation issues
+Adapted to taurus.qt>2.0
+
+Bliss 2.59 Feb 2012
+-----------------------------------------------------------
+SnapAPI.find_context_for_attribute fixed disallowing empty DB queries to be executed
+
+Bliss 2.58 Jan 2011
+-----------------------------------------------------------
+bugs corrected in correlate_values method
+
+Bliss 2.57 Jan 2012
+-----------------------------------------------------------
+Added return variables to start/stop methods
+Added DEFAULT_MODE to all schemas
+Patched diff in archiving report.
+
+
+Bliss 2.56 December 2011
+-----------------------------------------------------------
+Archiving: solved bug in TDB <10s modes checking
+Files: better exception management in dedicated archiving
+Reader: solved bugs in correlate_values
+scripts: archiving_report/service patched
+db_repair: Patched to try to repair only crashed tables, not all
+
+Bliss 2.51 October 2011
+-----------------------------------------------------------
+restart of archivers is grouped at the end of a nested start_archiving
+Solved bugs in ParseCSV that missed HDB mode when both HDB and TDB are
+set for same attribute.
+added decimation on array curves
+archiving: check modes now is an static method, callable from ParseCSV
+archiving: kill argument is now used in stop_archiving
+files: bugs that pruned hdb/tdb attributes solved in ParseCSV
+files: traces cleanup
+
+Bliss 2.50 October 2011
+-----------------------------------------------------------
+Attribute modes cleanup added in archiving reports and api.
+Changed order of server/attribute restart when checking configurations.
+Optimized reader for table/last values reading.
+Solved bugs in ParseCSV
+see SVN for more changes
+Reader patched to not decimate intervals longer than 300 seconds
+
+Changes by pskorek in snap.py:
+--------------------------------------------------------------------
+create_context method patched (return was missing)
+get_snapshots: latest arg added
+get_snapshot: added date parsing
+get_id_for_name added
+get_number_of_attributes added
+get_number_of_snapshots added
+print_context_info added
+get_attribute_names added
+find_context_for_attribute added
+get_snapshots_for_attribute added
+get_diff_between_snapshots added
+remove_context patched
+remove_snapshots_of_context added
+remove_unused_attributes added
+update_context and update_context_attributes refactored
+
+Changes in reader:
+---------------------------------------------------------------------
+There were two separated issues:
+
+ * First, the Reader object was called using a different logger for each
+curve. This caused the Reader to not consider all thermocouples as part
+of a same array, so caches were not shared between curves.
+
+ * Second, the trend was passing the latest date in buffer as stop date
+instead of using the last date in the X axis. When plotting June
+readings just after September readings it asked the archiving for all
+June to September readings.
+
+
+
+Bliss 2.42 24 May 2011
+-----------------------------------
+archiving: added kill param to stop/start_archiving commands (forces restart of archiver server)
+files: archivers will be restarted when some attributes change after LoadArchivingConfiguration
+reader: bool data type format patched, aliases also searched in cache, new values check refactored, taurus objects can be models also
+
+
+Bliss 2.41 13 April2011
+-----------------------
+The AliasFile property should allow PyTangoArchiving.Reader object to
+load a list of equivalences between attribute names and other stored
+attributes (to avoid storing the same value from duplicated sources).
+ The format of the file will be:
+Alias                                   Attribute
+sr01/vc/eps-plc-01/sr01_vc_tc_s0112
+sr01/vc/eps-plc-01/thermocouples[11]
+
+ It has been added new modifications to parse aliases and also array
+indexes ([11]); a new cache avoids successive loadings of the same
+array.
+
+archiving: attribute config properties not loading by default (too slow)
+utils: added cast_tango_type to convert between tango and python types
+utils: get_table_name added to avoid problems with ID>10000
+reader: added tango_type casting for plotting of archived spectrums
+reader: improved correlation when getting values in text format
+db_repair: solved bug in coding specs
+archiving_service: format errors corrected
+
+Bliss 2.40 18 March2011
+-----------------------
+reader: Added values sorting after extracting from db
+files: Parsed to differ TDB/HDB properly in .csv files
+utils: added backtracking check
+
+Bliss 2.39 21 Feb2011
+--------------------- 
+Reader adapted to be able to manage different tango hosts ...
+Added decimation to minimize too-many-points problems in qwt
+
+Bliss 2.38 7th February 2011
+----------------------------
+files.CheckArchivingConfiguration: modified to return an empty dict if no attribute matches the filters
+files.CheckArchivingConfiguration: hung attributes will be retried if their archiver ratio is good
+archiving_service: stop methods modified to use dsserver.kill instead of Starter methods; watchers removed
+archiving: max_per_list bug in start_archiving solved, get_reader method added
+Reader.get_attribute_values(a,start_date=i); if i<100 then equals to (a,now-i,now)
+db_repair.py: modified to be cronnable
+utils: added decimate_table method
+reader: accepting negative values as start_date
+
+Bliss 2.37 9th November 2010
+----------------------------
+start_archiving improved to be more efficient in time
+set_dedicated_archivers refactored to remove bugs and allow different balance for hdb and tdb.
+load_servers bug solved
+DedicateArchiversFromConfiguration now it's forced to be launched separately
+CheckArchiversFromConfiguration is now more efficient restarting archiving
+archiving_report refactored to allow cyclic execution
+archiving_service, Excluding watchers due to its high CPU usage
+added timeout check when checking attributes availability
+CheckArchiving now restarts archivers with a low rate
+
+7th September 2010
+------------------
+
+Comments in Reader class improved
+Now get_attribute_values parses better time formats.
+Compatible with PyTango>=7.1.2
