@@ -6,7 +6,22 @@
 @TODO Rename widgetArchivingBrowser.ModelSearchWidget to widget.browser.ArchivingBrowser
 @TODO: rename ArchivingBrowser to browser
 
+8.10.0 Adds method for DB decimation, solves bugs in panic widges
 
+    depends on fandango 14.6
+    add methods to decimate partitioned tables
+    improve searches on int_time columns
+    solves bug on backup of configuration tables
+    adds active=True to Reader.load_last_values
+    adds methods to manage periodic archiving on HDB++
+    improves DB loading/configuration/creation/check
+    bugs solved on getting HDB++ attributes
+    bugs solved on Snap widgets (for Panic)
+    bugs solved on loading schemas from different hosts
+
+8.9.3 
+    remove mysql-python dependency
+    
 8.9.2
     solve several bugs on extracting data from arrays (to csv and trends)
 
