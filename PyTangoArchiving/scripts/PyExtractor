@@ -1,0 +1,6 @@
+#!/bin/sh
+
+cd $(fandango findModule PyTangoArchiving)
+cd servers/PyExtractor
+python PyExtractor.py $1 $2 &
+
