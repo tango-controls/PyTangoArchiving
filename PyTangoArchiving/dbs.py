@@ -270,6 +270,11 @@ class ArchivingDB(FriendlyDB):
             return False
         return True
     
+    def clean_old_tables(self, tables, date):
+        """
+        Cleanup all unactive modes from DB if stop_date is older than date
+        """
+    
     def get_table_updates(self,name=''):
         if name and not str(name).startswith('att_'):
             n = self.get_table_name(name if isinstance(name,int) else self.get_attribute_ID(name))

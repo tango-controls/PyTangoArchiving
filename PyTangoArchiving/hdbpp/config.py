@@ -82,7 +82,7 @@ class HDBppDB(ArchivingDB,SingletonMap):
             else:
                 sch = Schemas.getSchema(db_name)
                 if sch:
-                    print('HDBpp(): Loading from Schemas')
+                    #print('HDBpp(): Loading from Schemas')
                     db_name = sch.get('dbname',sch.get('db_name'))
                     host = host or sch.get('host')
                     user = user or sch.get('user')

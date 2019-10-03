@@ -723,7 +723,9 @@ class Reader(Object,SingletonMap):
 
         self.get_attributes() #Updated cached lists
         attr = self.get_attribute_alias(attribute)
-        attr = self.get_attribute_model(attribute)
+        self.log.info('%s => %s' % (attribute, attr))
+        attr = self.get_attribute_model(attr)
+        self.log.info('%s => %s' % (attribute, attr))
         
         if self.db_name=='*':
             # Universal reader
@@ -970,6 +972,13 @@ class Reader(Object,SingletonMap):
             #@debug
             self.log.warning('In get_attribute_values(%s): '
               'Using %s schema at %s'%(attribute,rd.schema,start_date))
+            
+            if not rd.is_attribute_archived(attribute):
+                attr = self.get_attribute_alias(attribute)
+                attr = self.get_attribute_model(attr)
+                if attr!=attribute:
+                    self.log.info('%s => %s' % (attribute, attr))
+                    attribute = attr
 
             #@TODO, implemented classes should have polimorphic methods
             values = rd.get_attribute_values(attribute,start_date,stop_date,
@@ -1255,6 +1264,10 @@ class Reader(Object,SingletonMap):
         """
         if not attributes: raise Exception('Empty List!')
         start = time.time()
+        
+        start_date,start_time,stop_date,stop_time = \
+            self.get_time_interval(start_date,stop_date)        
+        
         values = dict([(attr,self.get_attribute_values(attr,start_date,stop_date,asHistoryBuffer,N=N)) for attr in attributes])
         self.log.debug('Query finished in %d milliseconds'%(1000*(time.time()-start)))
         if correlate or text:

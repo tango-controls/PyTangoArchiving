@@ -21,6 +21,43 @@ def get_search_model(model):
     model = clsub('[:][0-9]+','%:%',model)
     return model
 
+partition_prefixes = {
+### BUT, NOT ALL TABLES ARE IN THIS LIST!
+# I'm partitioning only the big ones, and ignoring the others
+# boolean, encoded, enum, long64 uchar ulong64, ulong, ushort
+# b, e, n, l64, ul6, ul, us, uc
+
+    'att_array_devdouble_ro':'adr',
+    'att_array_devfloat_ro':'afr',
+    'att_array_devlong_ro':'alr',
+    'att_array_devlong_rw':'alw',    
+    'att_array_devshort_ro':'ahr',
+    'att_array_devboolean_ro':'abr',    
+    'att_array_devboolean_rw':'abw',        
+    'att_array_devstring_ro':'asr',
+    'att_array_devstate_ro':'atr',
+
+    'att_scalar_devdouble_ro':'sdr',
+    'att_scalar_devdouble_rw':'sdw',
+    
+    'att_scalar_devfloat_ro':'sfr',
+    'att_scalar_devlong_ro':'slr',
+    'att_scalar_devlong_rw':'slw',
+    'att_scalar_devshort_ro':'shr',
+    'att_scalar_devshort_rw':'shw',    
+    'att_scalar_devboolean_ro':'sbr',
+    'att_scalar_devboolean_rw':'sbw',
+
+    'att_scalar_devstate_ro':'str',
+    'att_scalar_devstring_ro':'ssr',
+    'att_scalar_devushort_ro':'sur',
+    'att_scalar_devuchar_ro':'scr',
+    
+    'att_array_devfloat_rw':'afw',
+    'att_scalar_devstring_rw':'ssw',
+    'att_scalar_devstring_ro':'ssr',    
+    }
+
 class HDBppReader(HDBppDB):
     """
     Python API for accessing HDB++ archived values
@@ -35,6 +72,23 @@ class HDBppReader(HDBppDB):
         return self.Query(
             "select (TO_SECONDS('%s')-62167222800) - UNIX_TIMESTAMP('%s')" 
             % (date,date))[0][0]
+    
+    def get_table_partition_for_date(self, table, date):
+        if not fn.isString(date):
+            date = fn.time2str(date)
+        p = partition_prefixes[table]
+        p += ''.join(date.split('-')[0:2]) + '01'
+        return p
+    
+    def get_table_partitions_for_dates(self, table, date1, date2):
+        p1 = self.get_table_partition_for_date(table,date1)
+        p2 = self.get_table_partition_for_date(table,date2)
+        parts = self.getTablePartitions(table)  
+        if p1 not in parts: p1 = parts[0]
+        if p2 not in parts: p2 = parts[-1]
+        if None in (p1,p2): return None
+        return parts[parts.index(p1):parts.index(p2)+1]
+    
       
     def get_last_attribute_values(self,table,n=1,
                                   check_table=False,epoch=None):
@@ -76,30 +130,43 @@ class HDBppReader(HDBppDB):
     __test__['get_last_attribute_values'] = \
         [(['bl01/vc/spbx-01/p1'],None,lambda r:len(r)>0)] #should return array
     
+    #@Cached(depth=10,expire=300.)
+    #def Query(self,*args,**kwargs):
+        #return HDBppDB.Query(self,*args,**kwargs)
+    
     @CatchedAndLogged(throw=True)
     def get_attribute_values(self,table,start_date=None,stop_date=None,
                              desc=False,N=0,unixtime=True,
                              extra_columns='quality',decimate=0,human=False,
-                             as_double=True,aggregate='MAX',int_time=True,
+                             as_double=True,
+                             aggregate='', #'MAX',
+                             int_time=True,
                              **kwargs):
-        """
-        This method returns values between dates from a given table.
-        If stop_date is not given, then anything above start_date is returned.
-        desc controls the sorting of values
-        
-        unixtime = True enhances the speed of querying by a 60%!!!! 
-            #(due to MySQLdb implementation of datetime)
-        
-        If N is specified:
-        
-            * Query will return last N values if there's no stop_date
-            * If there is, then it will return the first N values (windowing?)
-            * IF N is negative, it will return the last N values instead
+        """ Returns archived values between dates for a given table/attribute.
+        Parameters
+        ----------
+        table
+            table or attribute
+        start_date/stop_date
+            if not stop_date, anything between start_date and now()
+            start_date and stop_date float or str in a format valid for SQL
+        desc
+            controls the sorting of values
+        N
+            If 0, None or False, has no effect
+            Query will return last N values if there's no stop_date
+            If there is, then it will return the first N values (windowing?)
+            If N is negative, it will return the last N values instead
+        unixtime
+            if True forces conversion of datetime to unix timestamp
+            at query time. It speeds querying by a 60%!!!! 
+        extra_columns
+            adds columns to result ('quality' by default)
+        decimate
             
-        start_date and stop_date must be in a format valid for SQL
         """
         t0 = time.time()
-        self.debug('HDBpp.get_attribute_values(%s,%s,%s,%s,decimate=%s,'
+        self.info('HDBpp.get_attribute_values(%s,%s,%s,%s,decimate=%s,'
                    'int_time=%s,%s)'
               %(table,start_date,stop_date,N,decimate,int_time,kwargs))
         if fn.isSequence(table):
@@ -108,8 +175,8 @@ class HDBppReader(HDBppDB):
             index = None
             if '[' in table:
                 try:
-                    table = table.split('[')[0]
                     index = int(fn.clsearch('\[([0-9]+)\]',table).groups()[0])
+                    table = table.split('[')[0]
                 except:
                     pass
             aid,tid,table = self.get_attr_id_type_table(table)
@@ -123,7 +190,7 @@ class HDBppReader(HDBppDB):
         what = 'UNIX_TIMESTAMP(data_time)' if unixtime else 'data_time'
         if as_double:
             what = 'CAST(%s as DOUBLE)' % what
-        what += ' AS DTS'
+        #what += ' AS DTS'
             
         value = 'value_r' if 'value_r' in self.getTableCols(table) \
                                 else 'value'
@@ -176,6 +243,7 @@ class HDBppReader(HDBppDB):
                     interval += " and data_time > '%s'"%start_date
             
         query = 'select %s from %s %s' % (what,table,interval)
+
         if decimate:
             if isinstance(decimate,(int,float)):
                 d = int(decimate) or 1
@@ -185,8 +253,13 @@ class HDBppReader(HDBppDB):
                 return 1 if x == 0 else 2**int(x - 1).bit_length()
             d = next_power_of_2(d/2)
             # decimation on server side
-            query += ' group by FLOOR(%s/%d)' % (
-                'int_time' if int_time else 'UNIX_TIMESTAMP(data_time)',d)
+            #if int_time:
+                #query += ' group by %s DIV %d' % (
+                    #'int_time', d)
+            #else:
+                #query += ' group by FLOOR(%s/%d)' % (
+                    #'UNIX_TIMESTAMP(data_time)', d)
+
             
         query += ' order by %s' % ('int_time' #, DTS' # much slower!
                             if int_time else 'data_time')
@@ -196,12 +269,12 @@ class HDBppReader(HDBppDB):
         if N < 0 or desc: 
             query+=" desc" # or (not stop_date and N>0):
         if N: 
-            query+=' limit %s'%abs(N if 'array' not in table else N*1024)
+            query+=' limit %s'%abs(N) #if 'array' not in table else N*128)
         
         ######################################################################
         # QUERY
         t0 = time.time()
-        self.debug(query.replace('where','\nwhere').replace(
+        self.info(query.replace('where','\nwhere').replace(
             'group,','\ngroup'))
         try:
             result = self.Query(query)
@@ -222,10 +295,13 @@ class HDBppReader(HDBppDB):
         t0 = time.time()
         if 'array' in table:
             data = fandango.dicts.defaultdict(list)
+            
             for t in result:
                 data[float(t[0])].append(t[1:])
+                
             result = []
             for k,v in sorted(data.items()):
+                # it forces all lines to be equal in length
                 l = [0]*(1+max(t[0] for t in v))
                 for i,t in enumerate(v):
                     if None in t: 
@@ -233,6 +309,7 @@ class HDBppReader(HDBppDB):
                         break
                     l[t[0]] = t[1] #Ignoring extra columns (e.g. quality)
                 result.append((k,l))
+                
             if N > 0: 
                 #for k,l in result:
                     #print((k,l and len(l)))
@@ -241,9 +318,18 @@ class HDBppReader(HDBppDB):
                 result = list(reversed(result))
 
             if index is not None:
-                result = [r[index] for r in result]
-            self.debug('array arranged [%d] in %f s'
-                         % (len(result),time.time()-t0))
+                nr = []
+                for i,r in enumerate(result):
+                    try:
+                        nr.append((r[0],r[1][index]))
+                    except:
+                        print(index,r)
+                        traceback.print_exc()
+                        break
+                result = nr
+                
+            self.info('array arranged [%d][%s] in %f s'
+                         % (len(result),index,time.time()-t0))
             t0 = time.time()
           
         # Converting the timestamp from Decimal to float
@@ -299,6 +385,10 @@ class HDBppReader(HDBppDB):
     def get_attributes_values(self,tables='',start_date=None,stop_date=None,
                 desc=False,N=0,unixtime=True,extra_columns='quality',
                 decimate=0,human=False):
+        
+        if start_date or stop_date:
+            start_date,start_time,stop_date,stop_time = \
+                Reader.get_time_interval(start_date,stop_date)        
         
         if not fn.isSequence(tables):
             tables = self.get_archived_attributes(tables)

@@ -39,7 +39,16 @@ ALBA Synchrotron Control Group
 
 """
 
-RELEASE = (6,4,0)
+try:
+  import os
+  f = open(os.path.dirname(os.path.abspath(__file__))+'/VERSION')
+  v = f.read().strip().split('.')
+  f.close()
+  RELEASE = tuple(map(int,v))
+except:
+  import traceback
+  traceback.print_exc()
+  print('Unable to read PyTangoArchiving.VERSION')
 
 ARCHIVING_TYPES = ['hdb','tdb','snap']
 ARCHIVING_CLASSES =     ['HdbArchiver','TdbArchiver','SnapArchiver',
