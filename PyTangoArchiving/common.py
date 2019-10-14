@@ -61,7 +61,8 @@ class CommonAPI(Object,fandango.SingletonMap):
     MAX_SERVERS_FOR_CLASS=5
     MIN_ARCHIVING_PERIOD=10
     
-    def __init__(self,schema,host=None,user='browser',passwd='browser',classes=[],LogLevel='info',load=True,logger=None):
+    def __init__(self,schema,host=None,user='browser',passwd='browser',
+                 classes=[],LogLevel='WARNING',load=True,logger=None):
         """
         """
         self.log = logger or Logger('ArchivingAPI(%s)'%schema,format='%(levelname)-8s %(asctime)s %(name)s: %(message)s')

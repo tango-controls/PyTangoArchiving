@@ -143,7 +143,7 @@ class ArchivingAPI(CommonAPI):
     SCHEMAS = ('hdb','tdb')
     
     def __init__(self,schema,host=None,user='browser',passwd='browser',
-                 classes=[],LogLevel='info',load=False,values=False,
+                 classes=[],LogLevel='warning',load=False,values=False,
                  dedicated=False, tango_host='',logger=None, ):
 
         self.schema = schema.lower()

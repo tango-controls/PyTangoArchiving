@@ -165,7 +165,8 @@ class Schemas(object):
         # This method initializes a reader object from Schema config
         # It does not update the Schema object, just returns a reader
         
-        dct = dct if dct is not None else k.getSchema(schema)
+        dct = dct if dct is not None else k.getSchema(
+            schema if fn.isString(schema) else schema.get('schema'))
         rd = dct.get('reader',dct.get('api'))
 
         if rd and isinstance(rd,str):
@@ -193,7 +194,7 @@ class Schemas(object):
     
     @classmethod
     def getSchema(k,schema,tango='',prop='',logger=None, write=False):
-        
+
         if schema.startswith('#') and EXPERT_MODE:
             schema = schema.strip('#')
             print('%s is enabled'%schema)
@@ -247,7 +248,8 @@ class Schemas(object):
     
     @classmethod
     def checkSchema(k, schema, attribute='', start=None, stop=None):
-        schema = k.getSchema(schema)
+        if not isinstance(schema, SchemaDict):
+            schema = k.getSchema(schema)
         if not schema: 
             return False
         
@@ -280,9 +282,9 @@ class Schemas(object):
                         schema.get('db_name',schema.get('schema',''))),
                     })
             if 'reader' in f:
-                k.getReader(schema)
+                k.getReader(schema.get('schema'))
             if 'api' in f:
-                k.getApi(schema)
+                k.getApi(schema.get('schema'))
                 
             #print('In reader.Schemas.checkSchema(%s,%s,%s,%s): %s'
                 #% (schema,attribute,start,stop,f))                

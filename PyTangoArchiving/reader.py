@@ -272,7 +272,7 @@ class Reader(Object,SingletonMap):
         return key
             
     def __init__(self,db='*',config='',servers = None, schema = None,
-                 timeout=300000,log='INFO',logger=None,tango_host=None,
+                 timeout=300000,log='WARNING',logger=None,tango_host=None,
                  multihost=False,alias_file=''):
         '''@param config must be an string like user:passwd@host'''
         if not logger:
@@ -411,9 +411,10 @@ class Reader(Object,SingletonMap):
         
         
     def __del__(self):
-        for k in self.dbs.keys()[:]:
-            o = self.dbs.pop(k)
-            del o
+        if getattr(self,'dbs',None):
+            for k in self.dbs.keys()[:]:
+                o = self.dbs.pop(k)
+                del o
         
     def reset(self):
         self.log.debug('Reader.reset()')
