@@ -1046,14 +1046,18 @@ def main(args):
     if not args: 
         exxit()
         
-    action = args[0]
+    action = args[0].lower()
     filenames = args[1:]
-    if len(args)>2:
-        schema = filenames.pop(-1)
-    else:
-        schema = raw_input('Schema?').strip() or ''
     
-    if all(map(os.path.isfile,filenames)):
+    if os.path.isfile(filenames[0]):
+        
+        if not os.path.isfile(filenames[-1]):
+            schema = filenames.pop(-1)
+        else:
+            csv = ParseCSV(filename)
+            schemas = sorted(map(str.lower,set(k for v in csv.values() 
+                    for k in v.keys() if hasattr(v,'values'))))
+            schema = raw_input('Schema (%s)?'%'/'.join(schemas)).strip() or ''        
     
         if action in ('load','check'):
             attrs = ParseCSV(filename,schema,log=False)
@@ -1070,23 +1074,38 @@ def main(args):
             
     else:
         import fandango.tango as ft
-        if schema and all(map(ft.parse_tango_model,filenames)):
-            api = PyTangoArchiving.ArchivingAPI(schema)
+        models = set(a for f in filenames for a in ft.find_attributes(f))
+        models = sorted(map(str.lower,models))
+        print('Tango attributes: %s' % str(models))
+        try:
+            if 'check' in action:
+                rd = PyTangoArchiving.Reader(log='WARNING')
+                for m in models:
+                    if rd.is_attribute_archived(m):
+                        print('%s: {Schema:Last Value}' % m)
+                        vals = rd.load_last_values(m) 
+                        print('\t%s' % vals)
+                    
+            else:
+                schema = raw_input('Which archiving Schema?') or ''
+                api = PyTangoArchiving.ArchivingAPI(schema)
 
-            if 'start' in action.lower():
-                modes = eval(raw_input('Archiving modes?'))
-                api.start_archiving(filenames,modes)
+                if 'start' in action:
+                    modes = eval(raw_input('Archiving period in ms?'))
+                    api.start_archiving(models,modes)
 
-            if 'stop' in action.lower():
-                api.stop_archiving(filenames)
-                
-            if 'check' in action.lower():
-                print(api.load_last_values(filenames))
-        else:
+                elif 'stop' in action:
+                    api.stop_archiving(filenames)
+                    
+                else: 
+                    raise Exception('unknown action %s' % action)
+
+        except:
             print('Unknown args: %s' % filenames)
+            import traceback
+            traceback.print_exc()
             exxit()
         
 
 if __name__ == '__main__':
-    print sys.argv
     main(sys.argv[1:])
