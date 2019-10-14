@@ -974,12 +974,13 @@ class Reader(Object,SingletonMap):
             self.log.warning('In get_attribute_values(%s): '
               'Using %s schema at %s'%(attribute,rd.schema,start_date))
             
-            if not rd.is_attribute_archived(attribute):
-                attr = self.get_attribute_alias(attribute)
-                attr = self.get_attribute_model(attr)
-                if attr!=attribute:
-                    self.log.info('%s => %s' % (attribute, attr))
-                    attribute = attr
+            #@TODO, disabled until solving HDB++ array index issues
+            #if not rd.is_attribute_archived(attribute):
+            #    attr = self.get_attribute_alias(attribute)
+            #    attr = self.get_attribute_model(attr)
+            #    if attr!=attribute:
+            #        self.log.info('%s => %s' % (attribute, attr))
+            #        attribute = attr
 
             #@TODO, implemented classes should have polimorphic methods
             values = rd.get_attribute_values(attribute,start_date,stop_date,
