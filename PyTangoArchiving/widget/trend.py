@@ -74,7 +74,7 @@ global STARTUP_DELAY
 STARTUP_DELAY = 0.
 
 MAX_QUERY_TIME = 3600*24*1000 #DISABLING THE BUNCHING SYSTEM (doesnt work)
-MAX_QUERY_LENGTH = int(1e7)
+MAX_QUERY_LENGTH = 65536*1024 #int(1e7)
 MIN_REFRESH_PERIOD = 3.
 MIN_WINDOW = 60
 
@@ -88,10 +88,10 @@ def dateHasChanged(prev,curr=None):
 
 class ArchivingTrendWidget(TaurusGroupBox):
     def __init__(self, parent = None, designMode = False):
-        TaurusGroupBox.__init__(self, parent, designMode)
+        TaurusGroupBox.__init__(self, parent) #, designMode)
         self.setTitle('Archiving Trend')
         self.setLayout(Qt.QVBoxLayout())
-        self._trend = ArchivingTrend(parent=self,designMode = designMode)
+        self._trend = ArchivingTrend(parent=self) #,designMode = designMode)
         self._datesWidget = DatesWidget(trend=self._trend,parent=self,
             layout=Qt.QHBoxLayout)
         self._trend._datesWidget = self._datesWidget
@@ -123,7 +123,7 @@ class ArchivingTrend(TaurusTrend):
     def __init__(self, parent = None, designMode = False):
         actions = [a[1] for a in MenuActionAppender.ACTIONS]
         print '>'*80+'\n'+str(MenuActionAppender.ACTIONS)
-        TaurusTrend.__init__(self,parent,designMode)
+        TaurusTrend.__init__(self,parent) #,designMode)
         self.resetDefaultCurvesTitle()
         self.setXDynScale(True)
         self.setXIsTime(True)
