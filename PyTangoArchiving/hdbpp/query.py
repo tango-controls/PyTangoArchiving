@@ -165,8 +165,11 @@ class HDBppReader(HDBppDB):
         decimate
             
         """
+        INDEX_IN_QUERY = True
+        MAX_QUERY_SIZE = 10800
+        
         t0 = time.time()
-        self.info('HDBpp.get_attribute_values(%s,%s,%s,%s,decimate=%s,'
+        self.warning('HDBpp.get_attribute_values(%s,%s,%s,N=%s,decimate=%s,'
                    'int_time=%s,%s)'
               %(table,start_date,stop_date,N,decimate,int_time,kwargs))
         if fn.isSequence(table):
@@ -195,24 +198,25 @@ class HDBppReader(HDBppDB):
         value = 'value_r' if 'value_r' in self.getTableCols(table) \
                                 else 'value'
             
-        if 'array' in table: 
-            what+=",idx"
-            # arrays cannot be aggregated !
-            decimate = False
-            
-        elif decimate and aggregate in ('AVG','MAX','MIN'):
+        if decimate and aggregate in ('AVG','MAX','MIN'):
             value = '%s(%s)' % (aggregate,value)
             
         what += ', ' + value
+        if 'array' in table: 
+            what += ", idx"
+            
         if extra_columns: 
             what+=','+extra_columns
 
         interval = 'where att_conf_id = %s'%aid if aid is not None \
                                                 else 'where att_conf_id >= 0 '
                                             
+        if index and INDEX_IN_QUERY:
+            interval += ' and idx = %s ' % index
+                                            
         #self.info('%s : %s' % (table, self.getTableCols(table)))
         int_time = int_time and 'int_time' in self.getTableCols(table)
-        if self.db_name == 'hdbrf': int_time = False #@TODO HACK
+        
         if int_time:
             self.info('Using int_time indexing for %s' % table)
         if start_date or stop_date:
@@ -244,22 +248,24 @@ class HDBppReader(HDBppDB):
             
         query = 'select %s from %s %s' % (what,table,interval)
 
+        #self.warning('decimate = %s = %s' % (str(decimate),bool(decimate)))           
         if decimate:
+            
             if isinstance(decimate,(int,float)):
                 d = int(decimate) or 1
             else:
-                d = int((stop_time-start_time)/10800) or 1
+                d = int((stop_time-start_time)/MAX_QUERY_SIZE) or 1
             def next_power_of_2(x):  
                 return 1 if x == 0 else 2**int(x - 1).bit_length()
             d = next_power_of_2(d/2)
+            
             # decimation on server side
-            #if int_time:
-                #query += ' group by %s DIV %d' % (
-                    #'int_time', d)
-            #else:
-                #query += ' group by FLOOR(%s/%d)' % (
-                    #'UNIX_TIMESTAMP(data_time)', d)
-
+            if int_time:
+                query += ' group by %s DIV %d' % (
+                    'int_time', d)
+            else:
+                query += ' group by FLOOR(%s/%d)' % (
+                    'UNIX_TIMESTAMP(data_time)', d)
             
         query += ' order by %s' % ('int_time' #, DTS' # much slower!
                             if int_time else 'data_time')
@@ -269,16 +275,22 @@ class HDBppReader(HDBppDB):
         if N < 0 or desc: 
             query+=" desc" # or (not stop_date and N>0):
         if N: 
-            query+=' limit %s'%abs(N) #if 'array' not in table else N*128)
+            query+=' limit %s' % (abs(N)) # if 'array' not in table else N*128)
+
+        # too dangerous to remove always data by default, and bunching does not work
+        #else: 
+            #query+=' limit %s' % (MAX_QUERY_SIZE)
         
         ######################################################################
         # QUERY
         t0 = time.time()
-        self.info(query.replace('where','\nwhere').replace(
+        self.warning(query.replace('where','\nwhere').replace(
             'group,','\ngroup'))
         try:
             result = self.Query(query)
-            self.info('read [%d] in %f s'%(len(result),time.time()-t0))
+            self.warning('read [%d] in %f s: %s' % 
+                         (len(result),time.time()-t0,
+                          len(result)>1 and (result[0],result[1],result[-1])))
         except MySQLdb.ProgrammingError as e:
             result = []
             if 'DOUBLE' in str(e) and "as DOUBLE" in query:
@@ -293,7 +305,9 @@ class HDBppReader(HDBppDB):
         ######################################################################
         
         t0 = time.time()
-        if 'array' in table:
+        
+        if 'array' in table and not INDEX_IN_QUERY:
+            
             data = fandango.dicts.defaultdict(list)
             
             for t in result:
@@ -307,7 +321,8 @@ class HDBppReader(HDBppDB):
                     if None in t: 
                         l = None
                         break
-                    l[t[0]] = t[1] #Ignoring extra columns (e.g. quality)
+                    # t[1] is index, t[0] is value
+                    l[t[1]] = t[0] #Ignoring extra columns (e.g. quality)
                 result.append((k,l))
                 
             if N > 0: 
@@ -321,52 +336,18 @@ class HDBppReader(HDBppDB):
                 nr = []
                 for i,r in enumerate(result):
                     try:
-                        nr.append((r[0],r[1][index]))
+                        nr.append((r[0],r[1][index] 
+                                   if r[1] is not None else r[1]))
                     except:
                         print(index,r)
                         traceback.print_exc()
                         break
                 result = nr
                 
-            self.info('array arranged [%d][%s] in %f s'
+            self.warning('array arranged [%d][%s] in %f s'
                          % (len(result),index,time.time()-t0))
-            t0 = time.time()
-          
-        # Converting the timestamp from Decimal to float
-        # Weird results may appear in filter_array comparison if not done
-        # Although it is INCREDIBLY SLOW!!!
-        #result = []
-        #nr = []
-        #if len(result[0]) == 2: 
-            #for i,t in enumerate(result):
-                #result[i] = (float(t[0]),t[1])
-        #elif len(result[0]) == 3: 
-            #for i,t in enumerate(result):
-                #result[i] = (float(t[0]),t[1],t[2])
-        #elif len(result[0]) == 4: 
-           #for i,t in enumerate(result):
-                #result[i] = ((float(t[0]),t[1],t[2],t[3]))
-        #else:
-            #for i,t in enumerate(result):
-                #result[i] = ([float(t[0])]+t[1:])
         
-        self.debug('timestamp arranged [%d] in %f s'
-                     % (len(result),time.time()-t0))
-        t0 = time.time()
-            
-        # Decimation to be done in Reader object
-        #if decimate:
-            ## When called from trends, decimate may be the decimation method
-            ## or the maximum sample number
-            #try:
-                #N = int(decimate)
-                ##decimate = data_has_changed
-                #decimate = 
-                #result = PyTangoArchiving.reader.decimation(
-                                        #result,decimate,window=0,N=N)                
-            #except:
-                ##N = 1080
-                #result = PyTangoArchiving.reader.decimation(result,decimate) 
+        # Decimation to be done in Reader object, after caching
         
         if human: 
             result = [list(t)+[fn.time2str(t[0])] for t in result]
@@ -375,11 +356,9 @@ class HDBppReader(HDBppDB):
             #THIS WILL BE APPLIED ONLY WHEN LAST N VALUES ARE ASKED
             self.warning('reversing ...' )
             result = list(reversed(result))
-        #else:
-            ## why
-            #self.getCursor(klass=MySQLdb.cursors.SSCursor)
 
-        self.debug('result arranged [%d]'%len(result))            
+        self.warning('result arranged [%d]: %s, %s' % 
+            (len(result), result[0], result[-1]))
         return result
         
     def get_attributes_values(self,tables='',start_date=None,stop_date=None,
