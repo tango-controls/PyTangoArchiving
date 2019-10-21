@@ -6,6 +6,13 @@
 @TODO Rename widgetArchivingBrowser.ModelSearchWidget to widget.browser.ArchivingBrowser
 @TODO: rename ArchivingBrowser to browser
 
+8.11 Scripts and arrays
+
+    solve bug on Taurus 4.5+ with taurustrend designMode
+    enable aliases in all schemas
+    update partitioning and ctarchiving scripts
+    solve getSchema exceptions
+
 8.10.1 Adds method for DB decimation, solves bugs in panic widges
 
     solve PyExtractor bugs, remove getenv(TANGO_HOST) calls
