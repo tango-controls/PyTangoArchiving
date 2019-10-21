@@ -918,7 +918,8 @@ class Reader(Object,SingletonMap):
             
             if values:
                 self.log.info('Reusing Cached values for (%s)' % (str(ckey)))
-                if array_index: #Array index is an string or None
+                #Array index is an string or None
+                if array_index: 
                     values = self.extract_array_index(
                                 values,array_index,decimate,asHistoryBuffer)                
                 return values     
@@ -974,13 +975,12 @@ class Reader(Object,SingletonMap):
             self.log.warning('In get_attribute_values(%s): '
               'Using %s schema at %s'%(attribute,rd.schema,start_date))
             
-            #@TODO, disabled until solving HDB++ array index issues
-            #if not rd.is_attribute_archived(attribute):
-            #    attr = self.get_attribute_alias(attribute)
-            #    attr = self.get_attribute_model(attr)
-            #    if attr!=attribute:
-            #        self.log.info('%s => %s' % (attribute, attr))
-            #        attribute = attr
+            if not rd.is_attribute_archived(attribute):
+                attr = self.get_attribute_alias(attribute)
+                attr = self.get_attribute_model(attr)
+                if attr!=attribute:
+                    self.log.info('%s => %s' % (attribute, attr))
+                    attribute = attr
 
             #@TODO, implemented classes should have polimorphic methods
             values = rd.get_attribute_values(attribute,start_date,stop_date,
@@ -1226,6 +1226,13 @@ class Reader(Object,SingletonMap):
         # Applying array_index to the obtained results, it has to be applied after attribute loading to allow reusing cache in array-indexed attributes
         last,l0 = (0,None),len(values)
         
+        # Check if it has been already parsed
+        for r in values:
+            if r[1] is not None:
+                if not fandango.isSequence(r[1]):
+                    return values
+                break
+        
         self.log.debug('Applying array_index(%s) to the obtained results'%array_index)
         array_index = int(array_index)
         new_values = [] # We create a new list on purpose to not modify the cached values
@@ -1264,13 +1271,17 @@ class Reader(Object,SingletonMap):
         :return: a dictionary with the values of each attribute or (if text=True) a text with tabulated columns
         
         """
-        if not attributes: raise Exception('Empty List!')
+        if not attributes: 
+            raise Exception('Empty List!')
         start = time.time()
-        
+
         start_date,start_time,stop_date,stop_time = \
             self.get_time_interval(start_date,stop_date)        
         
-        values = dict([(attr,self.get_attribute_values(attr,start_date,stop_date,asHistoryBuffer,N=N)) for attr in attributes])
+        values = dict([(attr,
+            self.get_attribute_values(attr, start_date, stop_date,
+                        asHistoryBuffer, N=N)) 
+                        for attr in attributes])
         self.log.debug('Query finished in %d milliseconds'%(1000*(time.time()-start)))
         if correlate or text:
             if len(attributes)>1:
