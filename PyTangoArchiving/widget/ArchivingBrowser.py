@@ -34,7 +34,11 @@ import taurus
 from fandango.qt import Qt,Qwt5
 from fandango.qt import QGridTable, QDictToolBar
 
-from taurus.qt.qtgui.plot import TaurusTrend,TaurusPlot
+try:
+    from taurus.qt.qtgui.plot import TaurusTrend,TaurusPlot
+except:
+    from taurus.qt.qtgui.qwt5 import TaurusTrend,TaurusPlot
+    
 from taurus.qt.qtgui.panel import TaurusDevicePanel
 from taurus.qt.qtgui.panel import TaurusValue
 from taurus.qt.qtcore.util.emitter import SingletonWorker

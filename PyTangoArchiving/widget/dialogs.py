@@ -715,6 +715,7 @@ class DatesWidget(Qt.QWidget): #Qt.QDialog): #QGroupBox):
         return t0, t1
         
     def onRefreshButton(self):
+        self.onRangeChanged()
         self._trend.applyNewDates()
         try:
             date = str2time(str(self.xEditStart.text()))
