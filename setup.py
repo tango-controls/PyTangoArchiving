@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 # Always prefer setuptools over distutils
-import os, imp
+import os, imp, sys
 from setuptools import setup, find_packages
 
 __doc__ = """
@@ -24,7 +24,8 @@ To tune some options:
 -------------------------------------------------------------------------------
 """
 
-print(__doc__)
+if 'help' in str(sys.argv):
+  print(__doc__)
 
 version = open('PyTangoArchiving/VERSION').read().strip()
 scripts = []
