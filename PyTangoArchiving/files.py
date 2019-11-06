@@ -1087,11 +1087,17 @@ def main(args):
                         print('\t%s' % vals)
                     
             else:
-                schema = raw_input('Which archiving Schema?') or ''
+                schema = (
+                    fun.first(fun.filtersmart(filenames,
+                                                   PyTangoArchiving.Schemas)) 
+                    or raw_input('Which database (hdb/tdb/hdbvc/...)?') 
+                    or '')
+                period = fun.first(filter(fun.isNumber, filenames), None)
                 api = PyTangoArchiving.ArchivingAPI(schema)
 
                 if 'start' in action:
-                    modes = eval(raw_input('Archiving period in ms?'))
+                    modes = period or eval(
+                        raw_input('Archiving period in ms?')) or None
                     api.start_archiving(models,modes)
 
                 elif 'stop' in action:

@@ -50,6 +50,11 @@ def is_filename(a):
             and ('/' not in a or os.path.exists(a.rsplit('/',1)[0])))
 
 try:
+    if not sys.argv[1:] or any(a in sys.argv[1:] 
+                               for a in ('-?','-h','--help','help')):
+        print(__doc__)
+        sys.exit(0)
+        
     attrs = [a for a in sys.argv[1:] if not a.startswith('-')]
     args = [a for a in sys.argv[1:] if a.startswith('-')]
     
