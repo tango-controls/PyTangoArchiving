@@ -163,7 +163,8 @@ class HDBppDB(ArchivingDB,SingletonMap):
                     prop = get_device_property(m,'DbName')
                     if not prop:
                         prop = str(get_device_property(m,'LibConfiguration'))
-                if not db_name or db_name in prop:
+                    prop += str(get_device_property(m,'DbHost'))
+                if (not db_name or db_name in prop) and self.host in prop:
                     self.manager = m
                     break
                     
