@@ -117,6 +117,7 @@ def decimate_table(db, table, attributes = [],
     where += " where "
     if attributes:
         where += " att_conf_id in (%s) and " % (','.join(attributes))
+        
     if start!=0 or stop!=-1 or not partition:
         if int_time:
             s = start if start>0 else fn.now()-start
@@ -134,6 +135,7 @@ def decimate_table(db, table, attributes = [],
         s = fn.time2str(d)
         q = hdbpp.Query(q%(table,att_id,s,fn.time2str(d+86400))
                         +" and (data_time %% 5) < 2;")
+        
     sorted(values.items())
     3600/5
     for h in hours:
@@ -195,19 +197,25 @@ def decimate_table(db, table, attributes = [],
     """
     drop table tmpdata;
     set maxcount : = 864000;
+    
     create temporary table tmpdata (attid int(10), rcount int(20));
+    
     insert into tmpdata select att_conf_id, count(*) as COUNT 
         from att_scalar_devdouble_ro partition(sdr20180501) 
         group by att_conf_id order by COUNT;
+        
     delete from att_scalar_devdouble_ro partition(sdr20180501) 
         where att_conf_id in (select attid from tmpdata where rcount > @maxcount)
         and CAST(UNIX_TIMESTAMP(data_time) AS INT)%3 > 0;
+        
     select att_conf_id, count(*) as COUNT 
         from att_scalar_devdouble_ro partition(sdr20180501) 
         group by att_conf_id order by COUNT;
+        
     select att_conf_id, count(*) as COUNT 
         from att_scalar_devdouble_ro partition(sdr20180501) 
         group by att_conf_id order by COUNT HAVING COUNT > @maxcount;
+        
     set attid := (select attid from tmpdata order by count desc limit 1);
     select * from tmpdata where attid = @attid;
     select att_conf_id, data_time, count(*) as COUNT 
@@ -232,7 +240,83 @@ def decimate_table(db, table, attributes = [],
     db.setLogLevel(l)
     return
 
-def decimate_partition(api, table, partition, period = 3, 
+
+def decimate_by_value_to_tmp(api, table, start, stop, min_period=0, 
+                 max_period=21600, max_gap=86400, suffix='_dec',drop=False):
+    """
+    decimate by distinct value, or by fix period
+    accept a min_resolution argument
+    do selects in bunches of ids*1000 values or 250000 (the minimum)
+    """
+    #bigger = sorted((db.getTableSize(t),t) for t in dbr.getTables() if 'scalar' in t)[-1]
+    
+    ntable = table+suffix
+    l = api.getLogLevel()
+    api.setLogLevel('DEBUG')
+    nattrs = len(api.get_attributes_by_table(table))
+    
+    if fn.isString(start):
+        date0,date1 = start,stop
+        start,stop = fn.str2time(start),fn.str2time(stop)
+    else:
+        date0,date1 = fn.time2str(start),fn.time2str(stop)
+    
+    where = 'where att_conf_id < 1000000 '
+    if 'int_time' in api.getTableCols(table):
+        where += ' and int_time between %d and %d' % (start,stop)
+    else:
+        where += " and data_time between '%s' and '%s'" % (date0,date1)
+        
+    if drop:
+        api.Query('drop table if exists %s' % ntable)
+    code = api.getTableCreator(table)
+    qi = code.split('/')[0].replace(table,ntable)
+    try:
+        api.Query(qi)
+    except Exception as e:
+        api.warning('Unable to create table %s' % ntable)
+        print(e)
+
+    ###########################################################################
+    t0 = fn.now()
+    api.info('Get %s values between %s and %s' % (table, date0, date1))
+    data = api.Query('select att_conf_id,data_time,value_r,quality,'
+                    'UNIX_TIMESTAMP(data_time) from %s ' 
+                    % table + where + ' order by att_conf_id, data_time')
+    print(fn.now()-t0,'seconds')
+    
+    data_ids = fn.defaultdict(list)
+    [data_ids[i].append((d,v,q,t)) for i,d,v,q,t in data];
+
+    data_dec = dict((k,[] if not v else [v.pop(0)]) for k,v in data_ids.items())
+    
+    ###########################################################################
+    t0 = fn.now()
+    api.info('Decimating %d values' % len(data))
+    [data_dec[i].append((d,v,q,t)) for i in data_ids for d,v,q,t in data_ids[i] 
+        if not data_dec[i] or (
+            (v!=data_dec[i][-1][1] or q!=data_dec[i][-1][2] 
+                or t>data_dec[i][-1][-1]+max_period) 
+            and (t-min_period)>data_dec[i][-1][-1])]
+            
+    data_all = sorted((d,i,v,q) for i in data_dec for d,v,q,t in data_dec[i])
+    print(fn.now()-t0,'seconds')
+
+    ###########################################################################    
+    t0 = fn.now()
+    api.setLogLevel('INFO')
+    qi = 'insert into %s (`data_time`,`att_conf_id`,`value_r`,`quality`) VALUES %s'
+    api.info('Inserting %d values into %s' % (len(data_all), ntable))
+    while len(data_all):
+        vals = [data_all.pop(0) for i in range(1000)]
+        vals = ','.join(("('%s',%s,%s)"%(d,i,v)).replace('None','NULL') for d,i,v,q in vals)
+        api.info('Inserting %d values into %s (%d pending)' % (len(vals), ntable, len(data_all)))
+        api.Query(qi % (ntable,vals))
+    api.setLogLevel(l)
+    print(fn.now()-t0,'seconds')
+    return
+
+def decimate_partition_by_modtime(api, table, partition, period = 3, 
                        min_count = 30*86400/3, 
                        check = True,
                        start = 0, stop = 0):
@@ -257,6 +341,7 @@ def decimate_partition(api, table, partition, period = 3,
     col = 'int_time' if 'int_time' in api.getTableCols(table) else (
             'CAST(UNIX_TIMESTAMP(data_time) AS INT)' )
     api.Query('drop table if exists tmpdata')
+    
     api.Query("create temporary table tmpdata (attid int(10), rcount int(20));")
     q = ("insert into tmpdata select att_conf_id, count(*) as COUNT "
         "from %s partition(%s) " % (table,partition))
@@ -333,6 +418,14 @@ def decimate_all(api, period, min_count,
                     done.append((t,p,r))
     return done
 
+def add_int_time_column(api, table):
+    pref = pta.query.partition_prefixes(table)
+    api.Query('alter table %s add column int_time INT generated always as '
+              '(TO_SECONDS(data_time)-62167222800) PERSISTENT;' % table)
+    api.Query('drop index att_conf_id_data_time on %s' % table)
+    api.Query('create index i%s on %s(att_conf_id, int_time)' % (pref,table))
+    return
+
 def get_host_last_partitions(host, user, passwd, exclude_db='tdb*'):
     import fandango.db as fdb
     db = fdb.FriendlyDB(host=host,db_name='information_schema',
@@ -351,30 +444,162 @@ def get_host_last_partitions(host, user, passwd, exclude_db='tdb*'):
         result[d] = r
     return result
 
-def get_table_partitions(api, table, description=''):
-    """
-    DUPLICATED BY pta.dbs.get_partitions_from_query !!!
-    """
-    if fn.isString(api): api = pta.api(api)
-    if not description: description = get_table_description(api,table)
-    rows = [l for l in description.split('\n') if 'partition' in l.lower()]
-    f = rows[0].split()[-1]
-    data = (f,[])
-    for i,l in enumerate(rows[1:]):
-        try:
-            l,n = l.split(),i and rows[i].split() or [0]*6
-            data[-1].append((l[1],n[5],l[5]))
-        except:
-            print(fn.except2str())
-            print(i,l,n)
-    return(data)
+def get_partition_time_by_name(partition):
+    m = fn.clsearch('[0-9].*',partition)
+    if m:
+        d = fn.str2time(m.group(),cad='%Y%m%d')
+        return d
+    else:
+        return fn.END_OF_TIME
 
-def create_new_partitions(api,table,preffix,key,npartitions):
+def delete_data_older_than(api, table, timestamp, doit=False, force=False):
+    if not doit:
+        print('doit=False, nothing to be executed')
+    if 'archiving04' in api.host and not force:
+        raise Exception('deleting on archiving04 is not allowed'
+            ' (unless forced)')
+    
+    query = lambda q: (api.Query(q) if doit else fn.printf(q))
+    
+    try:
+        lg = api.getLogLevel()
+        api.setLogLevel('DEBUG')
+        partitions = sorted(api.getTablePartitions(table))
+        for p in partitions[:]:
+            t = get_partition_time_by_name(p)
+            if t > timestamp:
+                query('alter table %s drop partition %s' 
+                        % (table, p))
+                partitions.remove(p)
+            
+        cols = api.getTableCols(table)
+        if 'int_time' in cols:
+            query('delete from %s where int_time > %s' 
+                    % (table, timestamp))
+        elif 'data_time' in cols:
+            query("delete from %s where data_time > '%s'" 
+                    % (table, fn.time2str(timestamp)))
+        else:
+            query("delete from %s where time > '%s'" 
+                    % (table, fn.time2str(timestamp)))
+        if partitions:
+            p = partitions[-1]
+            query('alter table %s repair partition %s' % (table,p))
+            query('alter table %s optimize partition %s' % (table,p))
+        else:
+            query('repair table %s' % table)
+            query('optimize table %s' % table)
+    finally:
+        api.setLogLevel(lg)
+        
+def create_new_partitions(api,table,nmonths,partpermonth=1,
+                          start_date=None,add_last=True):
     """
-    This script will create N new partitions, one for each month
+    This script will create new partitions for nmonths*partpermonth
     for the given table and key
+    partpermonth should be 1, 2 or 3
     """
-    pass
+    if partpermonth > 3: 
+        raise Exception('max partpermonth = 3')
+
+    npartitions = nmonths*partpermonth
+    tables = pta.hdbpp.query.partition_prefixes
+    t = table
+    pref = tables[t]
+    intcol = 'int_time'
+    int_time = intcol in api.getTableCols(table)   
+    eparts = sorted(api.getTablePartitions(t))
+
+    if not start_date:
+        nparts = [p for p in eparts if '_last' not in p]
+        last = get_partition_time_by_name(nparts[-1]) if nparts else fn.now()
+        nxt = fn.time2date(last)
+        if nxt.month == 12:
+            nxt = fn.str2time('%s-%s-%s' % (nxt.year+1,nxt.month,'01'))
+        else:
+            nxt = fn.str2time('%s-%s-%s' % (nxt.year,nxt.month+1,'01'))
+        start_date = fn.time2str(nxt).split()[0]
+
+    def inc_months(date,count):
+        y,m,d = map(int,date.split('-'))
+        m = m+count
+        r = m%12
+        if r:
+            y += int(m/12)
+            m = m%12
+        else:
+            y += int(m/12)-1
+            m = 12
+        return '%04d-%02d-%02d'%(y,m,d)
+
+    if int_time:
+        newc = ("alter table %s add column int_time INT "
+            "generated always as (TO_SECONDS(data_time)-62167222800) PERSISTENT;")
+
+        newi = ("drop index att_conf_id_data_time on %s;")
+        newi += ("\ncreate index i%s on %s(att_conf_id, int_time);")
+        head = "ALTER TABLE %s "
+        comm = "PARTITION BY RANGE(int_time) ("
+        line = "PARTITION %s%s VALUES LESS THAN (TO_SECONDS('%s')-62167222800)"
+    else:
+        head = "ALTER TABLE %s "
+        comm = "PARTITION BY RANGE(TO_DAYS(data_time)) ("
+        line = "PARTITION %s%s VALUES LESS THAN (TO_DAYS('%s'))"
+
+    lines = []
+
+    if int_time and (not api or not intcol in api.getTableCols(t)):
+        lines.append(newc%t)
+        lines.append(newi%(t,pref,t))
+
+    lines.append(head%t)
+    if not any(eparts):
+        lines.append(comm)
+    elif pref+'_last' in eparts:
+        lines.append('REORGANIZE PARTITION %s INTO (' % (pref+'_last'))
+    else:
+        lines.append('ADD PARTITION (')
+    
+    counter = 0
+    for i in range(0,nmonths):
+        date = inc_months(start_date,i)
+        end = inc_months(date,1)
+        pp = pref+date.replace('-','') #prefix+date
+        
+        if partpermonth == 1:
+            dates = [(date,end)]
+            
+        elif partpermonth == 2:
+            dates = [(date, date.rsplit('-',1)[0]+'-16')
+                     (date.rsplit('-',1)[0]+'-16', end)]
+            
+        elif partpermonth == 3:
+            dates = [(date, date.rsplit('-',1)[0]+'-11'),
+                (date.rsplit('-',1)[0]+'-11', date.rsplit('-',1)[0]+'-21'),
+                (date.rsplit('-',1)[0]+'-21', end)]
+            
+        #for d in dates:
+            #print(p,str(d))
+            
+        for jdate,jend in dates:
+            jdate = jdate.replace('-','')
+            l = line%(pref,jdate,jend)
+            if counter<(npartitions-1):
+                l+=','
+            if (pref+jdate) not in eparts:
+                lines.append(l)
+            counter+=1
+
+    if add_last and pref+'_last' not in eparts or 'REORGANIZE' in str(lines):
+        if not lines[-1][-1] in ('(',','):
+            lines[-1] += ','
+        lines.append('PARTITION %s_last VALUES LESS THAN (MAXVALUE)'%pref)
+            
+    lines.append(');\n\n')    
+    #print('\n'.join(lines))
+    return '\n'.join(lines)
+        
+
     
 
 """
