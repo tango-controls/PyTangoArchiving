@@ -51,7 +51,7 @@ class SchemaDict(dict): #fn.Struct):
         
         if key=='dbname':
             v = super(SchemaDict,self).get('db_name',None)
-            if v is none:
+            if v is None:
                 v = super(SchemaDict,self).get('schema',None)
             return v
 
