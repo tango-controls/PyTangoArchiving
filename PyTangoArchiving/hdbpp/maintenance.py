@@ -241,7 +241,7 @@ def decimate_table(db, table, attributes = [],
     return
 
 
-def decimate_by_value_to_tmp(api, table, start, stop, min_period=0, 
+def decimate_by_value_to_tmp(api, table, start, stop, ntable='', min_period=0, 
                  max_period=21600, max_gap=86400, suffix='_dec',drop=False):
     """
     decimate by distinct value, or by fix period
@@ -250,9 +250,9 @@ def decimate_by_value_to_tmp(api, table, start, stop, min_period=0,
     """
     #bigger = sorted((db.getTableSize(t),t) for t in dbr.getTables() if 'scalar' in t)[-1]
     
-    ntable = table+suffix
+    if not ntable:
+        ntable = table+suffix
     l = api.getLogLevel()
-    api.setLogLevel('DEBUG')
     nattrs = len(api.get_attributes_by_table(table))
     
     if fn.isString(start):
@@ -266,55 +266,115 @@ def decimate_by_value_to_tmp(api, table, start, stop, min_period=0,
         where += ' and int_time between %d and %d' % (start,stop)
     else:
         where += " and data_time between '%s' and '%s'" % (date0,date1)
-        
+
+    tables = api.getTables()
+    api.setLogLevel('DEBUG')        
     if drop:
         api.Query('drop table if exists %s' % ntable)
-    code = api.getTableCreator(table)
-    qi = code.split('/')[0].replace(table,ntable)
-    try:
-        api.Query(qi)
-    except Exception as e:
-        api.warning('Unable to create table %s' % ntable)
-        print(e)
+        
+    if ntable not in tables:
+        code = api.getTableCreator(table)
+        qi = code.split('/')[0].replace(table,ntable)
+        try:
+            api.Query(qi)
+        except Exception as e:
+            api.warning('Unable to create table %s' % ntable)
+            print(e)
 
     ###########################################################################
     t0 = fn.now()
     api.info('Get %s values between %s and %s' % (table, date0, date1))
-    data = api.Query('select att_conf_id,data_time,value_r,quality,'
-                    'UNIX_TIMESTAMP(data_time) from %s ' 
-                    % table + where + ' order by att_conf_id, data_time')
+    what = "att_conf_id,data_time,value_r,quality,UNIX_TIMESTAMP(data_time)"
+    array = 'idx' in api.getTableCols(table)
+    if array:
+        what+= ',idx,dim_x_r,dim_y_r'
+    data = api.Query('select %s from %s ' % (what, table) + where 
+                     + ' order by att_conf_id, data_time')
     print(fn.now()-t0,'seconds')
     
     data_ids = fn.defaultdict(list)
-    [data_ids[i].append((d,v,q,t)) for i,d,v,q,t in data];
+    if array:
+        [data_ids[i].append((d,v,q,t,j,x,y)) for i,d,v,q,t,j,x,y in data];
+    else:
+        [data_ids[i].append((d,v,q,t)) for i,d,v,q,t in data];
 
     data_dec = dict((k,[] if not v else [v.pop(0)]) for k,v in data_ids.items())
     
     ###########################################################################
     t0 = fn.now()
     api.info('Decimating %d values' % len(data))
-    [data_dec[i].append((d,v,q,t)) for i in data_ids for d,v,q,t in data_ids[i] 
-        if not data_dec[i] or (
-            (v!=data_dec[i][-1][1] or q!=data_dec[i][-1][2] 
-                or t>data_dec[i][-1][-1]+max_period) 
-            and (t-min_period)>data_dec[i][-1][-1])]
+    if array:
+        [data_dec[i].append((d,v,q,j,x,y,t)) for i in data_ids for d,v,q,t,j,x,y in data_ids[i] 
+            if not data_dec[i] or (
+                (v!=data_dec[i][-1][1] or q!=data_dec[i][-1][2] 
+                    or t>data_dec[i][-1][-1]+max_period) 
+                and (t-min_period)>data_dec[i][-1][-1])]
             
-    data_all = sorted((d,i,v,q) for i in data_dec for d,v,q,t in data_dec[i])
+        data_all = sorted((d,i,v,q,j,x,y) for i in data_dec for d,v,q,j,x,y,t in data_dec[i])
+    else:
+        [data_dec[i].append((d,v,q,t)) for i in data_ids for d,v,q,t in data_ids[i] 
+            if not data_dec[i] or (
+                (v!=data_dec[i][-1][1] or q!=data_dec[i][-1][2] 
+                    or t>data_dec[i][-1][-1]+max_period) 
+                and (t-min_period)>data_dec[i][-1][-1])]
+            
+        data_all = sorted((d,i,v,q) for i in data_dec for d,v,q,t in data_dec[i])
     print(fn.now()-t0,'seconds')
 
     ###########################################################################    
     t0 = fn.now()
     api.setLogLevel('INFO')
-    qi = 'insert into %s (`data_time`,`att_conf_id`,`value_r`,`quality`) VALUES %s'
+    if array:
+        qi = 'insert into %s (`data_time`,`att_conf_id`,`value_r`,`quality`,`idx`,`dim_x_r`,`dim_y_r`) VALUES %s'
+    else:
+        qi = 'insert into %s (`data_time`,`att_conf_id`,`value_r`,`quality`) VALUES %s'
+        
     api.info('Inserting %d values into %s' % (len(data_all), ntable))
     while len(data_all):
-        vals = [data_all.pop(0) for i in range(1000)]
-        vals = ','.join(("('%s',%s,%s)"%(d,i,v)).replace('None','NULL') for d,i,v,q in vals)
-        api.info('Inserting %d values into %s (%d pending)' % (len(vals), ntable, len(data_all)))
-        api.Query(qi % (ntable,vals))
+        api.info('Inserting values into %s (%d pending)' % (ntable, len(data_all)))
+        for j in range(100):
+            if len(data_all):
+                vals = [data_all.pop(0) for i in range(1000) if len(data_all)]
+                if array:
+                    vals = ','.join(("('%s',%s,%s,%s,%s,%s,%s)"%(d,i,v,q,j,x,y)
+                                     ).replace('None','NULL') 
+                                for d,i,v,q,j,x,y in vals)
+                else:
+                    vals = ','.join(("('%s',%s,%s,%s)"%(d,i,v,q)).replace('None','NULL') for d,i,v,q in vals)
+                api.Query(qi % (ntable,vals))
     api.setLogLevel(l)
     print(fn.now()-t0,'seconds')
     return
+
+def insert_into_table(api, table, source, start, stop, step = 86400):
+    t0 = fn.now()
+    
+    if fn.isString(api):
+        api = pta.api(api)
+        
+    if fn.isString(start):
+        date0,date1 = start,stop
+        start,stop = fn.str2time(start),fn.str2time(stop)
+    else:
+        date0,date1 = fn.time2str(start),fn.time2str(stop)        
+
+    int_time = 'int_time' in api.getTableCols(table)
+    q = 'insert into %s (`data_time`,`att_conf_id`,`value_r`,`quality`) ' % table
+    q += 'SELECT data_time,att_conf_id,value_r,quality from %s ' % source
+    
+    for i in range(int(start),int(stop),86400):
+        end = min((stop,i+86400))
+        if int_time:
+            where = 'where int_time between %d and %d order by int_time' % (i,end)
+        else:
+            where = 'where data_time between "%s" and "%s" order by data_time' % (
+                fn.time2str(i),fn.time2str(end))
+        print(q+where)
+        api.Query(q+where)
+        
+    print(fn.now()-t0,'seconds')
+    return
+    
 
 def decimate_partition_by_modtime(api, table, partition, period = 3, 
                        min_count = 30*86400/3, 
@@ -443,6 +503,60 @@ def get_host_last_partitions(host, user, passwd, exclude_db='tdb*'):
         print(r)
         result[d] = r
     return result
+
+def get_db_last_values_per_table(api, tables = None):
+    db = pta.api(api) if fn.isString(api) else api
+    tables = dict()
+    for t in sorted(db.getTables()):
+        if 'data_time' not in db.getTableCols(t):
+            continue
+        last = get_last_value_in_table(api,t)
+        tables[t] = last
+    return tables
+
+def get_last_partition(api, table, min_size = 1024):
+    """
+    Return the last partition updated (size > min_size)
+    Returns None if the table is not partitioned
+    """    
+    db = pta.api(api) if fn.isString(api) else api
+    parts = db.getTablePartitions(table)
+    last_part = fn.last(sorted(p for p in parts 
+            if p and db.getPartitionSize(table,p) > min_size), default=None)
+    return last_part
+
+def get_last_value_in_table(api, table, tref = -180*86400):
+    """
+    Return the last value stored in the given table
+    """
+    t0 = fn.now()
+    db = pta.api(api) if fn.isString(api) else api
+    print('get_last_value_in_table(%s, %s)' % (db.db_name, table))
+    last_part = get_last_partition(api, table)
+    tref = tref if tref>0 else fn.now()+tref
+
+    q = 'select data_time from %s ' % table
+    if last_part:
+        q += ' partition (%s)' % last_part
+
+    where = ' where att_conf_id < 10000 and '
+    if 'int_time' in db.getTableCols(table):
+        where += ('int_time between %d and %d'% (tref, fn.now()))
+    elif 'data_time' in db.getTableCols(table):
+        where += ("data_time between '%s' and '%s'"
+                    % (fn.time2str(tref).split()[0], fn.time2str().split()[0]))
+    
+    if 'int_time' in db.getTableCols(table):
+        order = ' order by int_time desc limit 1'
+    elif 'data_time' in db.getTableCols(table):
+        order = ' order by data_time desc limit 1'
+        
+    q = q + where + order
+    print(q)
+    last = db.Query(q)
+    last = fn.first(last[0]) if len(last) else 0
+    print('\tlast value at %s, check took %d secs' % (last, fn.now()-t0))
+    return (last, fn.now()-t0)
 
 def get_partition_time_by_name(partition):
     m = fn.clsearch('[0-9].*',partition)
