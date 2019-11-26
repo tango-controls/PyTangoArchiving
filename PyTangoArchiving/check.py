@@ -19,6 +19,49 @@ Usage:
 
 """
 
+def main(args=None):
+    """
+    see PyTangoArchiving.check.USAGE
+    """
+    try:
+        if not args:
+            args = {}
+            assert sys.argv[2:]
+            args = fn.sysargs_to_dict(defaults=('schema','period','ti',
+                                            'values','action'))
+        print(args)
+
+        if args.get('action') == 'start':
+            print('Call Start() for %s devices' % sys.argv[1])
+            pta.api(args['schema']).start_devices(force=True)
+            print('done')
+            
+        if args.get('action') == 'restart':
+            print('Restart %s servers' % sys.argv[1])
+            pta.api(args['schema']).start_servers(restart=True)
+            print('done') 
+            
+        if args.get('action') == 'save':
+            save_schema_values(args['schema'],
+                    filename=args.get('filename',''),
+                    folder=args.get('folder',''))
+        else:
+            try:
+                args.pop('action')
+                args = dict((k,v) for k,v in args.items() 
+                            if k and v not in (False,[]))
+                #r = check_archiving_schema(**args);
+                print('check_db_schema(%s)' % str(args))
+                r = check_db_schema(**args)
+            except:
+                print(fn.except2str())
+
+    except:
+        print fn.except2str()
+        print(USAGE)
+
+###############################################################################
+
 def check_archiving_schema(
         schema='hdb',
         attributes=[],values={},
@@ -422,6 +465,7 @@ def check_db_schema(schema, attributes = None, values = None,
     r.off = [a for a in r.attrs if a not in r.on]
     
     r.archs = fn.defaultdict(list)
+    r.pers = fn.defaultdict(list)
     r.vals = load_schema_values(api,r.on,values,n)
     
     if schema in ('tdb','hdb'):
@@ -443,7 +487,8 @@ def check_db_schema(schema, attributes = None, values = None,
                 
         for k in api.get_archivers():
             r.archs[k] = api.get_archiver_attributes(k)
-        r.pers = api.get_periodic_archivers_attributes(k)
+        for k in api.get_periodic_archivers():
+            r.pers[k] = api.get_periodic_archivers_attributes(k)
 
     # Get all updated attributes
     r.ok = [a for a,v in r.vals.items() if v and v[0] > r.tref]
@@ -584,7 +629,9 @@ def save_schema_values(schema, filename='', folder=''):
     print('Saving %s attribute values' % schema)
     date = fn.time2str().split()[0].replace('-','')
     filename = filename or '%s_%s_values.pck' % (schema,date)
-    if folder: filename = '/'.join((folder,filename))
+    if folder: 
+        filename = '/'.join((folder,filename))
+
     api = pta.api(schema)
     attrs = api.keys() if hasattr(api,'keys') else api.get_attributes()
     print('%d attributes in %s' % (len(attrs),schema))
@@ -592,38 +639,13 @@ def save_schema_values(schema, filename='', folder=''):
     print('%d attributes archived' % (len(values)))
     values.update((a,api.load_last_values(a)) for a in values.keys())
     pickle.dump(values,open(filename,'w'))
+
     print('%s written, %d seconds ellapsed' % (filename,fn.now()-t0))
     print(os.system('ls -lah %s' % filename))
 
+##############################################################################
+
 if __name__ == '__main__':
     
-    args = {}
-    try:
-        assert sys.argv[2:]
-        args = fn.sysargs_to_dict(defaults=('schema','period','ti',
-                                            'values','action'))
-        print(args)
-
-        if args.get('action') == 'start':
-            print('Call Start() for %s devices' % sys.argv[1])
-            pta.api(args['schema']).start_devices(force=True)
-            print('done')
-        if args.get('action') == 'restart':
-            print('Restart %s servers' % sys.argv[1])
-            pta.api(args['schema']).start_servers(restart=True)
-            print('done') 
-        if args.get('action') == 'save':
-            save_schema_values(args['schema'],
-                    filename=args.get('filename',''),
-                    folder=args.get('folder',''))
-        else:
-            try:
-                args = dict((k,v) for k,v in args.items() 
-                            if k and v not in (False,[]))
-                r = check_archiving_schema(**args);
-            except:
-                print(fn.except2str())
-
-    except:
-        print fn.except2str()
-        print(USAGE)
+    main()
+    
