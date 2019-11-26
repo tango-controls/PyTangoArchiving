@@ -298,7 +298,7 @@ CONFIG_TABLES = ('adt apt att_conf att_conf_data_type att_parameter '
 from fandango import time2date,str2time
 
 def mysqldump_by_date(schema, user, passwd, folder, start, stop,
-                      compress = True, delete = True):
+                      tables = None, compress = True, delete = True):
     """
     This method creates a backup between selected dates for each table 
     of the selected database.
@@ -315,7 +315,7 @@ def mysqldump_by_date(schema, user, passwd, folder, start, stop,
     print(t,e)
     start = start if fn.isString(start) else fn.time2str(start)
     stop = stop if fn.isString(stop) else fn.time2str(stop)
-    tables = db.getTables()
+    tables = tables or db.getTables()
 
     print('mysqldump_by_date(%s): %d tables to backup between %s and %s' 
           % (schema,len(tables),start,stop))
@@ -324,6 +324,9 @@ def mysqldump_by_date(schema, user, passwd, folder, start, stop,
         print('mkdir %s' % folder)
         os.mkdir(folder)
         
+    t0 = fn.now()
+    filenames = []
+    
     for t in sorted(tables):
         filename = ('%s/%s-%s-%s-%s.dmp' 
             % (folder,schema,t,start.split()[0],stop.split()[0]))
@@ -341,18 +344,35 @@ def mysqldump_by_date(schema, user, passwd, folder, start, stop,
         else:
             options = ""
         mysqldump(schema,user,passwd,filename,t,where,options=options)
+        filenames.append(filename)
+        
+    t1 = fn.now()
         
     ext = ('part.' if fn.str2time(stop) > fn.now() else '') + 'tgz'
+    dext = '.dmp'
     if compress:
+        # doing it on separate files ...
+        #for f in filenames:
+            #cmd = 'tar zcvf %s.tgz %s' % (f,f)
+            #print(cmd)
+            #fn.linos.shell_command(cmd)
+        #dext+='.tgz' 
+
         filename = ('%s/%s-%s-%s.%s' 
             % (folder,schema,start.split()[0],stop.split()[0],ext))
-        cmd = 'tar zcvf %s %s/*.dmp' % (filename,folder)
+        cmd = 'tar zcvf %s %s/*%s' % (filename,folder,dext)
         print(cmd)
         fn.linos.shell_command(cmd)
+
     if compress and delete:
-        cmd = 'rm -rf %s/*.dmp' % folder
+        cmd = 'rm -rf %s/*.dmp*' % folder
         print(cmd)
         fn.linos.shell_command(cmd)
+        
+    t2 = fn.now()
+    print('Backup took %d seconds' % int(t1-t0))
+    print('Compression took %d seconds' % int(t2-t1))
+        
     return filename
 
 def mysqldump(schema,user,password,filename,tables='',where='',options=''):
