@@ -111,6 +111,7 @@ class HDBppDB(ArchivingDB,SingletonMap):
     @staticmethod
     def get_hdbpp_libname():
         r = fn.shell_command('locate libhdb++mysql.so')
+        #libname=/homelocal/sicilia/src/hdbpp.git/lib/libhdb++mysql.so
         return r.split()[0]
     
     @staticmethod
