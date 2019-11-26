@@ -28,7 +28,9 @@ partition_prefixes = {
 # b, e, n, l64, ul6, ul, us, uc
 
     'att_array_devdouble_ro':'adr',
+    'att_array_devdouble_rw':'adw',
     'att_array_devfloat_ro':'afr',
+    'att_array_devfloat_rw':'afw',
     'att_array_devlong_ro':'alr',
     'att_array_devlong_rw':'alw',    
     'att_array_devshort_ro':'ahr',
@@ -50,12 +52,9 @@ partition_prefixes = {
 
     'att_scalar_devstate_ro':'str',
     'att_scalar_devstring_ro':'ssr',
+    'att_scalar_devstring_rw':'ssw',
     'att_scalar_devushort_ro':'sur',
     'att_scalar_devuchar_ro':'scr',
-    
-    'att_array_devfloat_rw':'afw',
-    'att_scalar_devstring_rw':'ssw',
-    'att_scalar_devstring_ro':'ssr',    
     }
 
 class HDBppReader(HDBppDB):
@@ -169,7 +168,7 @@ class HDBppReader(HDBppDB):
         MAX_QUERY_SIZE = 10800
         
         t0 = time.time()
-        self.warning('HDBpp.get_attribute_values(%s,%s,%s,N=%s,decimate=%s,'
+        self.info('HDBpp.get_attribute_values(%s,%s,%s,N=%s,decimate=%s,'
                    'int_time=%s,%s)'
               %(table,start_date,stop_date,N,decimate,int_time,kwargs))
         if fn.isSequence(table):
@@ -284,11 +283,11 @@ class HDBppReader(HDBppDB):
         ######################################################################
         # QUERY
         t0 = time.time()
-        self.warning(query.replace('where','\nwhere').replace(
+        self.debug(query.replace('where','\nwhere').replace(
             'group,','\ngroup'))
         try:
             result = self.Query(query)
-            self.warning('read [%d] in %f s: %s' % 
+            self.debug('read [%d] in %f s: %s' % 
                          (len(result),time.time()-t0,
                           len(result)>1 and (result[0],result[1],result[-1])))
         except MySQLdb.ProgrammingError as e:
@@ -344,20 +343,19 @@ class HDBppReader(HDBppDB):
                         break
                 result = nr
                 
-            self.warning('array arranged [%d][%s] in %f s'
+            self.debug('array arranged [%d][%s] in %f s'
                          % (len(result),index,time.time()-t0))
         
         # Decimation to be done in Reader object, after caching
-        
         if human: 
             result = [list(t)+[fn.time2str(t[0])] for t in result]
 
         if not desc and ((not stop_date and N>0) or (N<0)):
             #THIS WILL BE APPLIED ONLY WHEN LAST N VALUES ARE ASKED
-            self.warning('reversing ...' )
+            self.debug('reversing ...' )
             result = list(reversed(result))
 
-        self.warning('result arranged [%d]: %s, %s' % 
+        self.debug('result arranged [%d]: %s, %s' % 
             (len(result), result[0], result[-1]))
         return result
         
