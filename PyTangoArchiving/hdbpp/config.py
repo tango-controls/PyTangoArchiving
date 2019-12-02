@@ -293,7 +293,14 @@ class HDBppDB(ArchivingDB,SingletonMap):
                 in self.Query('select att_name from att_conf')]
             return self.attributes.keys()
         else:
-            return self.get_archived_attributes()   
+            return self.get_archived_attributes()
+        
+    def get_data_types(self):
+        return [l[0] for l in self.Query(
+            "select data_type from att_conf_data_type")]
+    
+    def get_data_tables(self):
+        return sorted('att_'+t for t in self.get_data_types())
         
     def get_attributes_by_table(self,table=''):
         if table:
