@@ -57,12 +57,15 @@ partition_prefixes = {
     'att_scalar_devuchar_ro':'scr',
     }
 
+MIN_FILE_SIZE = 16*1024 #hdbrf size in arch04
+
 class HDBppReader(HDBppDB):
     """
     Python API for accessing HDB++ archived values
     See HDBpp for configuration-related methods
     This api uses methods from devices or database
     """
+    MIN_FILE_SIZE = MIN_FILE_SIZE
     
     def get_mysqlsecsdiff(self,date):
         """
@@ -72,7 +75,30 @@ class HDBppReader(HDBppDB):
             "select (TO_SECONDS('%s')-62167222800) - UNIX_TIMESTAMP('%s')" 
             % (date,date))[0][0]
     
-    def get_table_partition_for_date(self, table, date):
+    def get_partition_time_by_name(self,partition):
+        m = fn.clsearch('[0-9].*',partition)
+        if m:
+            d = fn.str2time(m.group(),cad='%Y%m%d')
+            return d
+        else:
+            return fn.END_OF_TIME
+    
+    def get_last_partition(self, table, min_size = MIN_FILE_SIZE):
+        """
+        Return the last partition updated (size > min_size)
+        Returns None if the table is not partitioned
+        """    
+        parts = self.getTablePartitions(table)
+        last_part = fn.last(sorted(p for p in parts 
+                if p and self.getPartitionSize(table,p) > min_size), 
+                    default=None)
+        if parts and not last_part:
+            last_part = fn.last([p for p in parts 
+                if self.get_partition_time_by_name(p) < fn.now()],
+                    default=parts[-1])
+        return last_part
+    
+    def get_partition_name_for_date(self, table, date):
         if not fn.isString(date):
             date = fn.time2str(date)
         p = partition_prefixes[table]
@@ -80,8 +106,8 @@ class HDBppReader(HDBppDB):
         return p
     
     def get_table_partitions_for_dates(self, table, date1, date2):
-        p1 = self.get_table_partition_for_date(table,date1)
-        p2 = self.get_table_partition_for_date(table,date2)
+        p1 = self.get_partition_name_for_date(table,date1)
+        p2 = self.get_partition_name_for_date(table,date2)
         parts = self.getTablePartitions(table)  
         if p1 not in parts: p1 = parts[0]
         if p2 not in parts: p2 = parts[-1]
@@ -141,7 +167,9 @@ class HDBppReader(HDBppDB):
                              aggregate='', #'MAX',
                              int_time=True,
                              **kwargs):
-        """ Returns archived values between dates for a given table/attribute.
+        """ 
+        Returns archived values between dates for a given table/attribute.
+        
         Parameters
         ----------
         table
@@ -181,6 +209,7 @@ class HDBppReader(HDBppDB):
                     table = table.split('[')[0]
                 except:
                     pass
+                
             aid,tid,table = self.get_attr_id_type_table(table)
             
         if not all((aid,tid,table)):
@@ -305,17 +334,16 @@ class HDBppReader(HDBppDB):
         
         t0 = time.time()
         
-        if 'array' in table and not INDEX_IN_QUERY:
+        if 'array' in table and (not index or not INDEX_IN_QUERY):
             
             data = fandango.dicts.defaultdict(list)
-            
             for t in result:
                 data[float(t[0])].append(t[1:])
                 
             result = []
             for k,v in sorted(data.items()):
                 # it forces all lines to be equal in length
-                l = [0]*(1+max(t[0] for t in v))
+                l = [0]*(1+max(t[1] for t in v))
                 for i,t in enumerate(v):
                     if None in t: 
                         l = None
