@@ -543,7 +543,7 @@ class HDBppDB(ArchivingDB,SingletonMap):
         attribute = parse_tango_model(attribute,fqdn=True).fullname
         archiver = archiver or self.get_next_archiver(
             use_freq=use_freq,attrexp=fn.tango.get_dev_name(attribute)+'/*')
-        self.info('add_attribute(%s, %s) to %s' 
+        self.warning('add_attribute(%s, %s) to %s' 
                   % (attribute,archiver,self.db_name))
         config = get_attribute_config(attribute)
         #if 'spectrum' in str(config.data_format).lower():
@@ -634,6 +634,8 @@ class HDBppDB(ArchivingDB,SingletonMap):
                     time.sleep(3.)
                 
             if start:
+                self.get_archiver_attributes.cache.clear()
+                self.get_attribute_archiver.cache.clear()
                 archs = set(map(self.get_attribute_archiver,attributes))
                 for h in archs:
                     self.info('%s.Start()' % h)
