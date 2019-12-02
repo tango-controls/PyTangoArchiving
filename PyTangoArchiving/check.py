@@ -452,6 +452,19 @@ def check_db_schema(schema, attributes = None, values = None,
     """
     tref is the time that is considered updated (e.g. now()-86400)
     n is used to consider multiple values
+    
+    on: archived
+    off: in db but not archived
+    ok: updated
+    
+    lost: not updated, and values doesn't match
+    
+    known error causes (attrs not lost but not updated):
+    
+    nok: attributes updated and not readable
+    noevs: attributes not sending events
+    novals: attributes never recorded a value
+    stall: not updated, but current value matches archiving
     """
     
     ti = fn.now()
