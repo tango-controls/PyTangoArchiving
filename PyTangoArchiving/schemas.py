@@ -300,11 +300,15 @@ class Schemas(object):
   
     @classmethod
     def getApi(k,schema):
-        schema = k.getSchema(schema)
-        if schema is not None:
-            api = schema.get('api','PyTangoArchiving.ArchivingAPI')
-            if fn.isString(api): api = k._load_object(api,schema)
-            return api(schema['schema']) if isinstance(api,type) else api
+        if fn.isString(schema):
+            schema = k.getSchema(schema)
+            if schema is not None:
+                api = schema.get('api','PyTangoArchiving.ArchivingAPI')
+                if fn.isString(api): 
+                    api = k._load_object(api,schema)
+                return api(schema['schema']) if isinstance(api,type) else api
+        else:
+            return schema
         
 
 
