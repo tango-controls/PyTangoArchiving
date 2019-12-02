@@ -222,12 +222,31 @@ else:
     print 'Obtained data from database:'
     print ' \n'.join(sorted('%s: %d values'%(a,len(v)) for a,v in values.items()))
     ll = max(len(v) for v in values.values())-1
+
     if correlate:
         print 'Filtering %d arrays (1/%dT)'%(len(values),correlate)
         import fandango
         for a,v in values.items():
             try:
-                values[a] = fandango.arrays.filter_array(v,window=correlate)
+                is_array = False
+                for vv in v:
+                    if vv[1] is not None:
+                        if fandango.isSequence(vv[1]):
+                            is_array = True
+                        else:
+                            break
+                if is_array:
+                    values[a] = []
+                    for t,vv in v:
+                        if not values[a]:
+                            values[a].append((t,vv))
+                        while values[a][-1][0]+correlate < t:
+                            values[a].append((values[a][-1][0]+correlate,vv))
+                        if int(t) == int(values[a][-1][0])+correlate:
+                            values[a].append((t,vv))
+                else:
+                    values[a] = fandango.arrays.filter_array(v,window=correlate)
+                    
             except Exception,e:
                 print(e)
                 print('Unable to correlate %s data, please try to export it '
