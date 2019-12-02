@@ -486,21 +486,19 @@ def add_int_time_column(api, table):
     api.Query('create index i%s on %s(att_conf_id, int_time)' % (pref,table))
     return
 
-def get_host_last_partitions(host, user, passwd, exclude_db='tdb*'):
+def get_host_last_partitions(host, user, passwd, 
+        exclude_db='information_schema|tdb*'):
     import fandango.db as fdb
     db = fdb.FriendlyDB(host=host,db_name='information_schema',
                         user=user, passwd=passwd)
     result = {}
     for d in db.Query('show databases'):
-        print(d[0])
         if fn.clmatch(exclude_db,d[0]):
             continue
         q = ("select partition_name from partitions where "
             "table_schema = '%s' and partition_name is not NULL "
             "and data_length > 1024 order by partition_name DESC limit 1;"%d)
-        print(q)
         r = db.Query(q)
-        print(r)
         result[d] = r
     return result
 
@@ -514,32 +512,33 @@ def get_db_last_values_per_table(api, tables = None):
         tables[t] = last
     return tables
 
-def get_last_partition(api, table, min_size = 1024):
-    """
-    Return the last partition updated (size > min_size)
-    Returns None if the table is not partitioned
-    """    
-    db = pta.api(api) if fn.isString(api) else api
-    parts = db.getTablePartitions(table)
-    last_part = fn.last(sorted(p for p in parts 
-            if p and db.getPartitionSize(table,p) > min_size), default=None)
-    return last_part
-
 def get_last_value_in_table(api, table, tref = -180*86400):
     """
-    Return the last value stored in the given table
+    Returns a tuple containing:
+    the last value stored in the given table, the size and the time needed
     """
-    t0 = fn.now()
+    t0,last,size = fn.now(),0,0
     db = pta.api(api) if fn.isString(api) else api
     print('get_last_value_in_table(%s, %s)' % (db.db_name, table))
-    last_part = get_last_partition(api, table)
+    last_part = db.get_last_partition(table)
     tref = tref if tref>0 else fn.now()+tref
 
-    q = 'select data_time from %s ' % table
+    q = 'select UNIX_TIMESTAMP(data_time) from %s ' % table
     if last_part:
         q += ' partition (%s)' % last_part
+        size = db.getPartitionSize(table,last_part)
+        pt = db.get_partition_time_by_name(last_part)
+        if pt not in (0,fn.END_OF_TIME):
+            tref = pt
+    else:
+        size = db.getTableSize(table)
 
-    where = ' where att_conf_id < 10000 and '
+    ids = db.Query("select att_conf_id from att_conf,att_conf_data_type where"
+        " data_type like '%s' and att_conf.att_conf_data_type_id = "
+        "att_conf_data_type.att_conf_data_type_id" % (table.replace('att_','')))
+    ids = list(fn.randomize(i[0] for i in ids))[:5]
+    
+    where = ' where att_conf_id in (%s) and ' % ','.join(map(str,ids))
     if 'int_time' in db.getTableCols(table):
         where += ('int_time between %d and %d'% (tref, fn.now()))
     elif 'data_time' in db.getTableCols(table):
@@ -552,19 +551,13 @@ def get_last_value_in_table(api, table, tref = -180*86400):
         order = ' order by data_time desc limit 1'
         
     q = q + where + order
-    print(q)
-    last = db.Query(q)
-    last = fn.first(last[0]) if len(last) else 0
-    print('\tlast value at %s, check took %d secs' % (last, fn.now()-t0))
-    return (last, fn.now()-t0)
 
-def get_partition_time_by_name(partition):
-    m = fn.clsearch('[0-9].*',partition)
-    if m:
-        d = fn.str2time(m.group(),cad='%Y%m%d')
-        return d
-    else:
-        return fn.END_OF_TIME
+    if ids:
+        last = db.Query(q)
+        last = fn.first(last[0]) if len(last) else 0
+
+    print('\tlast value at %s, check took %d secs' % (last, fn.now()-t0))
+    return (last, size, fn.now()-t0)
 
 def delete_data_older_than(api, table, timestamp, doit=False, force=False):
     if not doit:
@@ -580,7 +573,7 @@ def delete_data_older_than(api, table, timestamp, doit=False, force=False):
         api.setLogLevel('DEBUG')
         partitions = sorted(api.getTablePartitions(table))
         for p in partitions[:]:
-            t = get_partition_time_by_name(p)
+            t = api.get_partition_time_by_name(p)
             if t > timestamp:
                 query('alter table %s drop partition %s' 
                         % (table, p))
@@ -616,6 +609,7 @@ def create_new_partitions(api,table,nmonths,partpermonth=1,
     if partpermonth > 3: 
         raise Exception('max partpermonth = 3')
 
+    api = pta.api(api)
     npartitions = nmonths*partpermonth
     tables = pta.hdbpp.query.partition_prefixes
     t = table
@@ -626,7 +620,7 @@ def create_new_partitions(api,table,nmonths,partpermonth=1,
 
     if not start_date:
         nparts = [p for p in eparts if '_last' not in p]
-        last = get_partition_time_by_name(nparts[-1]) if nparts else fn.now()
+        last = api.get_partition_time_by_name(nparts[-1]) if nparts else fn.now()
         nxt = fn.time2date(last)
         if nxt.month == 12:
             nxt = fn.str2time('%s-%s-%s' % (nxt.year+1,nxt.month,'01'))
@@ -740,7 +734,8 @@ def main(*args,**opts):
     
 if __name__ == '__main__' :
     if sys.argv[1:] and (sys.argv[1]=='help' or sys.argv[1] in locals()):
-        print(fn.call(locals_=locals()))
+        r = fn.call(locals_=locals())
+        print(r)
     else:
         args,opts = fn.linos.sysargs_to_dict(split=True)
         main(*args,**opts)
