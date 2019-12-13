@@ -550,7 +550,7 @@ class Reader(Object,SingletonMap):
         return extractor    
         
     @Cached(depth=10,expire=15.)
-    def get_attributes(self,active=False):
+    def get_attributes(self,active=False,regexp=''):
         """ Queries the database for the current list of archived attributes."""
         self.log.debug('get_attributes(%s)'%active)
         t0 = now()
@@ -640,7 +640,8 @@ class Reader(Object,SingletonMap):
             '%s attributes available in the database (+%ds)'
             % (self.schema,len(self.available_attributes),self.updated-t0))
         
-        return (self.available_attributes,self.current_attributes)[active]
+        r = (self.available_attributes,self.current_attributes)[active]
+        return sorted(fn.filtersmart(r,regexp) if regexp else r)
     
     #@Cached(depth=10000,expire=86400)
     def get_attribute_model(self,attribute):
@@ -774,22 +775,24 @@ class Reader(Object,SingletonMap):
                 
         return False
                 
-    def load_last_values(self,attribute,schema=None,epoch=None,active=True):
+    def load_last_values(self,attribute,schema=None,n=1,epoch=None,active=True):
         """ Returns the last values stored for each schema """
         result = dict()
         if fandango.isSequence(attribute):
-            for attr in attribute:
-                result[attr] = self.load_last_values(attr,schema,epoch)
+            result.update((a,self.load_last_values(a, n=n, active=active, 
+                schema = schema, epoch = epoch)) for a in attribute)
             return result
+        
         elif schema is None or fn.isNumber(schema):
-            schemas = self.is_attribute_archived(attribute, active)
+            schemas = self.is_attribute_archived(attribute, active=active)
             if fn.isNumber(schema):
                 schemas = schemas[:schema]
         else:
             schemas = fandango.toList(schema)
+            
         for s in schemas:
             api = Schemas.getApi(s)
-            vs = api.load_last_values(attribute, active)
+            vs = api.load_last_values(attribute, n=n, epoch=epoch)
             vs = vs.values() if hasattr(vs,'values') else vs
             r = vs and vs[0]
             if r and isinstance(r[0],datetime.datetime):
@@ -958,83 +961,13 @@ class Reader(Object,SingletonMap):
         # Generic Reader, using PyTangoArchiving.Schemas properties
         
         elif self.db_name=='*':
-          
-            #rd = getArchivingReader(attribute,start_time,stop_time,
-                  #self.configs.get('hdb',None),self.configs.get('tdb',None),
-                  #logger=self.log)
-            sch = self.is_attribute_archived(attribute, preferent = True,
-                start = start_time, stop = stop_time)
-            
-            if not sch: 
-                self.log.warning('In get_attribute_values(%s): '
-                  'No valid schema at %s'%(attribute,start_date))
-                return []
-            
-            rd = Schemas.getReader(sch[0])            
-            #@debug
-            self.log.warning('In get_attribute_values(%s): '
-              'Using %s schema at %s'%(attribute,rd.schema,start_date))
-            
-            if not rd.is_attribute_archived(attribute):
-                attr = self.get_attribute_alias(attribute)
-                attr = self.get_attribute_model(attr)
-                if attr!=attribute:
-                    self.log.info('%s => %s' % (attribute, attr))
-                    attribute = attr
-
-            #@TODO, implemented classes should have polimorphic methods
-            values = rd.get_attribute_values(attribute,start_date,stop_date,
-                    asHistoryBuffer=asHistoryBuffer,decimate=decimate,
-                    notNone=notNone,N=N)
-            if len(values):
-                self.log.debug('%d values: %s,...'
-                    % (len(values),str(values[0])))
-            
-            # If no data, it just tries the next database
-            if fallback:
-
-                if (values is None or not len(values)): 
-                    gaps = [(start_time,stop_time)]
-                else:
-                    r = max((300,.1*(stop_time-start_time)))
-                    gaps = get_gaps(values,r,
-                                    start = start_time if not N else 0,
-                                    stop = stop_time if not N else 0)
-                    print('get_gaps(%d): %d gaps' % (len(values),len(gaps)))
-
-                fallback = []
-                for gap0,gap1 in gaps:
-                    prev = rd.schema
-                    sch = [s for s in self.is_attribute_archived(attribute, 
-                        start = gap0, stop = gap1, preferent=False)
-                        if s != prev]
-                    self.log.warning('trying fallbacks: %s' % str(sch))
-                    gapvals = []
-                    while not len(gapvals) and len(sch):
-                        self.log.warning('In get_attribute_values(%s,%s,%s)(%s): '
-                        'fallback to %s as %s returned no data in (%s,%s)'%(
-                            attribute,gap0,gap1,prev,sch[0],
-                            rd.schema,time2str(gap0),time2str(gap1)))
-                        gapvals = self.configs[sch[0]
-                            ].get_attribute_values(attribute,gap0,gap1,N=N,
-                            asHistoryBuffer=asHistoryBuffer,decimate=decimate)
-                        prev,sch = sch[0],sch[1:]
-                    fallback.extend(gapvals)
-
-                if len(fallback):
-                    tf = fn.now()
-                    values = sorted(values+fallback)
-                    self.log.warning('Adding %d values from fallback took '
-                        '%f seconds' % (len(fallback),fn.now()-tf))
-                    
-          
-        # END OF GENERIC CODE
-        #######################################################################
+            values = self.get_attribute_values_from_any(attribute, start_date,
+                stop_date, start_time, stop_time, asHistoryBuffer, decimate,
+                notNone, N, cache, fallback)
           
         #######################################################################
         # HDB/TDB Specific Code
         else:
-            
             alias = self.get_attribute_alias(attribute).lower()
             #Needed to record last read values for both alias and real name
             attribute,alias = alias,attribute 
@@ -1059,7 +992,7 @@ class Reader(Object,SingletonMap):
                 values = self.get_extractor_values(attribute, start_date, 
                                         stop_date, decimate, asHistoryBuffer)
             else:
-                values = self.get_attribute_values_from_db(attribute, db,
+                values = self.get_attribute_values_from_hdb(attribute, db,
                             start_date, stop_date, decimate, 
                             asHistoryBuffer, N, notNone, GET_LAST)
                 
@@ -1089,7 +1022,7 @@ class Reader(Object,SingletonMap):
                     
         #Simulating DeviceAttributeHistory structs
         if asHistoryBuffer:
-            values = [FakeAttributeHistory(*v) for v in values]                
+            values = [FakeAttributeHistory(*v[:3]) for v in values]                
             
         #Array index is an string or None
         if array_index: 
@@ -1100,11 +1033,97 @@ class Reader(Object,SingletonMap):
         # SAVE THE CACHE
         if cache:
             self.cache[(attribute,l1,l2,asHistoryBuffer,bool(decimate))
-                    ] = values[:]                
+                    ] = values[:]      
+            
+        self.log.warning('Out of get_attribute_values(): %d values' % 
+                         len(values))
 
         return values
     
-    def get_attribute_values_from_db(self, attribute, db, 
+    def get_attribute_values_from_any(self, attribute, start_date, 
+        stop_date, start_time, stop_time, asHistoryBuffer=False, 
+        decimate=False, notNone=False, N=0, cache=True, fallback=True):
+    
+        sch = self.is_attribute_archived(attribute, preferent = True,
+            start = start_time, stop = stop_time)
+        
+        if not sch: 
+            self.log.warning('In get_attribute_values(%s): '
+                'No valid schema at %s'%(attribute,start_date))
+            return []
+        
+        rd = Schemas.getReader(sch[0])            
+        #@debug
+        self.log.warning('In get_attribute_values(%s): '
+            'Using %s schema at %s'%(attribute,rd.schema,start_date))
+        
+        if not rd.is_attribute_archived(attribute):
+            # Stored in preferred schema via alias
+            attr = self.get_attribute_alias(attribute)
+            attr = self.get_attribute_model(attr)
+            if attr!=attribute:
+                self.log.info('%s => %s' % (attribute, attr))
+                attribute = attr
+
+        #@TODO, implemented classes should have polimorphic methods
+        values = rd.get_attribute_values(attribute,start_date,stop_date,
+                asHistoryBuffer=asHistoryBuffer,decimate=decimate,
+                notNone=notNone,N=N)
+        if len(values):
+            self.log.debug('%d values: %s,...'
+                % (len(values),str(values[0])))
+        
+        # If no data, it just tries the next database
+        if fallback:
+
+            if (values is None or not len(values)): 
+                gaps = [(start_time,stop_time)]
+            else:
+                r = max((300,.1*(stop_time-start_time)))
+                gaps = get_gaps(values,r,
+                                start = start_time if not N else 0,
+                                stop = stop_time if not N else 0)
+                print('get_gaps(%d): %d gaps' % (len(values),len(gaps)))
+
+            fallback = []
+            for gap0,gap1 in gaps:
+                prev = rd.schema
+                sch = [s for s in self.is_attribute_archived(attribute, 
+                    start = gap0, stop = gap1, preferent=False)
+                    if s != prev]
+                self.log.warning('trying fallbacks: %s' % str(sch))
+                gapvals = []
+
+                while not len(gapvals) and len(sch):
+                    self.log.warning('In get_attribute_values(%s,%s,%s)(%s): '
+                    'fallback to %s as %s returned no data in (%s,%s)'%(
+                        attribute,gap0,gap1,prev,sch[0],
+                        rd.schema,time2str(gap0),time2str(gap1)))
+                    gapvals = self.configs[sch[0]
+                        ].get_attribute_values(attribute,gap0,gap1,N=N,
+                        asHistoryBuffer=asHistoryBuffer,decimate=decimate)
+                    prev,sch = sch[0],sch[1:]
+
+                fallback.extend(gapvals)
+
+            if gaps and not len(fallback):
+                self.log.warning('fallback: getting last values < %s from %s' 
+                                 % (start_date, rd.schema))
+                lasts = rd.load_last_values(attribute,epoch=start_time)
+                l = len(values[-1]) if values else 2
+                print(lasts)
+                print(lasts.values())
+                fallback = [t[:l] for t in lasts.values()]
+                
+            if len(fallback):
+                tf = fn.now()
+                values = sorted(values+fallback)
+                self.log.warning('Adding %d values from fallback took '
+                    '%f seconds' % (len(fallback),fn.now()-tf))   
+                
+        return values
+    
+    def get_attribute_values_from_hdb(self, attribute, db, 
             start_date, stop_date, decimate, asHistoryBuffer, 
             N, notNone, GET_LAST):
         """

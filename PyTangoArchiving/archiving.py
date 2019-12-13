@@ -838,7 +838,7 @@ class ArchivingAPI(CommonAPI):
         
         return dict((a,self.attributes[a].modes) for a in attributes)
     
-    def load_last_values(self,attribute=None,n=1,cache=0):
+    def load_last_values(self,attribute=None,n=1,cache=0,epoch=fun.END_OF_TIME):
         ''' def DB_getLastNValues(self,attribute,n=1):
         attribute argument could be an string, list or 'ALL' for updating all atributes
         The method returns N registers (1 by def.) ordered BY TIME DESC! (last first)
