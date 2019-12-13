@@ -128,6 +128,12 @@ class SchemaManager(Device):
                 #raise Exception('Exception: %s: %s.' % (attr,str(val)) )
         return val
     
+    def get_database(self):
+        if hasattr(self.api,'getTables'):
+            return self.api
+        else:
+            return self.api.db
+    
     def state_machine(self):
         try:
             s = self.get_state()
@@ -211,7 +217,7 @@ class SchemaManager(Device):
     )
 
     Threaded = device_property(
-        dtype='bool', default_value=False
+        dtype='bool', default_value=True
     )
 
     ValuesFile = device_property(
@@ -225,6 +231,10 @@ class SchemaManager(Device):
     # ----------
     # Attributes
     # ----------
+
+    DatabaseSize = attribute(
+        dtype='int',
+    )
 
     AttributeList = attribute(
         dtype=('str',),
@@ -291,12 +301,23 @@ class SchemaManager(Device):
         max_dim_x=65536,
     )
 
+    TableSizesInBytes = attribute(
+        dtype=('int',),
+        max_dim_x=65536,
+    )
+
+    TableNames = attribute(
+        dtype=('str',),
+        max_dim_x=65536,
+    )
+
     # ---------------
     # General methods
     # ---------------
 
     def init_device(self):
         Device.init_device(self)
+        self.set_change_event("DatabaseSize", True, False)
         self.set_change_event("AttributeOkList", True, False)
         self.set_change_event("AttributeNokList", True, False)
         self.set_change_event("AttributeOnList", True, False)
@@ -309,6 +330,7 @@ class SchemaManager(Device):
         self.set_change_event("AttributeLostList", True, False)
         self.set_change_event("AttributeNoevList", True, False)
         self.set_change_event("AttributeStalledList", True, False)
+        self.set_change_event("TableSizesInBytes", True, False)
         # PROTECTED REGION ID(SchemaManager.init_device) ENABLED START #
         check_attribute_value.expire = self.CacheTime
         check_attribute_events.expire = self.CacheTime
@@ -360,6 +382,11 @@ class SchemaManager(Device):
     # ------------------
     # Attributes methods
     # ------------------
+
+    def read_DatabaseSize(self):
+        # PROTECTED REGION ID(SchemaManager.DatabaseSize_read) ENABLED START #
+        return self.get_database().getDbSize()
+        # PROTECTED REGION END #    //  SchemaManager.DatabaseSize_read
 
     def read_AttributeList(self):
         # PROTECTED REGION ID(SchemaManager.AttributeList_read) ENABLED START #
@@ -426,6 +453,18 @@ class SchemaManager(Device):
         return self.attr_stall
         # PROTECTED REGION END #    //  SchemaManager.AttributeStalledList_read
 
+    def read_TableSizesInBytes(self):
+        # PROTECTED REGION ID(SchemaManager.TableSizesInBytes_read) ENABLED START #
+        db = self.get_database()
+        tables = sorted(db.getTables())
+        return [db.getTableSize(t) for t in tables]
+        # PROTECTED REGION END #    //  SchemaManager.TableSizesInBytes_read
+
+    def read_TableNames(self):
+        # PROTECTED REGION ID(SchemaManager.TableNames_read) ENABLED START #
+        return sorted(self.get_database().getTables())
+        # PROTECTED REGION END #    //  SchemaManager.TableNames_read
+
 
     # --------
     # Commands
@@ -457,7 +496,6 @@ class SchemaManager(Device):
         # PROTECTED REGION END #    //  SchemaManager.UpdateAttributes
 
     @command(
-    polling_period=14400000,
     )
     @DebugIt()
     def UpdateValues(self):

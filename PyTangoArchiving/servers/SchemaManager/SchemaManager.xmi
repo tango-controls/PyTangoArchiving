@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="ASCII"?>
 <pogoDsl:PogoSystem xmi:version="2.0" xmlns:xmi="http://www.omg.org/XMI" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:pogoDsl="http://www.esrf.fr/tango/pogo/PogoDsl">
   <classes name="SchemaManager" pogoRevision="9.4">
-    <description description="SchemaManager&#xA;&#xA;On = Currently Archived&#xA;Off = Archived in the past&#xA;&#xA;From AttributeOnList:&#xA;&#xA;Ok = Have values updated, different from None&#xA;Lost = Values are not updated&#xA;Nok = Value is not readable (None in DB)&#xA;Err = Value is readable but None in DB!?" title="SchemaManager" sourcePath="/homenfs/srubio/PROJECTS/Archiving/SOURCES/PyTangoArchiving.git/PyTangoArchiving/servers/SchemaManager" language="PythonHL" filestogenerate="XMI   file,Code files,Protected Regions" license="LGPL" copyright="www.tango-controls.org" hasMandatoryProperty="true" hasConcreteProperty="true" hasAbstractCommand="false" hasAbstractAttribute="false">
+    <description description="SchemaManager&#xA;&#xA;On = Currently Archived&#xA;Off = Archived in the past&#xA;&#xA;From AttributeOnList:&#xA;&#xA;Ok = Have values updated, different from None&#xA;Lost = Values are not updated&#xA;Nok = Value is not readable (None in DB)&#xA;Err = Value is readable but None in DB!?" title="SchemaManager" sourcePath="/homenfs/srubio/PROJECTS/Archiving/SOURCES/PyTangoArchiving.git/PyTangoArchiving/servers/SchemaManager" language="PythonHL" filestogenerate="XMI   file,Code files,Protected Regions" license="LGPL" copyright="www.tango-controls.org" hasMandatoryProperty="false" hasConcreteProperty="true" hasAbstractCommand="false" hasAbstractAttribute="false">
       <inheritances classname="Device_Impl" sourcePath=""/>
       <identification contact="at cells.es - srubio" author="srubio" emailDomain="cells.es" classFamily="Archiving" siteSpecific="" platform="All Platforms" bus="Tango" manufacturer="none" reference=""/>
     </description>
@@ -12,7 +12,7 @@
     <deviceProperties name="Threaded" description="">
       <type xsi:type="pogoDsl:BooleanType"/>
       <status abstract="false" inherited="false" concrete="true" concreteHere="true"/>
-      <DefaultPropValue>False</DefaultPropValue>
+      <DefaultPropValue>True</DefaultPropValue>
     </deviceProperties>
     <deviceProperties name="ValuesFile" description="JSON file to be used to read Last Archived Values">
       <type xsi:type="pogoDsl:StringType"/>
@@ -50,7 +50,7 @@
       </argout>
       <status abstract="false" inherited="false" concrete="true" concreteHere="true"/>
     </commands>
-    <commands name="UpdateValues" description="" execMethod="update_values" displayLevel="OPERATOR" polledPeriod="14400000" isDynamic="false">
+    <commands name="UpdateValues" description="" execMethod="update_values" displayLevel="OPERATOR" polledPeriod="0" isDynamic="false">
       <argin description="">
         <type xsi:type="pogoDsl:VoidType"/>
       </argin>
@@ -77,6 +77,15 @@
       </argout>
       <status abstract="false" inherited="false" concrete="true" concreteHere="true"/>
     </commands>
+    <attributes name="DatabaseSize" attType="Scalar" rwType="READ" displayLevel="OPERATOR" polledPeriod="86400000" maxX="" maxY="" allocReadMember="true" isDynamic="false">
+      <dataType xsi:type="pogoDsl:IntType"/>
+      <changeEvent fire="true" libCheckCriteria="false"/>
+      <archiveEvent fire="false" libCheckCriteria="false"/>
+      <dataReadyEvent fire="false" libCheckCriteria="true"/>
+      <status abstract="false" inherited="false" concrete="true" concreteHere="true"/>
+      <properties description="" label="" unit="" standardUnit="" displayUnit="" format="" maxValue="" minValue="" maxAlarm="" minAlarm="" maxWarning="" minWarning="" deltaTime="" deltaValue=""/>
+      <eventCriteria relChange="" absChange="1" period=""/>
+    </attributes>
     <attributes name="AttributeList" attType="Spectrum" rwType="READ" displayLevel="OPERATOR" polledPeriod="0" maxX="65536" maxY="" allocReadMember="true" isDynamic="false">
       <dataType xsi:type="pogoDsl:StringType"/>
       <changeEvent fire="false" libCheckCriteria="false"/>
@@ -176,6 +185,23 @@
     <attributes name="AttributeStalledList" attType="Spectrum" rwType="READ" displayLevel="OPERATOR" polledPeriod="0" maxX="65536" maxY="" allocReadMember="true" isDynamic="false">
       <dataType xsi:type="pogoDsl:StringType"/>
       <changeEvent fire="true" libCheckCriteria="false"/>
+      <archiveEvent fire="false" libCheckCriteria="false"/>
+      <dataReadyEvent fire="false" libCheckCriteria="true"/>
+      <status abstract="false" inherited="false" concrete="true" concreteHere="true"/>
+      <properties description="" label="" unit="" standardUnit="" displayUnit="" format="" maxValue="" minValue="" maxAlarm="" minAlarm="" maxWarning="" minWarning="" deltaTime="" deltaValue=""/>
+    </attributes>
+    <attributes name="TableSizesInBytes" attType="Spectrum" rwType="READ" displayLevel="OPERATOR" polledPeriod="86400000" maxX="65536" maxY="" allocReadMember="true" isDynamic="false">
+      <dataType xsi:type="pogoDsl:IntType"/>
+      <changeEvent fire="true" libCheckCriteria="false"/>
+      <archiveEvent fire="false" libCheckCriteria="false"/>
+      <dataReadyEvent fire="false" libCheckCriteria="true"/>
+      <status abstract="false" inherited="false" concrete="true" concreteHere="true"/>
+      <properties description="" label="" unit="" standardUnit="" displayUnit="" format="" maxValue="" minValue="" maxAlarm="" minAlarm="" maxWarning="" minWarning="" deltaTime="" deltaValue=""/>
+      <eventCriteria relChange="" absChange="1" period=""/>
+    </attributes>
+    <attributes name="TableNames" attType="Spectrum" rwType="READ" displayLevel="OPERATOR" polledPeriod="86400000" maxX="65536" maxY="" allocReadMember="true" isDynamic="false">
+      <dataType xsi:type="pogoDsl:StringType"/>
+      <changeEvent fire="false" libCheckCriteria="false"/>
       <archiveEvent fire="false" libCheckCriteria="false"/>
       <dataReadyEvent fire="false" libCheckCriteria="true"/>
       <status abstract="false" inherited="false" concrete="true" concreteHere="true"/>
