@@ -64,6 +64,8 @@ class HDBppReader(HDBppDB):
     Python API for accessing HDB++ archived values
     See HDBpp for configuration-related methods
     This api uses methods from devices or database
+    
+    THE METHODS IN THIS API SHOULD MATCH WITH PyTangoArchiving.Reader API
     """
     MIN_FILE_SIZE = MIN_FILE_SIZE
     
@@ -118,15 +120,17 @@ class HDBppReader(HDBppDB):
     def get_last_attribute_values(self,table,n=1,
                                   check_table=False,epoch=None):
         if epoch is None:
-            start,epoch = None,fn.now()+600
+            epoch = fn.now()+600
         elif epoch < 0:
-            start,epoch = fn.now()+epoch,fn.now()+600
-        else:
-            start,epoch = epoch, fn.now()+600
-        if start is None:
-            #Rounding to the last month partition
-            start = fn.str2time(
-                fn.time2str().split()[0].rsplit('-',1)[0]+'-01')
+            #start,epoch = fn.now()+epoch,fn.now()+600
+            epoch = fn.now()-epoch
+        #else: #NOPE!!
+            #start,epoch = epoch, fn.now()+600
+
+        #Rounding start to the last month partition - 3d before epoch
+        start = -3*86400 + fn.str2time(
+            fn.time2str(epoch).split()[0].rsplit('-',1)[0]+'-01')
+
         vals = self.get_attribute_values(table, N=n, human=True, desc=True,
                         start_date=start, stop_date=epoch)
         if len(vals):
@@ -166,6 +170,8 @@ class HDBppReader(HDBppDB):
                              as_double=True,
                              aggregate='', #'MAX',
                              int_time=True,
+                             what='',
+                             where='',
                              **kwargs):
         """ 
         Returns archived values between dates for a given table/attribute.
@@ -218,25 +224,31 @@ class HDBppReader(HDBppDB):
             
         human = kwargs.get('asHistoryBuffer',human)
             
-        what = 'UNIX_TIMESTAMP(data_time)' if unixtime else 'data_time'
-        if as_double:
-            what = 'CAST(%s as DOUBLE)' % what
-        #what += ' AS DTS'
-            
-        value = 'value_r' if 'value_r' in self.getTableCols(table) \
-                                else 'value'
-            
-        if decimate and aggregate in ('AVG','MAX','MIN'):
-            value = '%s(%s)' % (aggregate,value)
-            
-        what += ', ' + value
-        if 'array' in table: 
-            what += ", idx"
-            
-        if extra_columns: 
-            what+=','+extra_columns
+        if not what:
+            what = 'UNIX_TIMESTAMP(data_time)' if unixtime else 'data_time'
+            if as_double:
+                what = 'CAST(%s as DOUBLE)' % what
+            #what += ' AS DTS'
+                
+            value = 'value_r' if 'value_r' in self.getTableCols(table) \
+                                    else 'value'
+                
+            if decimate and aggregate in ('AVG','MAX','MIN'):
+                value = '%s(%s)' % (aggregate,value)
+                
+            what += ', ' + value
+            if 'array' in table: 
+                what += ", idx"
+                
+            if extra_columns: 
+                what+=','+extra_columns
 
-        interval = 'where att_conf_id = %s'%aid if aid is not None \
+        if where:
+            where = where+' and '
+        if 'where' not in where:
+            where = 'where '+where
+
+        interval = 'att_conf_id = %s'%aid if aid is not None \
                                                 else 'where att_conf_id >= 0 '
                                             
         if index and INDEX_IN_QUERY:
@@ -274,7 +286,8 @@ class HDBppReader(HDBppDB):
                 elif start_date and fandango.str2epoch(start_date):
                     interval += " and data_time > '%s'"%start_date
             
-        query = 'select %s from %s %s' % (what,table,interval)
+        where = where + interval
+        query = 'select %s from %s %s' % (what,table,where)
 
         #self.warning('decimate = %s = %s' % (str(decimate),bool(decimate)))           
         if decimate:
@@ -311,6 +324,7 @@ class HDBppReader(HDBppDB):
         
         ######################################################################
         # QUERY
+        
         t0 = time.time()
         self.debug(query.replace('where','\nwhere').replace(
             'group,','\ngroup'))
@@ -427,6 +441,16 @@ class HDBppReader(HDBppDB):
         r = {'ID':aid, 'MODE_E':fn.tango.get_attribute_events(attr)}
         r['archiver'] = self.get_attribute_archiver(attr)
         return r        
+    
+    def get_attribute_errors_ids(self, attribute, start, end):
+        what = 'data_time, att_error_desc_id'
+        return self.get_attribute_values(attribute, start, end,
+            what = what, where = 'att_error_desc_id is not NULL')
+        
+    
+    def get_error_description(self, error_id):
+        return str(hdbct.Query('select error_desc from att_error_desc '
+            'where att_error_desc_id = %s' % error_id))
     
     def get_attributes_errors(self, regexp='*', timeout=3*3600, 
                               from_db=False, extend = False):
