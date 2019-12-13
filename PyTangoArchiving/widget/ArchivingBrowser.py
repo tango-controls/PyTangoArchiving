@@ -136,8 +136,6 @@ class AttributesPanel(PARENT_KLASS):
         try:
             import PyTangoArchiving
             self.reader = PyTangoArchiving.Reader('*')
-            #self.hreader = self.reader.configs['hdb']
-            #self.treader = self.reader.configs.get('tdb',self.hreader)
         except:
             traceback.print_exc()
             

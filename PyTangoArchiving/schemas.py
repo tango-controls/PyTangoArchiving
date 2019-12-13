@@ -223,7 +223,7 @@ class Schemas(object):
             dct.update(props)
             dct['logger'] = logger
 
-        except Exception,e:
+        except Exception as e:
             print('getSchema(%s): failed!'%schema)
             print(dct,props)
             exc = traceback.format_exc()

@@ -38,13 +38,13 @@ import fandango.functional as fun
 
 from fandango.functional import ( isString,isSequence,isCallable,
     str2time, str2epoch, clmatch, time2str, epoch2str, now,
-    ctime2time, mysql2time, NaN )
+    ctime2time, mysql2time, NaN ) # Mandatory imports!!!
 
 from fandango.functional import ( date2time,date2str,mysql2time,ctime2time,
-    time2str,isNumber,clmatch,isCallable )
+    time2str,isNumber,clmatch,isCallable ) # Mandatory imports!!!
 
 import fandango.linos as linos
-from fandango.dicts import SortedDict, CaselessDict
+from fandango.dicts import SortedDict, CaselessDict # Mandatory imports!!!
 
 from fandango.functional import reldiff,absdiff,seqdiff
 from fandango.arrays import decimate_custom,decimate_array
