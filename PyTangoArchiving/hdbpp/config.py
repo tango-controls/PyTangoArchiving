@@ -277,23 +277,27 @@ class HDBppDB(ArchivingDB,SingletonMap):
         return loads[0][-1]
 
     @Cached(depth=2,expire=60.)
-    def get_attributes(self,active=None):
+    def get_attributes(self,active=None,regexp=''):
         """
         Alias for Reader API
         """
         if active:
-            return self.get_archived_attributes()
+            r = self.get_archived_attributes()
         else:
             # Inactive attributes must be read from Database
-            return self.get_attribute_names(False)
+            r = self.get_attribute_names(False)
+
+        return sorted(fn.filtersmart(r,regexp) if regexp else r)
         
-    def get_attribute_names(self,active=False):
+    def get_attribute_names(self,active=False,regexp=''):
         if not active:
             [self.attributes[a[0].lower()] for a 
                 in self.Query('select att_name from att_conf')]
-            return self.attributes.keys()
+            r = self.attributes.keys()
         else:
-            return self.get_archived_attributes()
+            r = self.get_archived_attributes()
+
+        return sorted(fn.filtersmart(r,regexp) if regexp else r)
         
     def get_data_types(self):
         return [l[0] for l in self.Query(
@@ -694,24 +698,26 @@ class HDBppDB(ArchivingDB,SingletonMap):
         except:
             print('%s.AttributeStart(%s) failed!'%(d,attr))
         
-    def restart_attributes(self,attributes=None):
+    def restart_attributes(self,attributes=None,timewait=0.5):
         if attributes is None:
             attributes = self.get_attributes_not_updated()
             
         devs = dict(fn.kmap(self.get_attribute_archiver,attributes))
 
-        for a,d in sorted(devs.items()):
+        for a,d in fn.randomize(sorted(devs.items())):
             if not fn.check_device(d):
                 self.start_devices('(.*/)?'+d,do_restart=True)
             else:
                 dp = fn.get_device(d, keep=True)
                 dp.AttributeStop(a)
+            fn.wait(timewait)
             
-        fn.wait(10.)
+        fn.wait(10.*timewait)
         
         for a,d in devs.items():
             dp = fn.get_device(d, keep=True)
             dp.AttributeStart(a)
+            fn.wait(timewait)
             
         print('%d attributes restarted' % len(attributes))
 
