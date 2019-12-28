@@ -100,25 +100,37 @@ class HDBppReader(HDBppDB):
                     default=parts[-1])
         return last_part
     
-    def get_partition_name_for_date(self, table, date):
+    def generate_partition_name_for_date(self, table, date):
+        """
+        generates the matching partition name for the date given
+        """
         if not fn.isString(date):
             date = fn.time2str(date)
         p = partition_prefixes[table]
         p += ''.join(date.split('-')[0:2]) + '01'
         return p
     
-    def get_table_partitions_for_dates(self, table, date1, date2):
-        p1 = self.get_partition_name_for_date(table,date1)
-        p2 = self.get_partition_name_for_date(table,date2)
+    def get_partitions_at_dates(self, table, date1, date2=None):
+        """
+        returns partitions containing data for date1-date2 interval
+        if date2 is None, only partition at date1 is returned
+        """
+        p1 = self.generate_partition_name_for_date(table,date1)
+        p2 = self.generate_partition_name_for_date(table,date2 or date1)
         parts = self.getTablePartitions(table)  
-        if p1 not in parts: p1 = parts[0]
-        if p2 not in parts: p2 = parts[-1]
-        if None in (p1,p2): return None
-        return parts[parts.index(p1):parts.index(p2)+1]
-    
+        p1 = parts[0] if p1 not in parts else p1
+        p2 = parts[-1] if p2 not in parts else p2
+
+        if None in (p1,p2): 
+            return None
+        else:
+            parts = parts[parts.index(p1):parts.index(p2)+1]
+            return parts if date2 or not len(parts) else parts[0]
+        
+    get_table_partitions_for_dates = get_partitions_at_dates   
       
     def get_last_attribute_values(self,table,n=1,
-                                  check_table=False,epoch=None):
+                                  check_table=False,epoch=None,period=3*86400):
         if epoch is None:
             epoch = fn.now()+600
         elif epoch < 0:
@@ -128,7 +140,7 @@ class HDBppReader(HDBppDB):
             #start,epoch = epoch, fn.now()+600
 
         #Rounding start to the last month partition - 3d before epoch
-        start = -3*86400 + fn.str2time(
+        start = -period + fn.str2time(
             fn.time2str(epoch).split()[0].rsplit('-',1)[0]+'-01')
 
         vals = self.get_attribute_values(table, N=n, human=True, desc=True,
@@ -202,6 +214,7 @@ class HDBppReader(HDBppDB):
         MAX_QUERY_SIZE = 10800
         
         t0 = time.time()
+        N = N or kwargs.get('n',0)
         self.info('HDBpp.get_attribute_values(%s,%s,%s,N=%s,decimate=%s,'
                    'int_time=%s,%s)'
               %(table,start_date,stop_date,N,decimate,int_time,kwargs))
@@ -241,7 +254,7 @@ class HDBppReader(HDBppDB):
                 what += ", idx"
                 
             if extra_columns: 
-                what+=','+extra_columns
+                what+=','+extra_columns #quality!
 
         if where:
             where = where+' and '
@@ -349,21 +362,25 @@ class HDBppReader(HDBppDB):
         t0 = time.time()
         
         if 'array' in table and (not index or not INDEX_IN_QUERY):
-            
+            max_ix = 0
             data = fandango.dicts.defaultdict(list)
             for t in result:
                 data[float(t[0])].append(t[1:])
+                if t[2] is not None and max_ix < t[2]:
+                    max_ix = t[2]
                 
             result = []
+            last_arrs = [None]*(1+max_ix)
             for k,v in sorted(data.items()):
                 # it forces all lines to be equal in length
-                l = [0]*(1+max(t[1] for t in v))
+                l = last_arrs[:]
                 for i,t in enumerate(v):
                     if None in t: 
                         l = None
                         break
                     # t[1] is index, t[0] is value
                     l[t[1]] = t[0] #Ignoring extra columns (e.g. quality)
+                    last_arrs[t[1]] = t[0]
                 result.append((k,l))
                 
             if N > 0: 
