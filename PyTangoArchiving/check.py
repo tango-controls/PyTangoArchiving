@@ -24,12 +24,29 @@ def main(args=None):
     see PyTangoArchiving.check.USAGE
     """
     try:
-        if not args:
-            args = {}
-            assert sys.argv[2:]
-            args = fn.sysargs_to_dict(defaults=('schema','period','ti',
-                                            'values','action'))
-        print(args)
+        import argparse
+        parser = argparse.ArgumentParser(usage=USAGE)
+        parser.add_argument('schema')
+        #parser.add_argument('--period',type=int)
+        parser.add_argument('--tref',type=str,
+            help = 'min epoch considered ok')
+        parser.add_argument('--action',type=str,
+            help = 'start|restart|save|check')
+        parser.add_argument('--export')
+        parser.add_argument('--values',type=str,
+            help = 'values file, will be loaded by load_schema_values()')
+        
+        try:
+            args = dict(parser.parse_args().__dict__)
+        except:
+            sys.exit(-1)
+        
+        #if not args:
+            #args = {}
+            #assert sys.argv[2:]
+            #args = fn.sysargs_to_dict(defaults=('schema','period','ti',
+                #'values','action','folder'))
+        #print(args)
 
         if args.get('action') == 'start':
             print('Call Start() for %s devices' % sys.argv[1])
@@ -50,7 +67,7 @@ def main(args=None):
                 args.pop('action')
                 args = dict((k,v) for k,v in args.items() 
                             if k and v not in (False,[]))
-                #r = check_archiving_schema(**args);
+                   
                 print('check_db_schema(%s)' % str(args))
                 r = check_db_schema(**args)
             except:
@@ -415,6 +432,8 @@ def load_schema_values(schema, attributes = None, values = None, n = 1):
             value = {}
             values = dict((a,api.load_last_values(a,n=n)) for a in attributes)
             
+    values = values.get('values',values)
+            
     for k,v in values.items():
         # each value can be either a tuple (t,v), a list of t,v values or None
         if isinstance(v,dict): 
@@ -467,7 +486,7 @@ def check_db_schema(schema, attributes = None, values = None,
     stall: not updated, but current value matches archiving
     """
     
-    ti = fn.now()
+    t0 = fn.now()
     r = fn.Struct()
     r.api = api = pta.api(schema)
     r.tref = fn.notNone(tref,fn.now()-3600)
@@ -479,21 +498,21 @@ def check_db_schema(schema, attributes = None, values = None,
     
     r.archs = fn.defaultdict(list)
     r.pers = fn.defaultdict(list)
-    r.vals = load_schema_values(api,r.on,values,n)
+    r.values = load_schema_values(api,r.on,values,n)
     
     if schema in ('tdb','hdb'):
         [r.archs[api[k].archiver].append(k) for k in r.on]
     else:
-        r.rvals = r.vals
-        r.freq, r.vals = {}, {}
+        r.rvals = r.values
+        r.freq, r.values = {}, {}
         for k,v in r.rvals.items():
             try:
                 if n > 1:
                     v = v[0] if isSequence(v) and len(v) else v
-                    r.vals[k] = v[0] if isSequence(v) and len(v) else v
+                    r.values[k] = v[0] if isSequence(v) and len(v) else v
                     r.freq[k] = v and float(len(v))/abs(v[0][0]-v[-1][0])
                 else:
-                    r.vals[k] = v
+                    r.values[k] = v
             except Exception as e:
                 print(k,v)
                 print(fn.except2str())
@@ -504,11 +523,11 @@ def check_db_schema(schema, attributes = None, values = None,
             r.pers[k] = api.get_periodic_archivers_attributes(k)
 
     # Get all updated attributes
-    r.ok = [a for a,v in r.vals.items() if v and v[0] > r.tref]
+    r.ok = [a for a,v in r.values.items() if v and v[0] > r.tref]
     # Try to read not-updated attributes
     r.check = dict((a,fn.check_attribute(a)
                     ) for a in r.on if a not in r.ok)
-    #r.novals = [a for a,v in r.vals.items() if not v]
+    #r.novals = [a for a,v in r.values.items() if not v]
     r.nok, r.stall, r.noev, r.lost, r.novals, r.evs = [],[],[],[],[],{}
     # Method to compare numpy values
     
@@ -532,7 +551,7 @@ def check_db_schema(schema, attributes = None, values = None,
     for k in 'attrs on off ok nok noev stall lost novals'.split():
         r.summary += ('\t%s:\t:%d\n' % (k,len(r.get(k))))
         
-    r.summary += '\nfinished in %d seconds\n\n'%(fn.now()-ti)
+    r.summary += '\nfinished in %d seconds\n\n'%(fn.now()-t0)
     print(r.summary)
     
     if export is not None:
@@ -564,7 +583,7 @@ def check_archived_attribute(attribute, value = False, state = CheckState.OK,
     """
     # Get current value/timestamp
     if cache:
-        stored = cache.vals[attribute]
+        stored = cache.values[attribute]
         #evs = cache.evs[attribute]
         if (tref is not None and stored and stored[0] >= tref and 
                 not isinstance(stored[0],(type(None),Exception))):
