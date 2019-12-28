@@ -106,6 +106,9 @@ def decimate_table(db, table, attributes = [],
                    trange = 3, fmargin = 1):
     """
     @TODO
+    This method decimates the table inline using MOD by int_time
+    
+    This is inefficient with MyISAM
     """
     db = pta.api(db) if fn.isString(db) else db
     l,_ = db.getLogLevel(),db.setLogLevel('DEBUG')
@@ -241,19 +244,26 @@ def decimate_table(db, table, attributes = [],
     return
 
 
-def decimate_by_value_to_tmp(api, table, start, stop, ntable='', min_period=0, 
-                 max_period=21600, max_gap=86400, suffix='_dec',drop=False):
+def decimate_by_value_to_tmp(db_in, db_out, table, start, stop, ntable='', 
+        min_period=0, max_period=21600, max_gap=86400, suffix='_dec',
+        drop=False):
     """
     decimate by distinct value, or by fix period
     accept a min_resolution argument
     do selects in bunches of ids*1000 values or 250000 (the minimum)
+    db_in is the origin database; db_out is where decimated data will be stored
+    if db_in == db_out; then a temporary table with suffix is created
+    
+    ## MAX_GAP IS UNUSED!?
     """
     #bigger = sorted((db.getTableSize(t),t) for t in dbr.getTables() if 'scalar' in t)[-1]
     
+    if (db_in.host,db_in.db_name) != (db_out.host,db_out.db_name):
+        suffix = ''
     if not ntable:
         ntable = table+suffix
-    l = api.getLogLevel()
-    nattrs = len(api.get_attributes_by_table(table))
+    l = db_in.getLogLevel()
+    nattrs = len(db_in.get_attributes_by_table(table))
     
     if fn.isString(start):
         date0,date1 = start,stop
@@ -262,55 +272,67 @@ def decimate_by_value_to_tmp(api, table, start, stop, ntable='', min_period=0,
         date0,date1 = fn.time2str(start),fn.time2str(stop)
     
     where = 'where att_conf_id < 1000000 '
-    if 'int_time' in api.getTableCols(table):
+    if 'int_time' in db_in.getTableCols(table):
         where += ' and int_time between %d and %d' % (start,stop)
     else:
         where += " and data_time between '%s' and '%s'" % (date0,date1)
 
-    tables = api.getTables()
-    api.setLogLevel('DEBUG')        
+    tables = db_out.getTables()
+    db_in.setLogLevel('DEBUG')
+    db_out.setLogLevel('DEBUG')        
     if drop:
-        api.Query('drop table if exists %s' % ntable)
+        db_out.Query('drop table if exists %s' % ntable)
         
     if ntable not in tables:
-        code = api.getTableCreator(table)
+        code = db_in.getTableCreator(table)
         qi = code.split('/')[0].replace(table,ntable)
         try:
-            api.Query(qi)
+            db_out.Query(qi)
         except Exception as e:
-            api.warning('Unable to create table %s' % ntable)
+            db_in.warning('Unable to create table %s' % ntable)
             print(e)
 
     ###########################################################################
     t0 = fn.now()
-    api.info('Get %s values between %s and %s' % (table, date0, date1))
+    db_in.info('Get %s values between %s and %s' % (table, date0, date1))
     what = "att_conf_id,data_time,value_r,quality,UNIX_TIMESTAMP(data_time)"
-    array = 'idx' in api.getTableCols(table)
+    array = 'idx' in db_in.getTableCols(table)
     if array:
         what+= ',idx,dim_x_r,dim_y_r'
-    data = api.Query('select %s from %s ' % (what, table) + where 
+    data = db_in.Query('select %s from %s ' % (what, table) + where 
                      + ' order by att_conf_id, data_time')
     print(fn.now()-t0,'seconds')
     
-    data_ids = fn.defaultdict(list)
     if array:
-        [data_ids[i].append((d,v,q,t,j,x,y)) for i,d,v,q,t,j,x,y in data];
+        data_ids = fn.defaultdict(lambda:fn.defaultdict(list))
+        [data_ids[i][j].append((d,v,q,t,x,y)) for i,d,v,q,t,j,x,y in data];
+        data_dec = {}
+        for kk,vv in data_ids.items():
+            data_dec[kk] = {}
+            for k,v in vv.items():
+                data_dec[kk][k] = [] if not v else [v.pop(0)]
     else:
+        data_ids = fn.defaultdict(list)
         [data_ids[i].append((d,v,q,t)) for i,d,v,q,t in data];
-
-    data_dec = dict((k,[] if not v else [v.pop(0)]) for k,v in data_ids.items())
+        data_dec = dict((k,[] if not v else 
+                         [v.pop(0)]) for k,v in data_ids.items())
     
     ###########################################################################
     t0 = fn.now()
-    api.info('Decimating %d values' % len(data))
+    db_in.info('Decimating %d values' % len(data))
+    sample = data[:10]
+    for s in sample:
+        print(str(s))
     if array:
-        [data_dec[i].append((d,v,q,j,x,y,t)) for i in data_ids for d,v,q,t,j,x,y in data_ids[i] 
-            if not data_dec[i] or (
-                (v!=data_dec[i][-1][1] or q!=data_dec[i][-1][2] 
-                    or t>data_dec[i][-1][-1]+max_period) 
-                and (t-min_period)>data_dec[i][-1][-1])]
+        [data_dec[i][j].append((d,v,q,x,y,t)) for i in data_ids 
+            for j in data_ids[i] for d,v,q,t,x,y in data_ids[i][j]
+            if not data_dec[i][j] or (
+                (v!=data_dec[i][j][-1][1] or q!=data_dec[i][j][-1][2] 
+                    or t>data_dec[i][j][-1][-1]+max_period)
+                and (t-min_period)>data_dec[i][j][-1][-1])]
             
-        data_all = sorted((d,i,v,q,j,x,y) for i in data_dec for d,v,q,j,x,y,t in data_dec[i])
+        data_all = sorted((d,i,v,q,j,x,y) for i in data_dec for j in data_dec[i] 
+                          for d,v,q,x,y,t in data_dec[i][j])
     else:
         [data_dec[i].append((d,v,q,t)) for i in data_ids for d,v,q,t in data_ids[i] 
             if not data_dec[i] or (
@@ -323,26 +345,52 @@ def decimate_by_value_to_tmp(api, table, start, stop, ntable='', min_period=0,
 
     ###########################################################################    
     t0 = fn.now()
-    api.setLogLevel('INFO')
+    db_out.setLogLevel('INFO')
     if array:
-        qi = 'insert into %s (`data_time`,`att_conf_id`,`value_r`,`quality`,`idx`,`dim_x_r`,`dim_y_r`) VALUES %s'
+        qi = 'insert into %s (`data_time`,`att_conf_id`,`value_r`,`quality`,'\
+            '`idx`,`dim_x_r`,`dim_y_r`) VALUES %s'
     else:
         qi = 'insert into %s (`data_time`,`att_conf_id`,`value_r`,`quality`) VALUES %s'
         
-    api.info('Inserting %d values into %s' % (len(data_all), ntable))
+    db_out.info('Inserting %d values into %s' % (len(data_all), ntable))
     while len(data_all):
-        api.info('Inserting values into %s (%d pending)' % (ntable, len(data_all)))
+        db_out.info('Inserting values into %s (%d pending)' 
+                    % (ntable, len(data_all)))
+
         for j in range(100):
             if len(data_all):
                 vals = [data_all.pop(0) for i in range(1000) if len(data_all)]
-                if array:
-                    vals = ','.join(("('%s',%s,%s,%s,%s,%s,%s)"%(d,i,v,q,j,x,y)
-                                     ).replace('None','NULL') 
-                                for d,i,v,q,j,x,y in vals)
-                else:
-                    vals = ','.join(("('%s',%s,%s,%s)"%(d,i,v,q)).replace('None','NULL') for d,i,v,q in vals)
-                api.Query(qi % (ntable,vals))
-    api.setLogLevel(l)
+                svals = []
+                for t in vals:
+                    if array:
+                        d,i,v,q,j,x,y = t
+                    else:
+                        d,i,v,q = t
+
+                    if 'string' in ntable and v is not None:
+                        if '"' in v:
+                            v = "'%s'" % v
+                        else:
+                            v = '"%s"' % v
+
+                    if array:
+                        s = "('%s',%s,%s,%s,%s,%s,%s)"%(d,i,v,q,j,x,y)
+                    else:
+                        s = "('%s',%s,%s,%s)"%(d,i,v,q)
+
+                    svals.append(s.replace('None','NULL'))
+
+                #if array:
+                    #vals = ','.join(("('%s',%s,%s,%s,%s,%s,%s)"%(d,i,v,q,j,x,y)
+                                     #).replace('None','NULL') 
+                                #for d,i,v,q,j,x,y in vals)
+                #else:
+                    #vals = ','.join(("('%s',%s,%s,%s)"%(d,i,v,q)
+                                     #).replace('None','NULL') 
+                            #for d,i,v,q in vals)
+                db_out.Query(qi % (ntable,','.join(svals)))
+
+    db_out.setLogLevel(l)
     print(fn.now()-t0,'seconds')
     return
 
@@ -479,28 +527,14 @@ def decimate_all(api, period, min_count,
     return done
 
 def add_int_time_column(api, table):
-    pref = pta.query.partition_prefixes(table)
+    pref = pta.hdbpp.query.partition_prefixes[table]
     api.Query('alter table %s add column int_time INT generated always as '
               '(TO_SECONDS(data_time)-62167222800) PERSISTENT;' % table)
     api.Query('drop index att_conf_id_data_time on %s' % table)
     api.Query('create index i%s on %s(att_conf_id, int_time)' % (pref,table))
     return
 
-def get_host_last_partitions(host, user, passwd, 
-        exclude_db='information_schema|tdb*'):
-    import fandango.db as fdb
-    db = fdb.FriendlyDB(host=host,db_name='information_schema',
-                        user=user, passwd=passwd)
-    result = {}
-    for d in db.Query('show databases'):
-        if fn.clmatch(exclude_db,d[0]):
-            continue
-        q = ("select partition_name from partitions where "
-            "table_schema = '%s' and partition_name is not NULL "
-            "and data_length > 1024 order by partition_name DESC limit 1;"%d)
-        r = db.Query(q)
-        result[d] = r
-    return result
+from PyTangoArchiving.hdbpp.query import MIN_FILE_SIZE
 
 def get_db_last_values_per_table(api, tables = None):
     db = pta.api(api) if fn.isString(api) else api
