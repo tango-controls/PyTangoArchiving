@@ -66,6 +66,46 @@ def get_hdbpp_databases(active=True): #archivers=[],dbs={}):
     else:
         return hdbpp
     
+def get_host_databases(host,user,password,
+                       exclude_db='information_schema|tdb*'):
+    db = fdb.FriendlyDB(host=host,db_name='information_schema',
+                        user=user, passwd=passwd)
+    return [d[0] for d in db.Query('show databases')]
+
+def get_host_last_partitions(host, user, passwd, 
+        exclude_db='information_schema|tdb*'):
+    import fandango.db as fdb
+    db = fdb.FriendlyDB(host=host,db_name='information_schema',
+                        user=user, passwd=passwd)
+    result = {}
+    for d in db.Query('show databases'):
+        if fn.clmatch(exclude_db,d[0]):
+            continue
+        q = ("select partition_name from partitions where "
+            "table_schema = '%s' and partition_name is not NULL "
+            "and data_length > %d order by partition_name DESC limit 1;" % 
+            (d[0], MIN_FILE_SIZE))
+        r = db.Query(q)
+        result[d[0]] = r
+    return result
+
+def get_host_first_partitions(host, user, passwd, 
+        exclude_db='information_schema|tdb*'):
+    import fandango.db as fdb
+    db = fdb.FriendlyDB(host=host,db_name='information_schema',
+                        user=user, passwd=passwd)
+    result = {}
+    for d in db.Query('show databases'):
+        if fn.clmatch(exclude_db,d[0]):
+            continue
+        q = ("select partition_name from partitions where "
+            "table_schema = '%s' and partition_name is not NULL "
+            "and data_length > %d order by partition_name limit 1;" % 
+            (d[0], MIN_FILE_SIZE))
+        r = db.Query(q)
+        result[d[0]] = r
+    return result
+    
 def get_hdbpp_filters():
     dbs = get_hdbpp_databases(active=True)
     sch = pta.Schemas.load()
