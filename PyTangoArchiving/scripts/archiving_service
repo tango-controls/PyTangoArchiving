@@ -6,38 +6,83 @@
 import sys,time,os
 
 import PyTango
-try: import fandango
-except ImportError: import PyTango_utils as fandango
+import PyTangoArchiving as pta
+import fandango as fn
 from fandango.servers import ServersDict
 
-hostname = os.getenv('HOST').split('.')[0]
+USAGE = """
+    archiving_service [start/stop/status] [all/schemas ...]
+    """
 
-def get_archiving_servers(schema=''):
-    astor = ServersDict()
-    astor.log.setLogLevel(astor.log.Warning)
+#def get_archiving_servers(schema=''):
+    #astor = ServersDict()
+    #astor.log.setLogLevel(astor.log.Warning)
     
-    #Excluding watchers due to its high CPU usage
-    names = len(sys.argv)>2 and sys.argv[2:] or ['ArchivingManager/*']\
-        +(schema.lower() in ('hdb','') and ['HdbArchiver*/*','HdbExtractor/*'] or [])\
-        +(schema.lower() in ('tdb','') and ['TdbArchiver*/*','TdbExtractor/*'] or [])
-    [astor.load_by_name(name) for name in names]
+    ##Excluding watchers due to its high CPU usage
+    #names = len(sys.argv)>2 and sys.argv[2:] or ['ArchivingManager/*']\
+        #+(schema.lower() in ('hdb','') and ['HdbArchiver*/*','HdbExtractor/*'] or [])\
+        #+(schema.lower() in ('tdb','') and ['TdbArchiver*/*','TdbExtractor/*'] or [])
+    #[astor.load_by_name(name) for name in names]
+    #return astor
+    
+def get_archiving_servers(schemas):
+    schemas = fn.toList(schemas)
+    astor = fn.Astor()
+    for s in schemas:
+        devs = []
+        api = pta.api(s)
+        devs.append(api.get_manager())
+        devs.extend(api.get_archivers())
+        if hasattr(api,'get_periodic_archivers'):
+            devs.extend(api.get_periodic_archivers())
+        devs = [(d.dev_name() if hasattr(d,'dev_name') 
+                else str(d)) for d in devs]
+        astor.load_from_devs_list(devs)
     return astor
     
-launch_order = ['archiver','extractor','manager','watcher']
+launch_order = ['archiver','subscriber','es-srv','extractor',
+                'manager','cm-srv','watcher']
 
-if 'status' in sys.argv:
-    print 'Checking the archiving system status ...'
+def main(args):
+    if not len(args):
+        print(USAGE)
+        sys.exit(1)
+        
+    action,schemas = args[0],args[1:]
+    if 'all' in schemas:
+        schemas = pta.multi.get_hdbpp_databases()
+        print(schemas)
+        
+    if action == 'status':
+        get_archiving_status(schemas)
+    elif action == 'start':
+        start_archiving(schemas)
+    elif action == 'stop':
+        stop_archiving(schemas)
+    else:
+        print(USAGE)
+
     
-    astor = get_archiving_servers()
+    
+def get_archiving_status(schemas):
+    
+    print('Checking the archiving system status ...')
+    
+    astor = get_archiving_servers(schemas)
     astor.update_states()
     
-    running = sorted(['\t'.join((d.name,d.host,str(d.level))) for d in astor.values() if d.state == PyTango.DevState.ON and (d.host or d.level)])
-    failed = sorted(['\t'.join((d.name,d.host,str(d.level))) for d in astor.values() if d.state != PyTango.DevState.ON and (d.host or d.level)])
-    disabled = sorted(['\t'.join((d.name,d.host,str(d.level))) for d in astor.values() if not (d.host or d.level)])
+    running = sorted(['\t'.join((d.name,d.host,str(d.level))) 
+                      for d in astor.values() if d.state == PyTango.DevState.ON 
+                      and (d.host or d.level)])
+    failed = sorted(['\t'.join((d.name,d.host,str(d.level))) 
+                     for d in astor.values() if d.state != PyTango.DevState.ON 
+                     and (d.host or d.level)])
+    disabled = sorted(['\t'.join((d.name,d.host,str(d.level))) 
+                       for d in astor.values() if not (d.host or d.level)])
     
-    print '\n'
-    print "*"*80
-    print '\n'
+    print('\n')
+    print("*"*80)
+    print('\n')
     
     faulty = []
     goods = []
@@ -90,92 +135,35 @@ if 'status' in sys.argv:
         print '\n'.join(disabled)
         print '\n'
 
-elif 'start' in sys.argv:
-    print 'Starting the archiving system ...'
-    astor = get_archiving_servers()
+def start_archiving(schemas):
+    print('Starting the archiving system ...')
+    astor = get_archiving_servers(schemas)
     for name in launch_order:
-        [astor.start_servers(k) for k in sorted(astor) if name in k.lower() and (hostname in astor[k].host)]
-    print 'Archiving system started'
-    
-elif 'start-all' in sys.argv:
-    print 'Starting the archiving system ...'
-    astor = get_archiving_servers()
-    for name in launch_order:
-        [astor.start_servers(k) for k in sorted(astor) if name in k.lower()]
-    print 'Archiving system started'
-    
-elif 'start-tdb' in sys.argv:
-    print 'Starting the archiving system ...'
-    astor = get_archiving_servers('tdb')
-    for name in launch_order:
-        [astor.start_servers(k) for k in sorted(astor) if name in k.lower()]
-    print 'Archiving system started'    
-    
-elif 'start-hdb' in sys.argv:
-    print 'Starting the archiving system ...'
-    astor = get_archiving_servers('hdb')
-    for name in launch_order:
-        [astor.start_servers(k) for k in sorted(astor) if name in k.lower()]
-    print 'Archiving system started'       
-    
-elif 'stop' in sys.argv:
-    print 'Stopping the archiving system ...'
-    servers = ['dserver/%s'%a for a in list(PyTango.Database().get_host_server_list(hostname)) if 'Archiv' in a]
-    for a in sorted(servers):
-        print('killing %s'%a)
-        try: PyTango.DeviceProxy(a).kill()
-        except Exception,e: print('\tfailed: %s'%e)
-    print 'Archiving system stopped'
+        ss = [(t.host,t.level,t.name) for t in astor.values()]
+        for h,l,n in sorted(ss):
+            if name in n.lower():
+                print(h,l,n)
+                astor.start_servers(n)
 
-elif 'stop-all' in sys.argv:
-    print 'Stopping the archiving system ...'
-    servers = PyTango.Database().get_device_exported('dserver/*Archiv*/*')
-    for a in sorted(servers):
-        print('killing %s'%a)
-        try: PyTango.DeviceProxy(a).kill()
-        except Exception,e: print('\tfailed: %s'%e)
-    print 'Archiving system stopped'
+    print('Archiving system started')
     
-elif 'stop-tdb' in sys.argv:
-    print 'Stoping the archiving system ...'
-    servers = PyTango.Database().get_device_exported('dserver/Tdb*/*')
-    for a in sorted(servers):
-        print('killing %s'%a)
-        try: PyTango.DeviceProxy(a).kill()
-        except Exception,e: print('\tfailed: %s'%e)
-    print 'Archiving system stop'    
+def stop_archiving(schemas):
+    print('Stopping the archiving system ...')
+    astor = get_archiving_servers(schemas)
+    astor.stop_servers()
+    #servers = ['dserver/%s'%a for a in astor]
+    #for a in sorted(servers):
+        #print('killing %s'%a)
+        #try: PyTango.DeviceProxy(a).kill()
+        #except Exception,e: print('\tfailed: %s'%e)
+    print('Archiving system stopped')
+
+if __name__ == '__main__':
+    args = sys.argv[1:]
+    if len(args)<2:
+        print(USAGE)
+    else:
+        main(args)
     
-elif 'stop-hdb' in sys.argv:
-    print 'Stoping the archiving system ...'
-    servers = PyTango.Database().get_device_exported('dserver/Hdb*/*')
-    for a in sorted(servers):
-        print('killing %s'%a)
-        try: PyTango.DeviceProxy(a).kill()
-        except Exception,e: print('\tfailed: %s'%e)
-    print 'Archiving system stop'       
-    
-elif 'restart' in sys.argv:
-    print 'Restarting the archiving system ...'
-    astor = get_archiving_servers()
-    launch_order.reverse()
-    for name in launch_order:
-        [astor.stop_servers(k) for k in sorted(astor) if name in k.lower() and (hostname in astor[k].host)]
-    launch_order.reverse()
-    time.sleep(10)
-    for name in launch_order:
-        [astor.start_servers(k) for k in sorted(astor) if name in k.lower() and (hostname in astor[k].host)]
-    print 'Archiving system restarted'
-    
-else: 
-    print 'Usage of the command is:'
-    print '\tarchiving_service.py start-all #Starts all the archiving devices'
-    print '\tarchiving_service.py start-tdb #Starts all tdb archiving devices'
-    print '\tarchiving_service.py start-hdb #Starts all hdb archiving devices'
-    print '\tarchiving_service.py start #Starts archiving devices in this host'
-    print '\tarchiving_service.py stop-all #Stops all the archiving devices'
-    print '\tarchiving_service.py stop-tdb #Stops all the tdb archiving devices'
-    print '\tarchiving_service.py stop-hdb #Stops all the hdb archiving devices'
-    print '\tarchiving_service.py stop #Stops archiving devices in this host'
-    print '\tarchiving_service.py restart #Restarts all the archiving devices'
-    print '\tarchiving_service.py status #Provides an overview of all the archiving devices'
+
     
