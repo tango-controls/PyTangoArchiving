@@ -1,5 +1,5 @@
 import fandango as fn
-from .query import HDBppReader
+from .query import HDBppReader, MIN_FILE_SIZE
 from .periodic import HDBppPeriodic
 
 class HDBpp(HDBppReader, HDBppPeriodic):
