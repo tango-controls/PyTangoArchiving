@@ -297,7 +297,7 @@ CONFIG_TABLES = ('adt apt att_conf att_conf_data_type att_parameter '
 
 from fandango import time2date,str2time
 
-def mysqldump_by_date(schema, user, passwd, folder, start, stop,
+def mysqldump_by_date(schema, user, passwd, folder, start, stop, options = '',
                       tables = None, compress = True, delete = True):
     """
     This method creates a backup between selected dates for each table 
@@ -340,9 +340,9 @@ def mysqldump_by_date(schema, user, passwd, folder, start, stop,
         else:
             where = ""
         if t in CONFIG_TABLES:
-            options = " --add-drop-table "
+            options += " --add-drop-table "
         else:
-            options = ""
+            options += ""
         mysqldump(schema,user,passwd,filename,t,where,options=options)
         filenames.append(filename)
         
