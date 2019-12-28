@@ -660,7 +660,8 @@ class HDBppDB(ArchivingDB,SingletonMap):
         try:
             if isSequence(attribute):
                 for attr in attribute:
-                    self.start_archiving(attr,*args,**kwargs)
+                    self.start_archiving(attr,archiver,period,rel_event,
+                        per_event,abs_event,code_event,ttl,start)
                     time.sleep(1.)
             else:
                 self.info('start_archiving(%s)'%attribute)
