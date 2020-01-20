@@ -25,14 +25,14 @@ def main(args=None):
     """
     try:
         import argparse
-        parser = argparse.ArgumentParser(usage=USAGE)
+        parser = argparse.ArgumentParser() #usage=USAGE)
         parser.add_argument('schema')
         #parser.add_argument('--period',type=int)
         parser.add_argument('--tref',type=str,
             help = 'min epoch considered ok')
         parser.add_argument('--action',type=str,
             help = 'start|restart|save|check')
-        parser.add_argument('--export')
+        parser.add_argument('--export',help = 'json|pickle')
         parser.add_argument('--values',type=str,
             help = 'values file, will be loaded by load_schema_values()')
         
@@ -68,14 +68,15 @@ def main(args=None):
                 args = dict((k,v) for k,v in args.items() 
                             if k and v not in (False,[]))
                    
-                print('check_db_schema(%s)' % str(args))
                 r = check_db_schema(**args)
             except:
                 print(fn.except2str())
 
+    except SystemExit:
+        pass
     except:
         print fn.except2str()
-        print(USAGE)
+        #print(USAGE)
 
 ###############################################################################
 
@@ -409,7 +410,7 @@ def check_archiving_schema(
         
     return result 
 
-def load_schema_values(schema, attributes = None, values = None, n = 1):
+def load_schema_values(schema, attributes=None, values=None, n=1, tref=None):
     
     api = schema if not isString(schema) else pta.api(schema)
     
@@ -430,7 +431,8 @@ def load_schema_values(schema, attributes = None, values = None, n = 1):
             values = dict((k,(ups[api[k].table],None)) for k in attributes)
         else:
             value = {}
-            values = dict((a,api.load_last_values(a,n=n)) for a in attributes)
+            values = dict((a,api.load_last_values(a,n=n,tref=tref))
+                          for a in attributes)
             
     values = values.get('values',values)
             
@@ -467,38 +469,42 @@ CheckState = fn.Struct(
     )
 
 def check_db_schema(schema, attributes = None, values = None,
-                    tref = None, n = 1, filters = '*', export = 'json'):
+                    tref = -12*3600, n = 1, filters = '*', export = 'json'):
     """
     tref is the time that is considered updated (e.g. now()-86400)
     n is used to consider multiple values
     
+    attrs: all attributes in db
     on: archived
-    off: in db but not archived
-    ok: updated
-    
-    lost: not updated, and values doesn't match
+    off: in db but not currently archived
+    ok: updated   
     
     known error causes (attrs not lost but not updated):
     
-    nok: attributes updated and not readable
+    nok: attributes are not currently readable
     noevs: attributes not sending events
     novals: attributes never recorded a value
     stall: not updated, but current value matches archiving
+    lost: not updated, and values doesn't match with current
     """
     
     t0 = fn.now()
     r = fn.Struct()
     r.api = api = pta.api(schema)
-    r.tref = fn.notNone(tref,fn.now()-3600)
-    
+    if isString(tref): 
+        tref = fn.str2time(tref)
+    r.tref = fn.now()+tref if tref < 0 else tref
     r.attrs = [a for a in (attributes or api.get_attributes())
                 if fn.clmatch(filters,a)]
+    print('check_db_schema(%s,attrs[%s],tref="%s",export as %s)' 
+          % (schema,len(r.attrs),fn.time2str(r.tref),export))
+    
     r.on = [a for a in api.get_archived_attributes() if a in r.attrs]
     r.off = [a for a in r.attrs if a not in r.on]
     
     r.archs = fn.defaultdict(list)
     r.pers = fn.defaultdict(list)
-    r.values = load_schema_values(api,r.on,values,n)
+    r.values = load_schema_values(api,r.on,values,n,tref=tref)
     
     if schema in ('tdb','hdb'):
         [r.archs[api[k].archiver].append(k) for k in r.on]
@@ -533,12 +539,12 @@ def check_db_schema(schema, attributes = None, values = None,
     
     for a,v in r.check.items():
         state = check_archived_attribute(a, v, default=CheckState.LOST, 
-                    cache=r, tref=tref)
+                    cache=r, tref=r.tref)
         
         {
             #CheckState.ON : r.on,
             #CheckState.OFF : r.off,
-            #CheckState.OK : r.ok, #Shouldn't be any ok in check list               
+            CheckState.OK : r.ok, #Shouldn't be any ok in check list               
             CheckState.NO_READ : r.nok,
             CheckState.STALL : r.stall,
             CheckState.NO_EVENTS : r.noev,
@@ -549,7 +555,12 @@ def check_db_schema(schema, attributes = None, values = None,
     # SUMMARY
     r.summary = schema + '\n\n'
     for k in 'attrs on off ok nok noev stall lost novals'.split():
-        r.summary += ('\t%s:\t:%d\n' % (k,len(r.get(k))))
+        s = ('\t%s:\t:%d' % (k,len(r.get(k))))
+        if k == 'ok':
+            s += ' (ok+stall: %2.1f %%)' % (
+                (100.*(len(r.get('ok'))+len(r.get('stall')))
+                 )/len(r.get('on')) )
+        r.summary += s+'\n'
         
     r.summary += '\nfinished in %d seconds\n\n'%(fn.now()-t0)
     print(r.summary)
@@ -569,7 +580,11 @@ def check_db_schema(schema, attributes = None, values = None,
                     pickle.dump(r.dict(),f)
                 else:
                     f.write(fn.dict2str(r.dict()))
-                f.close()        
+                f.close()     
+                
+    for k,v in r.items():
+        if fn.isSequence(v):
+            r[k] = sorted(v)
                 
     return r
 
@@ -585,12 +600,16 @@ def check_archived_attribute(attribute, value = False, state = CheckState.OK,
     if cache:
         stored = cache.values[attribute]
         #evs = cache.evs[attribute]
-        if (tref is not None and stored and stored[0] >= tref and 
-                not isinstance(stored[0],(type(None),Exception))):
-            return CheckState.OK
+        if stored is None or (fn.isSequence(stored) and not len(stored)):
+            return CheckState.UNK
+        else:
+            t,v = stored[0],stored[1]
+            if t>=tref and not isinstance(v,(type(None),Exception)):
+                print('%s should not be in check list! (%s,%s)' % (attribute,t,v))
+                return CheckState.OK
         
     if value is False:
-        value = fn.read_attribute(attribute, brief=False)
+        value = fn.check_attribute(attribute, brief=False)
         
     vv,t = getattr(value,'value',value),getattr(value,'time',0)
     t = t and fn.ctime2time(t)
