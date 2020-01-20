@@ -35,9 +35,14 @@ class HDBppPeriodic(HDBppDB):
         archivers = dict.fromkeys([a for a in self.get_periodic_archivers() 
                      if fn.clmatch(regexp,a)])
         for a in archivers:
-            prop = fn.toList(fn.tango.get_device_property(a,'AttributeList'))
-            archivers[a] = dict(p.split(';',1) for p in prop if p.strip())
+            archivers[a] = self.get_periodic_archiver_attributes(a)
         return archivers
+
+    @Cached(expire=10.)    
+    def get_periodic_archiver_attributes(self,archiver):
+        prop = fn.toList(fn.tango.get_device_property(archiver,'AttributeList'))
+        return dict(p.split(';',1) for p in prop if p.strip())
+        
     
     @Cached(expire=10.)
     def get_periodic_attribute_archiver(self,attribute):
@@ -82,6 +87,21 @@ class HDBppPeriodic(HDBppDB):
                 except:
                     print(fn.except2str())
         return self.periodic_attributes
+    
+    @Cached(depth=10,expire=60.)
+    def get_archived_attributes(self,search='',periodic=True):
+        """
+        It gets attributes currently assigned to archiver and updates
+        internal attribute/archiver index.
+        
+        DONT USE Manager.AttributeSearch, it is limited to 1024 attrs!
+        """
+        #print('get_archived_attributes(%s)'%str(search))
+        attrs = HDBppDB.get_archived_attributes(self, search)
+        if periodic:
+            attrs.extend(self.get_periodic_attributes())
+        return sorted(set(fn.tango.get_full_name(a,fqdn=True).lower()
+                          for a in attrs))
     
     def get_next_periodic_archiver(self, attrexp=''):
         """

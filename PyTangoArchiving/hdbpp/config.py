@@ -258,7 +258,7 @@ class HDBppDB(ArchivingDB,SingletonMap):
         """
 
         loads = dict((a,self.get_archiver_load(a,use_freq=use_freq))
-                     for a in self.get_archivers())
+            for a in self.get_archivers() if fn.clmatch('*[0-9]$',a))
         if errors:
             # Errors count twice as load
             for a,v in loads.items():
@@ -286,6 +286,9 @@ class HDBppDB(ArchivingDB,SingletonMap):
         else:
             # Inactive attributes must be read from Database
             r = self.get_attribute_names(False)
+            
+        r = sorted(set(fn.tango.get_full_name(a,fqdn=True).lower()
+                          for a in r))
 
         return sorted(fn.filtersmart(r,regexp) if regexp else r)
         
