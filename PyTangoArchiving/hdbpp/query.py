@@ -95,9 +95,9 @@ class HDBppReader(HDBppDB):
                 if p and self.getPartitionSize(table,p) > min_size), 
                     default=None)
         if parts and not last_part:
-            last_part = fn.last([p for p in parts 
+            last_part = fn.first([p for p in parts 
                 if self.get_partition_time_by_name(p) < fn.now()],
-                    default=parts[-1])
+                    default=parts[0])
         return last_part
     
     def generate_partition_name_for_date(self, table, date):
@@ -106,8 +106,9 @@ class HDBppReader(HDBppDB):
         """
         if not fn.isString(date):
             date = fn.time2str(date)
-        p = partition_prefixes[table]
-        p += ''.join(date.split('-')[0:2]) + '01'
+        p = partition_prefixes.get(table,None)
+        if p:
+            p += ''.join(date.split('-')[0:2]) + '01'
         return p
     
     def get_partitions_at_dates(self, table, date1, date2=None):
@@ -130,7 +131,7 @@ class HDBppReader(HDBppDB):
     get_table_partitions_for_dates = get_partitions_at_dates   
       
     def get_last_attribute_values(self,table,n=1,
-                                  check_table=False,epoch=None,period=3*86400):
+            check_table=False,epoch=None,period=3*86400):
         if epoch is None:
             epoch = fn.now()+600
         elif epoch < 0:
@@ -150,7 +151,7 @@ class HDBppReader(HDBppDB):
         else: 
             return vals
     
-    def load_last_values(self,attributes=None,n=1,epoch=None):
+    def load_last_values(self,attributes=None,n=1,epoch=None,tref=0):
         """
         attributes: attribute name or list
         n: the number of last values to be retorned
@@ -158,6 +159,7 @@ class HDBppReader(HDBppDB):
         """
         if attributes is None:
             attributes = self.get_archived_attributes()
+        period = -tref if tref<0 else (fn.now()-tref if tref>1e9 else tref)
         vals = dict((a,self.get_last_attribute_values(a,n=n,epoch=epoch)) 
                     for a in fn.toList(attributes))
         for a,v in vals.items():
