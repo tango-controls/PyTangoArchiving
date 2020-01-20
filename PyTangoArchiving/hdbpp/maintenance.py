@@ -75,33 +75,32 @@ def get_attributes_row_counts(db,attrs='*',start=0, stop=0,
             r[a] = c
     return r
 
-#@staticmethod
-#def decimate_values(values,N=540,method=None):
-    #"""
-    #values must be a sorted (time,...) array
-    #it will be decimated in N equal time intervals 
-    #if method is not provided, only the first value of each interval will be kept
-    #if method is given, it will be applied to buffer to choose the value to keep
-    #first value of buffer will always be the last value kept
-    #"""
-    #tmin,tmax = sorted((values[0][0],values[-1][0]))
-    #result,buff = [values[0]],[values[0]]
-    #interval = float(tmax-tmin)/N
-    #if not method:
-        #for v in values:
-        #if v[0]>=(interval+float(result[-1][0])):
-            #result.append(v)
-    #else:
-        #for v in values:
-        #if v[0]>=(interval+float(result[-1][0])):
-            #result.append(method(buff))
-            #buff = [result[-1]]
-        #buff.append(v)
+def decimate_value_list(values,N=540,method=None):
+    """
+    values must be a sorted (time,...) array
+    it will be decimated in N equal time intervals 
+    if method is not provided, only the first value of each interval will be kept
+    if method is given, it will be applied to buffer to choose the value to keep
+    first value of buffer will always be the last value kept
+    """
+    tmin,tmax = sorted((values[0][0],values[-1][0]))
+    result,buff = [values[0]],[values[0]]
+    interval = float(tmax-tmin)/N
+    if not method:
+        for v in values:
+            if v[0]>=(interval+float(result[-1][0])):
+                result.append(v)
+    else:
+        for v in values:
+            if v[0]>=(interval+float(result[-1][0])):
+                result.append(method(buff))
+                buff = [result[-1]]
+        buff.append(v)
 
-    #print(tmin,tmax,N,interval,len(values),len(result),method)
-    #return result
+    print(tmin,tmax,N,interval,len(values),len(result),method)
+    return result
     
-def decimate_table(db, table, attributes = [], 
+def decimate_table_inline(db, table, attributes = [], 
                    start = 0, stop = -1, partition = '', 
                    trange = 3, fmargin = 1):
     """
@@ -243,9 +242,15 @@ def decimate_table(db, table, attributes = [],
     db.setLogLevel(l)
     return
 
+def decimate_into_new_db(db_in, db_out, begin, end):
+    tables = db_in.get_data_tables() #pta.hdbpp.query.partition_prefixes.keys()
+    for i,t in enumerate(sorted(tables)):
+        print('%s decimating table %s.%s (%d/%d)' 
+              % (fn.time2str(),db_in.db_name,t,i+1,len(tables)))
+        decimate_into_new_table(db_in,db_out,t,begin,end)
 
-def decimate_by_value_to_tmp(db_in, db_out, table, start, stop, ntable='', 
-        min_period=0, max_period=21600, max_gap=86400, suffix='_dec',
+def decimate_into_new_table(db_in, db_out, table, start, stop, ntable='', 
+        min_period=0, max_period=21600, bunch=86400/4, suffix='_dec',
         drop=False):
     """
     decimate by distinct value, or by fix period
@@ -253,11 +258,12 @@ def decimate_by_value_to_tmp(db_in, db_out, table, start, stop, ntable='',
     do selects in bunches of ids*1000 values or 250000 (the minimum)
     db_in is the origin database; db_out is where decimated data will be stored
     if db_in == db_out; then a temporary table with suffix is created
-    
-    ## MAX_GAP IS UNUSED!?
+
+    bunch: queries will be split in bunch intervals
     """
-    #bigger = sorted((db.getTableSize(t),t) for t in dbr.getTables() if 'scalar' in t)[-1]
-    
+    t0 = fn.now()
+    # bigger = sorted((db.getTableSize(t),t) for t in dbr.getTables() 
+    #   if 'scalar' in t)[-1]
     if (db_in.host,db_in.db_name) != (db_out.host,db_out.db_name):
         suffix = ''
     if not ntable:
@@ -270,6 +276,25 @@ def decimate_by_value_to_tmp(db_in, db_out, table, start, stop, ntable='',
         start,stop = fn.str2time(start),fn.str2time(stop)
     else:
         date0,date1 = fn.time2str(start),fn.time2str(stop)
+        
+    print('decimate_into_new_table(%s.%s => %s@%s.%s, %s to %s)' % 
+        (db_in.db_name,table,db_out.db_name,db_out.host,ntable,date0,date1))
+    try:
+        cpart = (db_in.get_partitions_at_dates(table,begin) or [None])[0]
+        print('%s.%s.%s size = %s' % 
+              (db_in,table,cpart,db.getPartitionSize(table,cpart)))
+    except: 
+        cpart = None
+        
+    if stop-start > bunch:
+        i = 0
+        while start+i*bunch < stop:
+            decimate_into_new_table(db_in, db_out, table,
+                start = start+i*bunch,stop = start+(i+1)*bunch,
+                ntable=ntable, min_period=min_period, max_period=max_period,
+                bunch=bunch, suffix=suffix, drop=drop)
+            i+=1        
+        return
     
     where = 'where att_conf_id < 1000000 '
     if 'int_time' in db_in.getTableCols(table):
@@ -303,6 +328,8 @@ def decimate_by_value_to_tmp(db_in, db_out, table, start, stop, ntable='',
                      + ' order by att_conf_id, data_time')
     print(fn.now()-t0,'seconds')
     
+    # Splitting data into attr or (attr,idx) lists
+    # Creating empty dictionaries to store decimated data
     if array:
         data_ids = fn.defaultdict(lambda:fn.defaultdict(list))
         [data_ids[i][j].append((d,v,q,t,x,y)) for i,d,v,q,t,j,x,y in data];
@@ -319,10 +346,12 @@ def decimate_by_value_to_tmp(db_in, db_out, table, start, stop, ntable='',
     
     ###########################################################################
     t0 = fn.now()
-    db_in.info('Decimating %d values' % len(data))
+    db_in.info('Decimating %d values, period = (%s,%s,[%s])' % 
+               (len(data),min_period,max_period,bunch))
     sample = data[:10]
     for s in sample:
         print(str(s))
+    
     if array:
         [data_dec[i][j].append((d,v,q,x,y,t)) for i in data_ids 
             for j in data_ids[i] for d,v,q,t,x,y in data_ids[i][j]
@@ -344,22 +373,22 @@ def decimate_by_value_to_tmp(db_in, db_out, table, start, stop, ntable='',
     print(fn.now()-t0,'seconds')
 
     ###########################################################################    
-    t0 = fn.now()
     db_out.setLogLevel('INFO')
     if array:
         qi = 'insert into %s (`data_time`,`att_conf_id`,`value_r`,`quality`,'\
             '`idx`,`dim_x_r`,`dim_y_r`) VALUES %s'
     else:
-        qi = 'insert into %s (`data_time`,`att_conf_id`,`value_r`,`quality`) VALUES %s'
+        qi = 'insert into %s (`data_time`,`att_conf_id`,`value_r`,`quality`)'\
+            ' VALUES %s'
         
     db_out.info('Inserting %d values into %s' % (len(data_all), ntable))
     while len(data_all):
         db_out.info('Inserting values into %s (%d pending)' 
                     % (ntable, len(data_all)))
 
-        for j in range(100):
+        for j in range(500):
             if len(data_all):
-                vals = [data_all.pop(0) for i in range(1000) if len(data_all)]
+                vals = [data_all.pop(0) for i in range(200) if len(data_all)]
                 svals = []
                 for t in vals:
                     if array:
@@ -368,6 +397,7 @@ def decimate_by_value_to_tmp(db_in, db_out, table, start, stop, ntable='',
                         d,i,v,q = t
 
                     if 'string' in ntable and v is not None:
+                        v = v.replace('"','').replace("'",'')[:80]
                         if '"' in v:
                             v = "'%s'" % v
                         else:
@@ -391,10 +421,17 @@ def decimate_by_value_to_tmp(db_in, db_out, table, start, stop, ntable='',
                 db_out.Query(qi % (ntable,','.join(svals)))
 
     db_out.setLogLevel(l)
+    try:
+        cpart = (db_out.get_partitions_at_dates(ntable,begin) or [None])[0]
+        print('%s.%s.%s new size = %s' % 
+            (db_out,ntable,cpart,db.getPartitionSize(ntable,cpart)))
+    except: 
+        cpart = None    
     print(fn.now()-t0,'seconds')
     return
 
-def insert_into_table(api, table, source, start, stop, step = 86400):
+def copy_between_tables(api, table, source, start, stop, step = 86400):
+    
     t0 = fn.now()
     
     if fn.isString(api):
@@ -505,11 +542,15 @@ def decimate_partition_by_modtime(api, table, partition, period = 3,
 
 CURR_YEAR = fn.time2str().split('-')[0]
 
-def decimate_all(api, period, min_count, 
+def decimate_db_by_modtime(api, period, min_count, 
                 in_tables="*(array|scalar)*",
                 ex_tables="",
                 in_partitions="",
                 ex_partitions=CURR_YEAR):
+    """
+    This method was information destructive
+    replaced by decimate_into_new_table
+    """
     done = []
     for t in sorted(api.getTables()):
         print(t)
@@ -521,7 +562,7 @@ def decimate_all(api, period, min_count,
                 if not p or ex_partitions and fn.clsearch(ex_partitions,p):
                     continue
                 if (not in_partitions or fn.clsearch(in_partitions,p)):
-                    r = decimate_partition(api, t, p, 
+                    r = decimate_partition_by_modtime(api, t, p, 
                         period = period, min_count = min_count)
                     done.append((t,p,r))
     return done
@@ -557,7 +598,8 @@ def get_last_value_in_table(api, table, tref = -180*86400):
     last_part = db.get_last_partition(table)
     tref = tref if tref>0 else fn.now()+tref
 
-    q = 'select UNIX_TIMESTAMP(data_time) from %s ' % table
+    q = ('select CAST(UNIX_TIMESTAMP(data_time) AS DOUBLE),data_time from %s ' 
+            % table)
     if last_part:
         q += ' partition (%s)' % last_part
         size = db.getPartitionSize(table,last_part)
@@ -570,7 +612,7 @@ def get_last_value_in_table(api, table, tref = -180*86400):
     ids = db.Query("select att_conf_id from att_conf,att_conf_data_type where"
         " data_type like '%s' and att_conf.att_conf_data_type_id = "
         "att_conf_data_type.att_conf_data_type_id" % (table.replace('att_','')))
-    ids = list(fn.randomize(i[0] for i in ids))[:5]
+    ids = list(fn.randomize([i[0] for i in ids]))[:5]
     
     where = ' where att_conf_id in (%s) and ' % ','.join(map(str,ids))
     if 'int_time' in db.getTableCols(table):
@@ -712,7 +754,7 @@ def create_new_partitions(api,table,nmonths,partpermonth=1,
             dates = [(date,end)]
             
         elif partpermonth == 2:
-            dates = [(date, date.rsplit('-',1)[0]+'-16')
+            dates = [(date, date.rsplit('-',1)[0]+'-16'),
                      (date.rsplit('-',1)[0]+'-16', end)]
             
         elif partpermonth == 3:
