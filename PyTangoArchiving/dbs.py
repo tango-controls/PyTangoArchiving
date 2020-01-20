@@ -420,6 +420,11 @@ def get_partitions_from_query(db, q):
     c.close()
     return r
 
+def delete_partition_data(db, table, partition):
+    q = 'alter table %s truncate partition %s' % (table,partition)
+    print(q)
+    db.Query(q)
+
 def decimate_db_table_by_time(db,table,att_id,tstart,tend,period=1,
         id_column="att_conf_id",time_column='data_time',min_to_delete=3,
         optimize = False):
@@ -478,8 +483,6 @@ def decimate_db_table_by_time(db,table,att_id,tstart,tend,period=1,
         print('Optimizing took %d seconds' % (fn.now()-t2))
         
     return s1-s0
-    
-    
 
 def decimate_db_table(db,table,host='',user='',passwd='',start=0,end=0,period=300,iteration=1000,condition='',cols=None,us=True,test=False, repeated = False):
     """ 
