@@ -289,7 +289,6 @@ class Reader(Object,SingletonMap):
         if any(s in ('*','all') for s in (db,schema)): db,schema = '*','*'
         
         sch = Schemas.get(schema)
-        print(schema,sch)
         if sch and not config: config = sch.get('config','')
         
         self.log.warning('In PyTangoArchiving.Reader.__init__(%s, %s)' 
@@ -360,7 +359,7 @@ class Reader(Object,SingletonMap):
                 and self.schema not in ('hdb','tdb'):
             raise 'NotImplemented!, Use generic Reader() instead'
         
-        print('%s configs: %s' % (schema,self.configs))
+        self.log.info('%s configs: %s' % (schema,self.configs))
 
         ## THIS METHOD OF CHECKING HDB++ IS FLAWED!! (and unused) @TODO
         #if any(a.lower() in s for s in map(str,(self.db_name,schema,config)) 
@@ -455,7 +454,7 @@ class Reader(Object,SingletonMap):
                 config = config[-1]            
             #self.log.info('config: %s' % str(config))
         except Exception,e:
-            [fn.printf(t) for t in self.configs.items()]
+            #[fn.printf(t) for t in self.configs.items()]
             traceback.print_exc()
             self.log.warning('Unable to get DB(%s,%s) config at %s'
                              %(self.db_name,self.schema,epoch))
@@ -588,18 +587,11 @@ class Reader(Object,SingletonMap):
                 for act in (True,False):
                     try:
                         attrs = x.get_attributes(active=act)
-                        self.log.debug('%d' % len(attrs))
-                        self.log.debug('parse models')
                         attrs = map(self.get_attribute_model,attrs)
-                        self.log.debug('%d' % len(attrs))
-                        self.log.debug('union')
                         if act:
                             self.current_attributes.extend(attrs)
-                            self.log.debug('%d' % len(self.current_attributes))
                         else:
                             self.available_attributes.extend(attrs)
-                            self.log.debug('%d' % len(self.available_attributes))
-                            self.log.debug('update schemas')
                             [self.attr_schemas[a].append(c) for a in attrs
                              if c not in self.attr_schemas[a]]
                     except:
@@ -607,19 +599,14 @@ class Reader(Object,SingletonMap):
                             % (c, traceback.format_exc()))
                         
                 self.log.debug('%d' % len(self.available_attributes))
-                self.log.debug(self.available_attributes and self.available_attributes[0])
-                self.log.debug(self.available_attributes and self.available_attributes[-1])
                 
-            self.log.debug('sorting')
             self.available_attributes = sorted(set(self.available_attributes))
             self.current_attributes = sorted(set(self.current_attributes))                
         else:
             if self.get_database(): #Using a database Query
                 t1 = now()
-                self.log.debug('query')
                 avs = self.get_database().get_attribute_names(active=False)
                 currs = self.get_database().get_attribute_names(active=True)
-                self.log.debug('models')
                 self.available_attributes = map(get_model,avs)
                 self.current_attributes = map(get_model,currs)
 
@@ -629,7 +616,6 @@ class Reader(Object,SingletonMap):
                 self.current_attributes = map(get_model,attrs)
                 self.available_attributes = self.current_attributes
                 
-            self.log.debug('schemas')
             for a in self.available_attributes:
                 self.attr_schemas[a] = [self.schema]
 
@@ -645,7 +631,6 @@ class Reader(Object,SingletonMap):
                 #self.attr_schemas[a] = [s for s in Schemas.SCHEMAS if a in
                     #(self.attr_schemas[a]+self.attr_schemas[m])]
             
-        self.log.debug('sorting')
         self.available_attributes = sorted(set(self.available_attributes))
         self.current_attributes = sorted(set(self.current_attributes))
         self.updated = now()
@@ -984,6 +969,7 @@ class Reader(Object,SingletonMap):
                 kwargs = {'schemas':schemas})
             process.start()
             tx = fn.now()
+            ## IT IS MANDATORY TO READ THE QueuE BEFORE .join()
             while q.empty():
                 self.log.debug('waiting ...')
                 fn.wait(5.)
@@ -1117,7 +1103,7 @@ class Reader(Object,SingletonMap):
                 gaps = get_gaps(values,r,
                                 start = start_time if not N else 0,
                                 stop = stop_time if not N else 0)
-                print('get_gaps(%d): %d gaps' % (len(values),len(gaps)))
+                self.log.debug('get_gaps(%d): %d gaps' % (len(values),len(gaps)))
 
             fallback = []
             for gap0,gap1 in gaps:
@@ -1147,8 +1133,6 @@ class Reader(Object,SingletonMap):
                                  % (start_date, rd.schema))
                 lasts = rd.load_last_values(attribute,epoch=start_time)
                 l = len(values[-1]) if values else 2
-                print(lasts)
-                print(lasts.values())
                 fallback = [t[:l] for t in lasts.values()]
                 
             if len(fallback):
@@ -1346,10 +1330,10 @@ class Reader(Object,SingletonMap):
             if trace or text: 
                 csv = self.export_to_text(table,order=list(attributes))
                 if text: return csv
-                elif trace: print csv
+                elif trace: print(csv)
             return table
         else:
-            if trace: print values
+            if trace: print(values)
             return values
           
     @staticmethod
