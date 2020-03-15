@@ -89,10 +89,11 @@ def Queued(my_queue):
     def QueuedDecorator(method, use_id=False):
         def QueuedFunction(*args,**kwargs):
             r = method(*args,**kwargs)
+            rid = str(method)+str(args)+str(sorted(kwargs.items()))
             if use_id:
-                r = (str(method)+str(args)+str(sorted(kwargs.items())),
-                     r)
+                r = (rid,r)
             my_queue.put(r)
+            print('%s Done' % rid)
         return QueuedFunction
     return QueuedDecorator   
 
