@@ -977,7 +977,7 @@ class Reader(Object,SingletonMap):
             # Getting values in a background process
             q = multiprocessing.Queue()
             process = multiprocessing.Process(
-                target=utils.Queued(self.get_attribute_values_from_any),
+                target=utils.Queued(q)(self.get_attribute_values_from_any),
                 args = (attribute, start_date,stop_date, start_time, stop_time,
                         asHistoryBuffer, decimate,
                         notNone, N, cache, fallback),
