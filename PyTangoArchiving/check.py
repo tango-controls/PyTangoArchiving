@@ -28,11 +28,11 @@ def main(args=None):
         parser = argparse.ArgumentParser() #usage=USAGE)
         parser.add_argument('schema')
         #parser.add_argument('--period',type=int)
-        parser.add_argument('--tref',type=str,
+        parser.add_argument('--tref',type=str,default='-43200',
             help = 'min epoch considered ok')
-        parser.add_argument('--action',type=str,
+        parser.add_argument('--action',type=str,default='check',
             help = 'start|restart|save|check')
-        parser.add_argument('--export',help = 'json|pickle')
+        parser.add_argument('--export',help = 'json|pickle',default='json')
         parser.add_argument('--values',type=str,
             help = 'values file, will be loaded by load_schema_values()')
         
@@ -67,7 +67,7 @@ def main(args=None):
                 args.pop('action')
                 args = dict((k,v) for k,v in args.items() 
                             if k and v not in (False,[]))
-                   
+                print(args)
                 r = check_db_schema(**args)
             except:
                 print(fn.except2str())
@@ -540,7 +540,6 @@ def check_db_schema(schema, attributes = None, values = None,
     for a,v in r.check.items():
         state = check_archived_attribute(a, v, default=CheckState.LOST, 
                     cache=r, tref=r.tref)
-        
         {
             #CheckState.ON : r.on,
             #CheckState.OFF : r.off,
