@@ -192,7 +192,7 @@ class HDBppReader(HDBppDB):
             aid,tid,table = self.get_attr_id_type_table(table)
         return aid,tid,table,index
         
-    def get_attribute_values_query(self,table,
+    def get_attribute_values_query(self,attribute,
             start_date=None,stop_date=None,
             desc=False,N=0,unixtime=True,
             extra_columns='quality',decimate=0,human=False,
@@ -203,7 +203,7 @@ class HDBppReader(HDBppDB):
             where='',
             **kwargs):
         
-        aid,tid,table,index = self.get_attribute_indexes(table)
+        aid,tid,table,index = self.get_attribute_indexes(attribute)
                                    
         if not what:
             what = 'UNIX_TIMESTAMP(data_time)' if unixtime else 'data_time'
@@ -307,7 +307,8 @@ class HDBppReader(HDBppDB):
         
     
     @CatchedAndLogged(throw=True)
-    def get_attribute_values(self,table,start_date=None,stop_date=None,
+    def get_attribute_values(self,attribute,
+                             start_date=None,stop_date=None,
                              desc=False,N=0,unixtime=True,
                              extra_columns='quality',decimate=0,human=False,
                              as_double=True,
@@ -321,8 +322,8 @@ class HDBppReader(HDBppDB):
         
         Parameters
         ----------
-        table
-            table or attribute
+        attribute
+            attribute or table
         start_date/stop_date
             if not stop_date, anything between start_date and now()
             start_date and stop_date float or str in a format valid for SQL
@@ -348,9 +349,9 @@ class HDBppReader(HDBppDB):
         N = N or kwargs.get('n',0)
         self.info('HDBpp.get_attribute_values(%s,%s,%s,N=%s,decimate=%s,'
                    'int_time=%s,%s)'
-              %(table,start_date,stop_date,N,decimate,int_time,kwargs))
+              %(attribute,start_date,stop_date,N,decimate,int_time,kwargs))
 
-        aid,tid,table,index = self.get_attribute_indexes(table)
+        aid,tid,table,index = self.get_attribute_indexes(attribute)
             
         if not all((aid,tid,table)):
             self.warning('%s is not archived' % table)
