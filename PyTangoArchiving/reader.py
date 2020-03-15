@@ -983,11 +983,16 @@ class Reader(Object,SingletonMap):
                         notNone, N, cache, fallback),
                 kwargs = {'schemas':schemas})
             process.start()
-            process.join()
-            if q.qsize():
-                values = q.get()
-            else:
+            tx = fn.now()
+            while q.empty():
+                self.log.debug('waiting ...')
+                fn.wait(5.)
+            self.log.info('Getting queued results ...')
+            try:
+                values = q.get(False)
+            except:
                 values = []
+            process.join()
           
         #######################################################################
         # HDB/TDB Specific Code
