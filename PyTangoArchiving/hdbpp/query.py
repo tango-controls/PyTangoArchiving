@@ -176,69 +176,18 @@ class HDBppReader(HDBppDB):
     #@Cached(depth=10,expire=300.)
     #def Query(self,*args,**kwargs):
         #return HDBppDB.Query(self,*args,**kwargs)
-    
-    @CatchedAndLogged(throw=True)
-    def get_attribute_values(self,table,start_date=None,stop_date=None,
-                             desc=False,N=0,unixtime=True,
-                             extra_columns='quality',decimate=0,human=False,
-                             as_double=True,
-                             aggregate='', #'MAX',
-                             int_time=True,
-                             what='',
-                             where='',
-                             **kwargs):
-        """ 
-        Returns archived values between dates for a given table/attribute.
         
-        Parameters
-        ----------
-        table
-            table or attribute
-        start_date/stop_date
-            if not stop_date, anything between start_date and now()
-            start_date and stop_date float or str in a format valid for SQL
-        desc
-            controls the sorting of values
-        N
-            If 0, None or False, has no effect
-            Query will return last N values if there's no stop_date
-            If there is, then it will return the first N values (windowing?)
-            If N is negative, it will return the last N values instead
-        unixtime
-            if True forces conversion of datetime to unix timestamp
-            at query time. It speeds querying by a 60%!!!! 
-        extra_columns
-            adds columns to result ('quality' by default)
-        decimate
-            
-        """
-        INDEX_IN_QUERY = True
-        MAX_QUERY_SIZE = 10800
-        
-        t0 = time.time()
-        N = N or kwargs.get('n',0)
-        self.info('HDBpp.get_attribute_values(%s,%s,%s,N=%s,decimate=%s,'
-                   'int_time=%s,%s)'
-              %(table,start_date,stop_date,N,decimate,int_time,kwargs))
-        if fn.isSequence(table):
-            aid,tid,table = table
-        else:
-            index = None
-            if '[' in table:
-                try:
-                    index = int(fn.clsearch('\[([0-9]+)\]',table).groups()[0])
-                    table = table.split('[')[0]
-                except:
-                    pass
-                
-            aid,tid,table = self.get_attr_id_type_table(table)
-            
-        if not all((aid,tid,table)):
-            self.warning('%s is not archived' % table)
-            return []
-            
-        human = kwargs.get('asHistoryBuffer',human)
-            
+    def get_attribute_values_query(self,table,
+            start_date=None,stop_date=None,
+            desc=False,N=0,unixtime=True,
+            extra_columns='quality',decimate=0,human=False,
+            as_double=True,
+            aggregate='', #'MAX',
+            int_time=True,
+            what='',
+            where='',
+            **kwargs):
+                                   
         if not what:
             what = 'UNIX_TIMESTAMP(data_time)' if unixtime else 'data_time'
             if as_double:
@@ -336,6 +285,77 @@ class HDBppReader(HDBppDB):
         # too dangerous to remove always data by default, and bunching does not work
         #else: 
             #query+=' limit %s' % (MAX_QUERY_SIZE)
+
+        return query
+        
+    
+    @CatchedAndLogged(throw=True)
+    def get_attribute_values(self,table,start_date=None,stop_date=None,
+                             desc=False,N=0,unixtime=True,
+                             extra_columns='quality',decimate=0,human=False,
+                             as_double=True,
+                             aggregate='', #'MAX',
+                             int_time=True,
+                             what='',
+                             where='',
+                             **kwargs):
+        """ 
+        Returns archived values between dates for a given table/attribute.
+        
+        Parameters
+        ----------
+        table
+            table or attribute
+        start_date/stop_date
+            if not stop_date, anything between start_date and now()
+            start_date and stop_date float or str in a format valid for SQL
+        desc
+            controls the sorting of values
+        N
+            If 0, None or False, has no effect
+            Query will return last N values if there's no stop_date
+            If there is, then it will return the first N values (windowing?)
+            If N is negative, it will return the last N values instead
+        unixtime
+            if True forces conversion of datetime to unix timestamp
+            at query time. It speeds querying by a 60%!!!! 
+        extra_columns
+            adds columns to result ('quality' by default)
+        decimate
+            
+        """
+        INDEX_IN_QUERY = True
+        MAX_QUERY_SIZE = 10800
+        
+        t0 = time.time()
+        N = N or kwargs.get('n',0)
+        self.info('HDBpp.get_attribute_values(%s,%s,%s,N=%s,decimate=%s,'
+                   'int_time=%s,%s)'
+              %(table,start_date,stop_date,N,decimate,int_time,kwargs))
+        if fn.isSequence(table):
+            aid,tid,table = table
+        else:
+            index = None
+            if '[' in table:
+                try:
+                    index = int(fn.clsearch('\[([0-9]+)\]',table).groups()[0])
+                    table = table.split('[')[0]
+                except:
+                    pass
+                
+            aid,tid,table = self.get_attr_id_type_table(table)
+            
+        if not all((aid,tid,table)):
+            self.warning('%s is not archived' % table)
+            return []
+            
+        human = kwargs.get('asHistoryBuffer',human)
+            
+        query = self.get_attribute_values_query(
+            table, start_date, stop_date, desc, N,  unixtime,
+            extra_columns, decimate, human, as_double,
+            aggregate, int_time, what, where, **kwargs
+            )
         
         ######################################################################
         # QUERY
