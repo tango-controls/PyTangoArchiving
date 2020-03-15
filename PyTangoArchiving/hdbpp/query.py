@@ -177,6 +177,21 @@ class HDBppReader(HDBppDB):
     #def Query(self,*args,**kwargs):
         #return HDBppDB.Query(self,*args,**kwargs)
         
+    @Cached(depth=10000,expire=60.)
+    def get_attribute_indexes(self,table):
+        index = None
+        if fn.isSequence(table):
+            aid,tid,table = table
+        else:
+            if '[' in table:
+                try:
+                    index = int(fn.clsearch('\[([0-9]+)\]',table).groups()[0])
+                    table = table.split('[')[0]
+                except:
+                    pass               
+            aid,tid,table = self.get_attr_id_type_table(table)
+        return aid,tid,table,index
+        
     def get_attribute_values_query(self,table,
             start_date=None,stop_date=None,
             desc=False,N=0,unixtime=True,
@@ -187,6 +202,8 @@ class HDBppReader(HDBppDB):
             what='',
             where='',
             **kwargs):
+        
+        aid,tid,table,index = self.get_attribute_indexes(table)
                                    
         if not what:
             what = 'UNIX_TIMESTAMP(data_time)' if unixtime else 'data_time'
@@ -332,18 +349,8 @@ class HDBppReader(HDBppDB):
         self.info('HDBpp.get_attribute_values(%s,%s,%s,N=%s,decimate=%s,'
                    'int_time=%s,%s)'
               %(table,start_date,stop_date,N,decimate,int_time,kwargs))
-        if fn.isSequence(table):
-            aid,tid,table = table
-        else:
-            index = None
-            if '[' in table:
-                try:
-                    index = int(fn.clsearch('\[([0-9]+)\]',table).groups()[0])
-                    table = table.split('[')[0]
-                except:
-                    pass
-                
-            aid,tid,table = self.get_attr_id_type_table(table)
+
+        aid,tid,table,index = self.get_attribute_indexes(table)
             
         if not all((aid,tid,table)):
             self.warning('%s is not archived' % table)

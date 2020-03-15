@@ -379,11 +379,14 @@ class HDBppDB(ArchivingDB,SingletonMap):
     def get_table_name(self,attr):
         return get_attr_id_type_table(attr)[-1]
       
+    @Cached(depth=10000,expire=60.)
     def get_attr_id_type_table(self,attr):
+        
         if fn.isNumber(attr):
             where = 'att_conf_id = %s'%attr
         else:
             where = "att_name like '%s'"%get_search_model(attr)
+            
         q = "select att_name,att_conf_id,att_conf_data_type_id from att_conf"\
             " where %s"%where
         ids = self.Query(q)
