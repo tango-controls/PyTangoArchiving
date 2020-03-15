@@ -27,6 +27,7 @@ a lightweigth api for archiving clients and/or scripts.
 """
 
 import traceback,time,os,re
+import multiprocessing
 from random import randrange
 from collections import defaultdict
 
@@ -973,9 +974,19 @@ class Reader(Object,SingletonMap):
         # Generic Reader, using PyTangoArchiving.Schemas properties
         
         elif self.db_name=='*':
-            values = self.get_attribute_values_from_any(attribute, start_date,
-                stop_date, start_time, stop_time, asHistoryBuffer, decimate,
-                notNone, N, cache, fallback, schemas = schemas)
+            # Getting values in a background process
+            q = multiprocessing.Queue()
+            process = multiprocessing.Process(
+                target=utils.Queued(self.get_attribute_values_from_any),
+                args = (attribute, start_date,stop_date, start_time, stop_time,
+                        asHistoryBuffer, decimate,
+                        notNone, N, cache, fallback, schemas = schemas))
+            process.start()
+            process.join()
+            if q.qsize():
+                values = q.get()
+            else:
+                values = []
           
         #######################################################################
         # HDB/TDB Specific Code
