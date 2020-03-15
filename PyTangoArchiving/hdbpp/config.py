@@ -112,6 +112,13 @@ class HDBppDB(ArchivingDB,SingletonMap):
         except:
             traceback.print_exc()
             print('Unable to get manager')
+    
+    def check(self,method=None):
+        method = method or self.get_data_types
+        if fn.isString(method):
+            return self.Query(method)
+        else:
+            return method()
             
     @staticmethod
     def get_hdbpp_libname():
@@ -701,7 +708,13 @@ class HDBppDB(ArchivingDB,SingletonMap):
         """
         This method will remove the attribute from an existing archiver
         """
-        pass
+        attribute = self.is_attribute_archived(attribute)
+        if attribute: 
+            self.warning('Stopping %s' % attribute)
+            self.get_manager().AttributeStop(attribute)
+        else:
+            self.wanring('%s is not archived!' % attribute)
+        return attribute
     
     def restart_attribute(self,attr, d=''):
         try:
