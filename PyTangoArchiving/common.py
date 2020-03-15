@@ -38,7 +38,7 @@ import PyTangoArchiving
 from PyTangoArchiving import ARCHIVING_CLASSES,ARCHIVING_TYPES,MAX_SERVERS_FOR_CLASS,MIN_ARCHIVING_PERIOD
 from PyTangoArchiving.utils import *
 
-import fandango
+import fandango as fn
 from fandango.dicts import CaselessDict,CaselessDefaultDict
 from fandango.log import Logger
 from fandango.objects import Object
@@ -48,7 +48,7 @@ from utils import PyTango,ServersDict
 def int2DevState(n): return str(PyTango.DevState.values[n])    
 def int2DevType(n): return str(PyTango.ArgType.values[n])    
 
-class CommonAPI(Object,fandango.SingletonMap):
+class CommonAPI(Object,fn.SingletonMap):
     """ 
     This class provides common methods for managing a Soleil-like database 
     (for either archiving or snapshoting)
@@ -69,7 +69,7 @@ class CommonAPI(Object,fandango.SingletonMap):
         self.log.setLogLevel(LogLevel)
         self.log.debug('Logger streams initialized (error,warning,info,debug)')
 
-        self.tango = fandango.get_database() #access to Tango database
+        self.tango = fn.get_database() #access to Tango database
         self.api = self #hook used by legacy packages
         self.servers = None
         self.schema = str(schema).lower()
@@ -89,10 +89,10 @@ class CommonAPI(Object,fandango.SingletonMap):
         self.dbs={} #pointers to Archiving databases
         
         self.ArchivingClasses = classes or self.get_archiving_classes()
-        self.ArchiverClass = (k for k in self.ArchivingClasses if 'Archiver' in k).next()
-        self.ManagerClass = (k for k in self.ArchivingClasses if 'Manager' in k).next()
-        self.ExtractorClass = (k for k in self.ArchivingClasses if 'Extractor' in k).next()
-        try: self.WatcherClass = (k for k in self.ArchivingClasses if 'Watcher' in k).next()
+        self.ArchiverClass = fn.first((k for k in self.ArchivingClasses if 'Archiver' in k),'')
+        self.ManagerClass = fn.first((k for k in self.ArchivingClasses if 'Manager' in k),'')
+        self.ExtractorClass = fn.first((k for k in self.ArchivingClasses if 'Extractor' in k),'')
+        try: self.WatcherClass = fn.first((k for k in self.ArchivingClasses if 'Watcher' in k),'')
         except: self.WatcherClass = None
         
         self.loads=CaselessDefaultDict(lambda k:0) #a dict with the archiving load for each device
@@ -104,16 +104,16 @@ class CommonAPI(Object,fandango.SingletonMap):
           
     ## The ArchivingAPI is an iterator through archived attributes
     def __getitem__(self,k): 
-        k = k if k.count('/')<=3 else fandango.tango.get_normal_name(k)
+        k = k if k.count('/')<=3 else fn.tango.get_normal_name(k)
         return self.attributes.__getitem__(k)
     def __contains__(self,k): 
-        k = k if k.count('/')<=3 else fandango.tango.get_normal_name(k)
+        k = k if k.count('/')<=3 else fn.tango.get_normal_name(k)
         return self.attributes.__contains__(k)
     def get(self,k): 
-        k = k if k.count('/')<=3 else fandango.tango.get_normal_name(k)
+        k = k if k.count('/')<=3 else fn.tango.get_normal_name(k)
         return self.attributes.get(k)
     def has_key(self,k): 
-        k = k if k.count('/')<=3 else fandango.tango.get_normal_name(k)
+        k = k if k.count('/')<=3 else fn.tango.get_normal_name(k)
         return self.attributes.has_key(k)
     #[setattr(self,method,lambda k,meth=method:getattr(self.attributes,meth)(k)) for method in ('__getitem__','__contains__','get','has_key')]
     def __iter__(self): return self.attributes.__iter__()
@@ -238,7 +238,7 @@ def repair_dedicated_attributes(api,attrs=None,load=True,restart=False):
     newconfig = dict((a,tdediattrs[a]) for a in (attrs or tdediattrs) if a in tdediattrs and a in api and api[a].archiver and tdediattrs[a]!=api[a].archiver)
     #rows = dict((a,tdb.db.Query('select ID,archiver,start_date from amt where STOP_DATE is NULL and ID=%d'%api[a].ID)) for a in newconfig.keys() if a in api)
     if restart:
-        astor = fandango.Astor('ArchivingManager/1')
+        astor = fn.Astor('ArchivingManager/1')
         astor.load_from_devs_list(list(set([api[a].archiver for a in newconfig]+newconfig.values())))
         astor.stop_servers()
     if load:
@@ -386,7 +386,7 @@ def force_stop_attributes(schema,attr_list):
     api = PyTangoArchiving.ArchivingAPI(schema)
     attr_list = [a for a in attr_list if a in api and api[a].archiver]
     arch = list(set(api[a].archiver for a in attr_list))
-    astor = fandango.Astor()
+    astor = fn.Astor()
     astor.load_from_devs_list(arch)
     astor.stop_servers()
     for s in attr_list:
@@ -398,13 +398,13 @@ def force_stop_attributes(schema,attr_list):
 def restart_attributes_archivers(schema,attributes,action=False):
     import PyTangoArchiving
     api = PyTangoArchiving.api(schema)
-    devs = fandango.defaultdict(list)
+    devs = fn.defaultdict(list)
     [devs[api[a].archiver].append(a) for a in attributes]
     if not action:
       print('%d archivers to restart, call with action=True to execute it'%len(devs))
     else:
       print('Restarting %d archivers'%len(devs))
-      astor = fandango.Astor()
+      astor = fn.Astor()
       astor.load_from_devs_list(devs.keys())
       astor.stop_servers()
       time.sleep(10.)
@@ -433,12 +433,12 @@ def tdb_to_hdb(attribute,start=0,stop=fun.END_OF_TIME,modes={},delete=False):
     
     
 def get_average_read_time(api='hdb',period=10*3600*24,N=100):
-    if fandango.isString(api):
+    if fn.isString(api):
         import PyTangoArchiving
         api = PyTangoArchiving.ArchivingAPI(api)
     reader = api.get_reader()
     active = [a for a in api.get_archived_attributes() if api[a].data_type not in (1,8)]
-    target = [active[i] for i in fandango.randomize(range(len(active)))][:int(2*N)]
+    target = [active[i] for i in fn.randomize(range(len(active)))][:int(2*N)]
     stats = []
     navg,tavg,count = 0,0,0
     print('testing %s %s attributes'%(len(target),api.schema))
