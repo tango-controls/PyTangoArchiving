@@ -121,6 +121,8 @@ class Schemas(object):
     
     @classmethod
     def get(k,key,default=None):
+        if not k.SCHEMAS: 
+            k.load()        
         return k.SCHEMAS.get(key,default)
     
     @classmethod

@@ -286,8 +286,13 @@ class Reader(Object,SingletonMap):
         if schema is None: schema = db
         if schema is not None and db=='*': db = schema
         if any(s in ('*','all') for s in (db,schema)): db,schema = '*','*'
-        self.log.debug('In PyTangoArchiving.Reader.__init__(%s)' 
-                       % (schema or db or '...'))        
+        
+        sch = Schemas.get(schema)
+        print(schema,sch)
+        if sch and not config: config = sch.get('config','')
+        
+        self.log.warning('In PyTangoArchiving.Reader.__init__(%s, %s)' 
+                       % (schema or db or '...', config))        
         self.db_name = db
         self._last_db = ''
         self.dbs = {}
@@ -353,11 +358,13 @@ class Reader(Object,SingletonMap):
         if not config and self.db_name in Schemas.keys() \
                 and self.schema not in ('hdb','tdb'):
             raise 'NotImplemented!, Use generic Reader() instead'
+        
+        print('%s configs: %s' % (schema,self.configs))
 
         ## THIS METHOD OF CHECKING HDB++ IS FLAWED!! (and unused) @TODO
         #if any(a.lower() in s for s in map(str,(self.db_name,schema,config)) 
                #for a in ('hdbpp','hdb++','hdblite')):
-        if schema.lower() not in ('*','hdb','tdb'):
+        if 'hdbpp' in str(Schemas.get(schema)).lower():
             self.is_hdbpp = True
             c = sorted(self.configs.items())[-1][-1]
             self.db_name = c.split('/')[-1] if '/' in c else schema
@@ -551,7 +558,12 @@ class Reader(Object,SingletonMap):
         
     @Cached(depth=10,expire=15.)
     def get_attributes(self,active=False,regexp=''):
-        """ Queries the database for the current list of archived attributes."""
+        """ 
+        Queries the database for the current list of archived attributes.
+        arguments:
+            active: True/False: attributes currently archived
+            regexp: '' :filter for attributes to retrieve
+        """
         self.log.debug('get_attributes(%s)'%active)
         t0 = now()
 
@@ -849,7 +861,7 @@ class Reader(Object,SingletonMap):
         
     def get_attribute_values(self,attribute,start_date,stop_date=None,
             asHistoryBuffer=False,decimate=False,notNone=False,N=0,
-            cache=True,fallback=True):
+            cache=True,fallback=True,schemas=None):
         '''         
         This method reads values for an attribute between specified dates.
         This method may use MySQL queries or an H/TdbExtractor DeviceServer to 
@@ -963,7 +975,7 @@ class Reader(Object,SingletonMap):
         elif self.db_name=='*':
             values = self.get_attribute_values_from_any(attribute, start_date,
                 stop_date, start_time, stop_time, asHistoryBuffer, decimate,
-                notNone, N, cache, fallback)
+                notNone, N, cache, fallback, schemas = schemas)
           
         #######################################################################
         # HDB/TDB Specific Code
@@ -1042,17 +1054,22 @@ class Reader(Object,SingletonMap):
     
     def get_attribute_values_from_any(self, attribute, start_date, 
         stop_date, start_time, stop_time, asHistoryBuffer=False, 
-        decimate=False, notNone=False, N=0, cache=True, fallback=True):
+        decimate=False, notNone=False, N=0, cache=True, fallback=True,
+        schemas = None):
     
-        sch = self.is_attribute_archived(attribute, preferent = True,
-            start = start_time, stop = stop_time)
+        sch = [s for s in self.is_attribute_archived(
+            attribute, preferent = True, start = start_time, stop = stop_time) 
+            if (not schemas or s in schemas)]
+        
+        if schemas is not None:
+            schemas = fn.toList(schemas) if schemas is not None else []
         
         if not sch: 
             self.log.warning('In get_attribute_values(%s): '
                 'No valid schema at %s'%(attribute,start_date))
             return []
         
-        rd = Schemas.getReader(sch[0])            
+        rd = Schemas.getReader(sch[0])
         #@debug
         self.log.warning('In get_attribute_values(%s): '
             'Using %s schema at %s'%(attribute,rd.schema,start_date))
@@ -1090,7 +1107,7 @@ class Reader(Object,SingletonMap):
                 prev = rd.schema
                 sch = [s for s in self.is_attribute_archived(attribute, 
                     start = gap0, stop = gap1, preferent=False)
-                    if s != prev]
+                    if (s != prev and (not schemas or s in schemas))]
                 self.log.warning('trying fallbacks: %s' % str(sch))
                 gapvals = []
 
@@ -1099,9 +1116,11 @@ class Reader(Object,SingletonMap):
                     'fallback to %s as %s returned no data in (%s,%s)'%(
                         attribute,gap0,gap1,prev,sch[0],
                         rd.schema,time2str(gap0),time2str(gap1)))
+                    
                     gapvals = self.configs[sch[0]
                         ].get_attribute_values(attribute,gap0,gap1,N=N,
                         asHistoryBuffer=asHistoryBuffer,decimate=decimate)
+                        
                     prev,sch = sch[0],sch[1:]
 
                 fallback.extend(gapvals)
