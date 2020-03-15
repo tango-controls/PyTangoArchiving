@@ -147,7 +147,7 @@ class ArchivingAPI(CommonAPI):
                  dedicated=False, tango_host='',logger=None, ):
 
         self.schema = schema.lower()
-        assert self.schema in self.SCHEMAS, 'UnknownSchema_%s'%schema
+        #assert self.schema in self.SCHEMAS, 'UnknownSchema_%s'%schema
         CommonAPI.__init__(self,self.schema,host,user,passwd,
                 classes=self.get_archiving_classes(),LogLevel=LogLevel,
                 load=load,logger=logger)
