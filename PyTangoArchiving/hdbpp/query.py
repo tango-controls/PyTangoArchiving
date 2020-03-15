@@ -360,7 +360,7 @@ class HDBppReader(HDBppDB):
         human = kwargs.get('asHistoryBuffer',human)
             
         query = self.get_attribute_values_query(
-            table, start_date, stop_date, desc, N,  unixtime,
+            attribute, start_date, stop_date, desc, N,  unixtime,
             extra_columns, decimate, human, as_double,
             aggregate, int_time, what, where, **kwargs
             )
