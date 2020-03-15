@@ -99,7 +99,12 @@ class HDBppDB(ArchivingDB,SingletonMap):
         self.attributes = fn.defaultdict(fn.Struct)
         self.dedicated = {}
         self.status = fn.defaultdict(list)
-        ArchivingDB.__init__(self,db_name,host,user,passwd,)
+        try:
+            self.default_cursor = MySQLdb.cursors.SSCursor
+        except:
+            self.default_cursor = None
+        ArchivingDB.__init__(self,db_name,host,user,passwd,
+                             default_cursor=self.default_cursor)
         self.setLogLevel(log_level)
         try:
             self.get_manager()
@@ -642,11 +647,16 @@ class HDBppDB(ArchivingDB,SingletonMap):
                 
             if start:
                 self.get_archiver_attributes.cache.clear()
+                self.get_archivers_attributes.cache.clear()
                 self.get_attribute_archiver.cache.clear()
+                self.get_archivers_attributes();
                 archs = set(map(self.get_attribute_archiver,attributes))
                 for h in archs:
-                    self.info('%s.Start()' % h)
-                    fn.get_device(h, keep=True).Start()
+                    try:
+                        self.info('%s.Start()' % h)
+                        fn.get_device(h, keep=True).Start()
+                    except:
+                        traceback.print_exc()
                 
         except Exception,e:
             print('add_attribute(%s) failed!: %s'%(a,traceback.print_exc()))
@@ -686,6 +696,12 @@ class HDBppDB(ArchivingDB,SingletonMap):
             self.error('start_archiving(%s): %s'
                         %(attribute,traceback.format_exc().replace('\n','')))
         return False        
+    
+    def stop_archiving(self, attribute):
+        """
+        This method will remove the attribute from an existing archiver
+        """
+        pass
     
     def restart_attribute(self,attr, d=''):
         try:
