@@ -980,7 +980,8 @@ class Reader(Object,SingletonMap):
                 target=utils.Queued(self.get_attribute_values_from_any),
                 args = (attribute, start_date,stop_date, start_time, stop_time,
                         asHistoryBuffer, decimate,
-                        notNone, N, cache, fallback, schemas = schemas))
+                        notNone, N, cache, fallback),
+                kwargs = {'schemas':schemas})
             process.start()
             process.join()
             if q.qsize():
