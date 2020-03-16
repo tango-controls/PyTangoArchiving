@@ -58,6 +58,7 @@ partition_prefixes = {
     }
 
 MIN_FILE_SIZE = 16*1024 #hdbrf size in arch04
+MAX_QUERY_SIZE = 10800
 
 class HDBppReader(HDBppDB):
     """
@@ -343,7 +344,6 @@ class HDBppReader(HDBppDB):
             
         """
         INDEX_IN_QUERY = True
-        MAX_QUERY_SIZE = 10800
         
         t0 = time.time()
         N = N or kwargs.get('n',0)
@@ -358,6 +358,10 @@ class HDBppReader(HDBppDB):
             return []
             
         human = kwargs.get('asHistoryBuffer',human)
+        
+        if start_date or stop_date:
+            start_date,start_time,stop_date,stop_time = \
+                Reader.get_time_interval(start_date,stop_date)
             
         query = self.get_attribute_values_query(
             attribute, start_date, stop_date, desc, N,  unixtime,
@@ -369,13 +373,41 @@ class HDBppReader(HDBppDB):
         # QUERY
         
         t0 = time.time()
+        is_array = 'array' in table
         self.debug(query.replace('where','\nwhere').replace(
             'group,','\ngroup'))
         try:
-            result = self.Query(query)
+            result = []
+            lasts = {}
+            cursor = self.Query(query, export = False)
+            while True:
+                v = cursor.fetchmany(1024)
+                if v is None: 
+                    break
+                density = len(v)/(v[-1][0]-v[0][0])
+                if decimate or (density*(stop_time-start_time))>MAX_QUERY_SIZE:
+                    if not decimate or type(decimate) not in (int,float):
+                        self.warning('density=%s values/s: ENFORCING DECIMATION!'
+                                 % density)
+                        decimate = float(stop_time-start_time)/MAX_QUERY_SIZE
+                        self.warning('decimate = %s' % decimate)
+                    for l in v:
+                        ix = l[2] if is_array else None
+                        if ((ix not in lasts)
+                                or (None in (l[1],lasts[ix][1]))
+                                or (l[0] >= (lasts[ix][0]+decimate))):
+                            result.append(l)
+                            lasts[ix] = l
+                else:
+                    result.extend(v)
+                self.info(str(len(result)))
+                if len(v) < 1024:
+                    break
+            
             self.debug('read [%d] in %f s: %s' % 
                          (len(result),time.time()-t0,
                           len(result)>1 and (result[0],result[1],result[-1])))
+                         
         except MySQLdb.ProgrammingError as e:
             result = []
             if 'DOUBLE' in str(e) and "as DOUBLE" in query:
@@ -391,7 +423,7 @@ class HDBppReader(HDBppDB):
         
         t0 = time.time()
         
-        if 'array' in table and (not index or not INDEX_IN_QUERY):
+        if is_array and (not index or not INDEX_IN_QUERY):
             max_ix = 0
             data = fandango.dicts.defaultdict(list)
             for t in result:

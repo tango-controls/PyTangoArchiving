@@ -40,6 +40,7 @@ from fandango.dicts import CaselessDict, SortedDict
 from fandango.linos import check_process,get_memory
 from fandango.tango import ( get_tango_host,parse_tango_model, get_full_name,
     get_normal_name, get_free_property,get_class_property,get_device_property)
+from fandango.threads import SubprocessMethod, AsynchronousFunction
 
 from PyTangoArchiving.utils import * #PyTango, patch_booleans
 import PyTangoArchiving.utils as utils
@@ -960,25 +961,35 @@ class Reader(Object,SingletonMap):
         
         elif self.db_name=='*':
             # Getting values in a background process
-            q = multiprocessing.Queue()
-            process = multiprocessing.Process(
-                target=utils.Queued(q)(self.get_attribute_values_from_any),
-                args = (attribute, start_date,stop_date, start_time, stop_time,
-                        asHistoryBuffer, decimate,
-                        notNone, N, cache, fallback),
-                kwargs = {'schemas':schemas})
-            process.start()
-            tx = fn.now()
-            ## IT IS MANDATORY TO READ THE QueuE BEFORE .join()
-            while q.empty():
-                self.log.debug('waiting ...')
-                fn.wait(5.)
-            self.log.info('Getting queued results ...')
-            try:
-                values = q.get(False)
-            except:
-                values = []
-            process.join()
+            args = (attribute, start_date,stop_date, start_time, stop_time,
+                    asHistoryBuffer, decimate,
+                    notNone, N, cache, fallback)            
+            values = SubprocessMethod(
+                self.get_attribute_values_from_any,*args,
+                method = self.get_attribute_values_from_any,
+                timeout = 3600, callback = None)
+                
+                                      
+            
+            #q = multiprocessing.Queue()
+            #process = multiprocessing.Process(
+                #target=utils.Queued(q)(self.get_attribute_values_from_any),
+                #args = (attribute, start_date,stop_date, start_time, stop_time,
+                        #asHistoryBuffer, decimate,
+                        #notNone, N, cache, fallback),
+                #kwargs = {'schemas':schemas})
+            #process.start()
+            #tx = fn.now()
+            ### IT IS MANDATORY TO READ THE QueuE BEFORE .join()
+            #while q.empty():
+                #self.log.debug('waiting ...')
+                #fn.wait(5.)
+            #self.log.info('Getting queued results ...')
+            #try:
+                #values = q.get(False)
+            #except:
+                #values = []
+            #process.join()
           
         #######################################################################
         # HDB/TDB Specific Code
