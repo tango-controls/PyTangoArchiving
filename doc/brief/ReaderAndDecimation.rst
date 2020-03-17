@@ -1,8 +1,19 @@
-----------
-Decimation
-----------
+---------------------------------
+Decimation On Acquisition of Data
+---------------------------------
 
 .. contents::
+
+
+Levels 
+------
+
+ - On clients, decimation is configured in PyTangoArchiving.widgets.dialogs.QReloadWidget, loaded by ArchivedTrendLogger
+
+ - This method is later called by PyTangoArchiving.widgets.trend.getArchivedTrendValues and passed to the Reader object
+ 
+ 
+
 
 
 Decimation is used on loading data from database sources and before exporting to CSV files or plots.
@@ -14,6 +25,38 @@ Methods used:
 
 '''Reader.get_attributes_from_db''' takes the data using a direct query to MySQL and then extracts the 
 data to a python list of (time,value) tuples.
+
+Decimation modes on Clients
+---------------------------
+
+.. code::
+
+  # All methods linked here are AGGREGATORS, to extract the meaningful value from a chunk
+  # All of them will be applied together with a given period (window)
+
+  DECIMATION_MODES = [
+    #('Hide Nones',fn.arrays.notnone),
+    ('Pick One',fn.arrays.pickfirst), # <<< DEFAULT
+    ('Minimize Noise',fn.arrays.mindiff),
+    ('Maximize Peaks',fn.arrays.maxdiff),
+    ('Average Values',fn.arrays.average),
+    ('In Client', False),
+    ('RAW',None),        
+    ]
+    
+Other option used is : "RemoveNones" (True by default)
+
+This values are returned by:
+
+ - ArchivedTrendLogger.getDecimation()
+ - ArchivedTrendLogger.getNonesCheck()
+ - ArchivedTrendLogger.getPeriod() #window frame to apply decimation
+ 
+ If decimation is chosen "In Client", it will be:
+ 
+  - fn.arrays.notnone if RemoveNones is checked
+  - reader.data_has_changed in any other case
+    
 
 Decimation in Reader.get_attributes_from_db
 -------------------------------------------
