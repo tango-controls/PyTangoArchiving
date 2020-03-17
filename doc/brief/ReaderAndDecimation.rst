@@ -2,6 +2,9 @@
 Decimation
 ----------
 
+.. contents::
+
+
 Decimation is used on loading data from database sources and before exporting to CSV files or plots.
 
 Methods used:
