@@ -122,10 +122,25 @@ Later on, when inserting into the buffer, methods to filter numpy arrays are als
             
     
 
-Decimation in Reader.get_attributes_from_db
--------------------------------------------
+Decimation in Reader.get_attribute_values
+-----------------------------------------
+
+The get_attribute_values accepts an argument **decimate** ; this argument  can have this values:
+
+ - ENUM ... one of the predefined DECIMATION_MODES aggregator methods
+ - callable ... custom method to be passed to filter_array
+ - True ... DataHasChanged will be apply by default
+ - (callable/Enum/True, Window) ... Window to be used for aggregation
+
+The correlate method is used only on get_attributes_values(...) ; but it is actually not used
+when called from archiving2csv.
 
 decimate arg is False by default, even if True any lists of less than 128 elements will not be decimated
+
+but, decimate can be a tuple and include a window parameter::
+
+            decimate,window = decimate if isSequence(decimate) \
+                                        else (decimate,'0')
 
 before any other decimation is done, all repeated values are removed using data_has_changed filter(a,b)
 
