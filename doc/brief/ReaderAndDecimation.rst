@@ -26,8 +26,14 @@ Methods used:
 '''Reader.get_attributes_from_db''' takes the data using a direct query to MySQL and then extracts the 
 data to a python list of (time,value) tuples.
 
-Decimation modes on Clients
----------------------------
+Decimation modes on Taurus Clients
+----------------------------------
+
+The TaurusTrend widget is calling just PyTangoArchiving.trend.getArchivedTrendValues with no arguments::
+
+    ./taurus/qt/qtgui/plot/taurustrend.py:356:  getArchivedTrendValues(self, model, insert=True)
+    
+This method uses its default arguments and the settings coming from ArchivedTrendLogger dialog.
 
 .. code::
 
@@ -52,10 +58,67 @@ This values are returned by:
  - ArchivedTrendLogger.getNonesCheck()
  - ArchivedTrendLogger.getPeriod() #window frame to apply decimation
  
- If decimation is chosen "In Client", it will be:
+ If no aggregator method is chosen, then the fallbacks are:
  
   - fn.arrays.notnone if RemoveNones is checked
-  - reader.data_has_changed in any other case
+  - None if RAW extraction is chosen
+  - if decimate=True argument in getArchivedTrendValues (default):
+    - reader.data_has_changed
+    
+.. code::
+
+  def dateHasChanged(prev,curr=None):
+    v = all(curr) and (not prev or not any(prev[:2]) 
+                        or any(abs(x-y)>MIN_WINDOW 
+                                for x,y in zip(curr,prev)))
+    return v
+    
+Also a parameter N = MAX_QUERY_LENGTH is passed to Reader!! (MAX_QUERY_LENGTH = 65536*1024)
+
+This parameter is passed only if start-stop >= MAX_QUERY_TIME = 3600*24*1000
+
+Then::
+
+  history = reader.get_attribute_values(model,start_date,stop_date,
+                N=N,asHistoryBuffer=False,decimate=decimation) or []
+                
+Later on, when inserting into the buffer, methods to filter numpy arrays are also used::
+
+    def updateTrendBuffers(...):
+        ...
+               minstep = abs(t[-1] - t[0]) / 1081.
+                logger.warning('In updateTrendBuffers('
+                        '(%s - %s)[%d] \n\t+ (%s - %s)[%d],'
+                        'fromHistoryBuffer=%s, minstep=%s, overlap=%s)' % (
+                            len(self._xBuffer) and time2str(self._xBuffer[0]),
+                            len(self._xBuffer) and time2str(self._xBuffer[-1]),
+                            len(self._xBuffer) or 0,
+                            time2str(t[0]),
+                            time2str(t[-1]),
+                            len(t) or 0,
+                            fromHistoryBuffer,minstep,overlap))
+                
+                t0 = time.time()
+                #No backtracking, normal insertion
+                t_index = utils.sort_array(t,decimate=True,as_index=True,
+                                            minstep=minstep)
+                t,y = t.take(t_index,0),y.take(t_index,0)                                
+
+                if overlap: 
+                    #History and current buffer overlap!; resorting data
+                    t = numpy.concatenate((t,self._xBuffer.toArray()))
+                    y = numpy.concatenate((y,self._yBuffer.toArray()))
+                    t_index = utils.sort_array(t,decimate=False,as_index=True)
+                    t,y = t.take(t_index,0),y.take(t_index,0)
+                    newsize = int(max((parent.DEFAULT_MAX_BUFFER_SIZE,
+                                       1.5*len(t))))
+                    resetTrendBuffer(self._xBuffer,newsize,t)
+                    resetTrendBuffer(self._yBuffer,newsize,y)
+                else: 
+                    self._xBuffer.extendLeft(t)
+                    self._yBuffer.extendLeft(y)
+                    
+            
     
 
 Decimation in Reader.get_attributes_from_db
