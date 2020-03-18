@@ -12,19 +12,20 @@ Levels
 
  - This method is later called by PyTangoArchiving.widgets.trend.getArchivedTrendValues and passed to the Reader object
  
- 
-
-
-
 Decimation is used on loading data from database sources and before exporting to CSV files or plots.
 
-Methods used:
-
-- Reader.decimation
-- fandango.arrays.filter_array
-
-'''Reader.get_attributes_from_db''' takes the data using a direct query to MySQL and then extracts the 
+'''Reader.get_attributes_values''' takes the data calling the DB api (tdb/hdb++) and extracts the 
 data to a python list of (time,value) tuples.
+
+Extraction from archiving2csv
+-----------------------------
+
+ - resolution parameter it's translated into correlate argument for Reader
+ - But!, not passed to Reader but applied on the archiving2csv code instead!
+   - with some bugs on arrays correlation
+   - This should be corrected and moved to the reader code
+   
+for non-array attributes: values = fandango.arrays.filter_array(v,window=correlate)
 
 Decimation modes on Taurus Clients
 ----------------------------------
