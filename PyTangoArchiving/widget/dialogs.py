@@ -34,7 +34,7 @@ import fandango as fn
 
 import PyTangoArchiving
 import PyTangoArchiving.utils as utils
-from PyTangoArchiving.reader import Reader,ReaderProcess
+from PyTangoArchiving.reader import Reader,ReaderProcess,DECIMATION_MODES
 
 ## WARNING: AVOID TO IMPORT TAURUS OR QT OUTSIDE ANY METHOD OR CLASS, BE GREEN!
 #from taurus.qt.qtgui.plot import TaurusTrend
@@ -63,16 +63,6 @@ try:
 except:
     print traceback.format_exc()
 print 'Multiprocess:%s'%USE_MULTIPROCESS
-
-DECIMATION_MODES = [
-    #('Hide Nones',fn.arrays.notnone),
-    ('Pick One',fn.arrays.pickfirst),
-    ('Minimize Noise',fn.arrays.mindiff),
-    ('Maximize Peaks',fn.arrays.maxdiff),
-    ('Average Values',fn.arrays.average),
-    ('In Client', False),
-    ('RAW',None),        
-    ]
 
 def getTrendObject(trend_set):
     return trend_set if hasattr(trend_set,'axisScaleDiv') else getObjectParent(trend_set)

@@ -56,14 +56,24 @@ STARTUP = time.time()
 def getArchivedTrendValues(*args,**kwargs):
     """ For backwards compatibility, preload TaurusTrend layer """
     try:
-        from PyTangoArchiving.widget.trend import getArchivedTrendValues
-        return getArchivedTrendValues(*args,**kwargs)
+        import PyTangoArchiving.widget.trend as pwt
+        return pwt.getArchivedTrendValues(*args,**kwargs)
     except:
         traceback.print_exc()
         return []
-
+    
 ###############################################################################
 # Helpers
+
+DECIMATION_MODES = [
+    #('Hide Nones',fn.arrays.notnone),
+    ('Pick One',fn.arrays.pickfirst), # <<< DEFAULT
+    ('Minimize Noise',fn.arrays.mindiff),
+    ('Maximize Peaks',fn.arrays.maxdiff),
+    ('Average Values',fn.arrays.average),
+    ('In Client', False),
+    ('RAW',None),        
+    ]
     
 def expandEvalAttribute(attribute):
     if '{' not in attribute: return []
@@ -1037,8 +1047,10 @@ class Reader(Object,SingletonMap):
                     self.log.warning('Decimation(%s)?: %s'
                         % (decimate, traceback.format_exc()))
                         
+            ## Removal of None values is always done
             ## Decimation by data_has_changed is done always
-            values = decimation(values, decimate, window=window, 
+            ## Decmation on window is only done if decimate is callable
+            values = utils.decimation(values, decimate, window=window, 
                                 logger_obj=self.log)
                 
             #@debug
@@ -1079,13 +1091,13 @@ class Reader(Object,SingletonMap):
             schemas = fn.toList(schemas) if schemas is not None else []
         
         if not sch: 
-            self.log.warning('In get_attribute_values(%s): '
+            self.log.warning('In get_attribute_values_from_any(%s): '
                 'No valid schema at %s'%(attribute,start_date))
             return []
         
         rd = Schemas.getReader(sch[0])
         #@debug
-        self.log.warning('In get_attribute_values(%s): '
+        self.log.warning('In get_attribute_values_from_any(%s): '
             'Using %s schema at %s'%(attribute,rd.schema,start_date))
         
         if not rd.is_attribute_archived(attribute):
@@ -1335,7 +1347,9 @@ class Reader(Object,SingletonMap):
         self.log.debug('Query finished in %d milliseconds'%(1000*(time.time()-start)))
         if correlate or text:
             if len(attributes)>1:
-                table = self.correlate_values(values,str2time(stop_date),resolution=(correlate if correlate is not True and fn.isNumber(correlate)  else None))
+                table = self.correlate_values(values,str2time(stop_date),
+                    resolution=(correlate if correlate is not True 
+                                and fn.isNumber(correlate)  else None))
             else:
                 table = values
             if trace or text: 
