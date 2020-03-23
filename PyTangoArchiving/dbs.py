@@ -164,20 +164,23 @@ class ArchivingDB(FriendlyDB):
                 result[row['ID']].update((k,[row[j] for j in v]) for k,v in self.AMT_COLUMNS.items() if '_mod' in k and row[k])
             return result if len(result)!=1 else result.popitem()[1]
     
-    def get_last_attribute_values(self,table,n,check_table=False):
+    def get_last_attribute_values(self,table,n,check_table=False,epoch=fn.END_OF_TIME):
         """
         Check table set to False as sometimes order of insertion is not the same as expected, BE CAREFUL WITH THIS ARGUMENT!
         """
-        query = table
+        query,where = table,''
         if check_table:
             table_size = self.getTableSize(table)
             if table_size>1e3:
                 x = max((2*n,20))
                 query = '(select * from %s limit %d,%d)'%(table,table_size-x,x)
-        if 'read_value' in self.getTableCols(table):
-            return self.Query('SELECT time,read_value from %s T order by T.time desc limit %d'%(query,n))
-        else:
-            return self.Query('SELECT time,value from %s T order by T.time desc limit %d'%(query,n))
+        epoch = fn.str2time(epoch) if fn.isString(epoch) else epoch
+        if epoch not in (None, fn.END_OF_TIME):
+            where = " where T.time < '%s' " % (fn.time2str(epoch))
+        what = 'SELECT time'
+        what += (',value',',read_value')['read_value' in self.getTableCols(table)]
+        return self.Query('%s from %s T %s order by T.time desc limit %d' % (
+            what, query, where, n))
     
     def get_attribute_values(self,table,start_date=None,stop_date=None,
                              desc=False,N=0,unixtime=True):

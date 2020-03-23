@@ -858,7 +858,7 @@ class ArchivingAPI(CommonAPI):
             #self.log.debug('Getting values for a list of attributes ...')
             values = {}
             for att in (type(attribute) in [list,set] and attribute or self.attributes):
-                values[att] = self.load_last_values(att, n, cache)
+                values[att] = self.load_last_values(att, n, cache, epoch=epoch)
                 self.log.debug('Last values acquired for %s'%att)
                 if not values[att] and att in self.attributes and self.attributes[att].archiver: 
                     self.log.info('Attribute %s archived by %s has no values in archiving database!'%(str(att),str(self.attributes[att].archiver)))
@@ -878,11 +878,12 @@ class ArchivingAPI(CommonAPI):
                 lines = [[fandango.time2date(att.last_date),att.last_value]]
             else:
                 try:
-                    lines = self.db.get_last_attribute_values(att.table,n)
+                    lines = self.db.get_last_attribute_values(att.table,n,epoch=epoch)
                     if len(lines):
                         value,date=lines[0][1],time.mktime(lines[0][0].timetuple())+1e-6*lines[0][0].microsecond
                         self.attributes[attribute].setLastValue(value,date)
-                        if self.attributes[attribute].archiver and date<(now-max([3600]+[mode[0]/1000. for mode in self[attribute].modes.values()])): 
+                        if ((epoch is None or epoch > now) and self.attributes[attribute].archiver and 
+                            date<(now-max([3600]+[mode[0]/1000. for mode in self[attribute].modes.values()]))):
                             self.log.debug('%s (%s) has no values since %s.'%(attribute,self.attributes[attribute].archiver,time.ctime(date)))
                     elif self.attributes[attribute].archiver:
                         self.log.error('No values has been found for attribute %s!'%attribute)
