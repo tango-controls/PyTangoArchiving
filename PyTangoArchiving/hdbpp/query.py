@@ -58,7 +58,7 @@ partition_prefixes = {
     }
 
 MIN_FILE_SIZE = 16*1024 #hdbrf size in arch04
-MAX_QUERY_SIZE = 10800
+MAX_QUERY_SIZE = 256*1024 
 
 class HDBppReader(HDBppDB):
     """
@@ -132,14 +132,11 @@ class HDBppReader(HDBppDB):
     get_table_partitions_for_dates = get_partitions_at_dates   
       
     def get_last_attribute_values(self,table,n=1,
-            check_table=False,epoch=None,period=3*86400):
+            check_table=False,epoch=None,period=86400):
         if epoch is None:
             epoch = fn.now()+600
         elif epoch < 0:
-            #start,epoch = fn.now()+epoch,fn.now()+600
-            epoch = fn.now()-epoch
-        #else: #NOPE!!
-            #start,epoch = epoch, fn.now()+600
+            epoch = fn.now()+epoch
 
         #Rounding start to the last month partition - 3d before epoch
         start = -period + fn.str2time(
@@ -152,15 +149,17 @@ class HDBppReader(HDBppDB):
         else: 
             return vals
     
-    def load_last_values(self,attributes=None,n=1,epoch=None,tref=0):
+    def load_last_values(self,attributes=None,n=1,epoch=None,tref=86400):
         """
         attributes: attribute name or list
         n: the number of last values to be retorned
-        epoch: time from which start searching values (now-600 by default)
+        tref: time from which start searching values (-1d by default)
+        epoch: end of window to search values (now by default)
         """
+        epoch = fn.str2time(epoch) if fn.isString(epoch) else epoch
         if attributes is None:
             attributes = self.get_archived_attributes()
-        period = -tref if tref<0 else (fn.now()-tref if tref>1e9 else tref)
+        period = -tref if tref<0 else ((epoch-tref) if tref<1e9 else tref)
         vals = dict((a,self.get_last_attribute_values(a,n=n,epoch=epoch)) 
                     for a in fn.toList(attributes))
         for a,v in vals.items():
@@ -384,7 +383,7 @@ class HDBppReader(HDBppDB):
                 v = cursor.fetchmany(1024)
                 if v is None: 
                     break
-                density = len(v)/(v[-1][0]-v[0][0])
+                density = len(v)/(v[-1][0]-v[0][0]) if len(v)>1 else 0
                 if decimate or (density*(stop_time-start_time))>MAX_QUERY_SIZE:
                     if not decimate or type(decimate) not in (int,float):
                         self.warning('density=%s values/s: ENFORCING DECIMATION!'

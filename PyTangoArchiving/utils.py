@@ -370,12 +370,12 @@ def get_gaps(values, min_gap=5*24*3600, start=None, stop=None):
     """
     return time intervals in buffer where time distance is bigger than min_gap
     """
-    if not any((len(values),start,stop)):
-        print('get_gaps, no values')
-        return []
-    elif start and stop and not len(values):
+    if start and stop and not len(values):
         print('get_gaps, no values in interval')
         return [(start,stop)]
+    elif not any((len(values),start,stop)):
+        print('get_gaps, no values')
+        return []        
         
     gaps = [(values[i][0],v[0]) for i,v in enumerate(values[1:])
                 if min_gap < (v[0]-values[i][0])]

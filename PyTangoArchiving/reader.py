@@ -879,9 +879,9 @@ class Reader(Object,SingletonMap):
         
         :return: a list with values (History or tuple values depending of args)
         '''
-        self.log.debug('get_attribute_values(%s, %s, %s, %s, %s, %s, %s, %s, %s)'
+        self.log.debug('get_attribute_values(%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)'
             % (attribute, start_date, stop_date, asHistoryBuffer, decimate, 
-               notNone, N, cache, fallback))
+               notNone, N, cache, fallback, schemas))
             
         if not self.check_state(): 
             self.log.info('In PyTangoArchiving.Reader.get_attribute_values:'
@@ -970,15 +970,21 @@ class Reader(Object,SingletonMap):
         # Generic Reader, using PyTangoArchiving.Schemas properties
         
         elif self.db_name=='*':
-            # Getting values in a background process
+            self.log.info('Getting %s values in a background process ...' 
+                          % attribute)
             args = (attribute, start_date,stop_date, start_time, stop_time,
-                    asHistoryBuffer, decimate,
-                    notNone, N, cache, fallback)            
+                    asHistoryBuffer, decimate, notNone, N, cache, 
+                    fallback, schemas)            
             values = SubprocessMethod(
-                self.get_attribute_values_from_any,*args,
-                method = self.get_attribute_values_from_any,
+                self.get_attribute_values_from_any,
+                *args,
                 timeout = 3600, callback = None)
                 
+            #def get_attribute_values_from_any(self, attribute, start_date, 
+                #stop_date, start_time, stop_time, asHistoryBuffer=False, 
+                #decimate=False, notNone=False, N=0, cache=True, fallback=True,
+                #schemas = None):
+                        
                                       
             
             #q = multiprocessing.Queue()
@@ -1095,7 +1101,7 @@ class Reader(Object,SingletonMap):
                 'No valid schema at %s'%(attribute,start_date))
             return []
         
-        rd = Schemas.getReader(sch[0])
+        rd = Schemas.getReader(sch.pop(0))
         #@debug
         self.log.warning('In get_attribute_values_from_any(%s): '
             'Using %s schema at %s'%(attribute,rd.schema,start_date))
@@ -1118,7 +1124,6 @@ class Reader(Object,SingletonMap):
         
         # If no data, it just tries the next database
         if fallback:
-
             if (values is None or not len(values)): 
                 gaps = [(start_time,stop_time)]
             else:
@@ -1129,11 +1134,14 @@ class Reader(Object,SingletonMap):
                 self.log.debug('get_gaps(%d): %d gaps' % (len(values),len(gaps)))
 
             fallback = []
+
             for gap0,gap1 in gaps:
-                prev = rd.schema
+                prev = rd.schema #every iter searches through all schemas on each gap
                 sch = [s for s in self.is_attribute_archived(attribute, 
                     start = gap0, stop = gap1, preferent=False)
                     if (s != prev and (not schemas or s in schemas))]
+                if not sch: 
+                    break
                 self.log.warning('trying fallbacks: %s' % str(sch))
                 gapvals = []
 
@@ -1149,20 +1157,23 @@ class Reader(Object,SingletonMap):
                         
                     prev,sch = sch[0],sch[1:]
 
-                fallback.extend(gapvals)
-
-            if gaps and not len(fallback):
-                self.log.warning('fallback: getting last values < %s from %s' 
-                                 % (start_date, rd.schema))
-                lasts = rd.load_last_values(attribute,epoch=start_time)
-                l = len(values[-1]) if values else 2
-                fallback = [t[:l] for t in lasts.values()]
-                
+                if len(gapvals):
+                    fallback.extend(gapvals)
+               
             if len(fallback):
                 tf = fn.now()
                 values = sorted(values+fallback)
                 self.log.warning('Adding %d values from fallback took '
-                    '%f seconds' % (len(fallback),fn.now()-tf))   
+                    '%f seconds' % (len(fallback),fn.now()-tf))
+                
+            if not len(values) or not len(values[0]) or values[0][0] > (
+                    start_time + max((600,(stop_time-start_time)/1080.))):
+                self.log.warning('No %s values at %s, checking lasts' % (
+                    attribute, fn.time2str(start_time)))
+                lasts = self.load_last_values(attribute, epoch=start_time)
+                lasts = [v for v in lasts.values() if v is not None and len(v)]
+                lasts = sorted(t for t in lasts if t and len(t))
+                if len(lasts): values.insert(0,lasts[-1][:3])
                 
         return values
     
