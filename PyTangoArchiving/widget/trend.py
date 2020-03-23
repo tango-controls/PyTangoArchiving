@@ -885,6 +885,7 @@ def getArchivedTrendValues(trend_set,model,start_date=0,stop_date=None,
         
         Qt.QApplication.instance().restoreOverrideCursor()
         decimation = logger_obj.getDecimation()
+        # decimation = method, decimate = whether to decimate or not
         if not decimation:
             if decimation is not None: #RAW
                 if logger_obj.getNonesCheck(): 

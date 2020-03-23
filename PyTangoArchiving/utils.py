@@ -429,8 +429,9 @@ def decimation(history,method,window='0',logger_obj=None, N=1080):
         return history
     
     trace = getattr(logger_obj,'warning',fandango.printf)
-    try: 
-        window = str2time(window or '0') 
+    try:
+        if not isinstance(window,(int,float)):
+            window = str2time(window or '0') 
     except: 
         window = 0
         
@@ -442,8 +443,8 @@ def decimation(history,method,window='0',logger_obj=None, N=1080):
         #sq = isSequence(history[0][1])
         for i,v in enumerate(history):
             if (v[1] not in (None,NaN)# is not None and (sq or not isNaN(v[1]))
-                    #and (i in (0,l0-1,l0-2) or 
-                        #data_has_changed(history[i-1],v,history[i+1]))
+                    and (i in (0,l0-1,l0-2) or 
+                        data_has_changed(history[i-1],v,history[i+1]))
                     ):
                 nv.append(v)
         t1 = time.time()
@@ -462,7 +463,7 @@ def decimation(history,method,window='0',logger_obj=None, N=1080):
               %(l0-len(history),t1-t0))
         history = nv   
         
-    if (method and isCallable(method) and method!=data_has_changed 
+    if (method and isCallable(method) #and method!=data_has_changed 
         and len(history) and type(history[0][-1]) in (int,float,bool)): #type(None)):
         # Data is filtered applying an averaging at every "window" interval.
         # As range() only accept integers the minimum window is 1 second.
@@ -474,7 +475,7 @@ def decimation(history,method,window='0',logger_obj=None, N=1080):
         trace('WMIN,WUSER,WAUTO = %s,%s,%s'%(wmin,window,wauto))
         window = wauto if not window else max((wmin,window))
         
-        if len(history) > (stop_date-start_date)/window:
+        if len(history) > float(stop_date-start_date)/window:
             history = fandango.arrays.filter_array(
                 data=history,window=window,method=method)
             t2 = time.time()

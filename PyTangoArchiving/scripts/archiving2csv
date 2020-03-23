@@ -239,9 +239,13 @@ else:
                     values[a] = []
                     for t,vv in v:
                         if not values[a]:
-                            values[a].append((t,vv))
+                            values[a].append((t,vv)) #TODO: should be rounded
+                        # fill up output until catching the raw values
                         while values[a][-1][0]+correlate < t:
                             values[a].append((values[a][-1][0]+correlate,vv))
+                        # this inserts into original only if a value matches?
+                        # TODO: what happens if no value matches!?!?!
+                        # TODO: int(t) should be rounded!!!
                         if int(t) == int(values[a][-1][0])+correlate:
                             values[a].append((t,vv))
                 else:
