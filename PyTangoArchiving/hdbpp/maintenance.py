@@ -75,7 +75,7 @@ def get_attributes_row_counts(db,attrs='*',start=0, stop=0,
             r[a] = c
     return r
 
-def decimate_value_list(values,N=540,method=None):
+def decimate_value_list(values,period=None,max_period=3600,method=None,N=1080):
     """
     values must be a sorted (time,...) array
     it will be decimated in N equal time intervals 
@@ -83,21 +83,49 @@ def decimate_value_list(values,N=540,method=None):
     if method is given, it will be applied to buffer to choose the value to keep
     first value of buffer will always be the last value kept
     """
-    tmin,tmax = sorted((values[0][0],values[-1][0]))
-    result,buff = [values[0]],[values[0]]
-    interval = float(tmax-tmin)/N
-    if not method:
-        for v in values:
-            if v[0]>=(interval+float(result[-1][0])):
+    ## THIS METHOD IS A SIMPLIFICATION OF fandango.arrays.filter_array!
+    # it allows rows to be as long as needed (if [0]=time and [1]=value)
+    # (just check which is faster)
+
+    if not len(values):
+        return []
+    
+    if not period:
+        tmin,tmax = (values[0][0],values[-1][0])
+        period = float(tmax-tmin)/N
+
+    end = len(values)-1
+    
+    if method is None:
+        result = [values[0]]
+        for i,v in enumerate(values):
+            tdiff = v[0]-result[-1][0]
+            #if i==end #distorts everything
+            if tdiff>=max_period or (
+                    v[1]!=result[-1][1] and tdiff>=period):
                 result.append(v)
     else:
-        for v in values:
-            if v[0]>=(interval+float(result[-1][0])):
-                result.append(method(buff))
-                buff = [result[-1]]
-        buff.append(v)
+        result, buff = [],[]
+        ref = values[0]
+        for i,v in enumerate(values):
+            tdiff = v[0]-ref[0]
+            #if (i==end or #distorts!
+            if (tdiff>=period) and len(buff):
+                #if i==end: buff.insert(0,ref)
+                v = list(buff[-1])
+                buff = [t[1] for t in buff]
+                v[1] = method(buff,ref[1])
+                #print(fn.time2str(v[0]),ref,max(buff),min(buff),len(buff),method,v[1])
+                result.append(tuple(v))
+                ref = result[-1]
+                buff = []
+            else:
+                #distinc values not filtered to not alter averages
+                buff.append(v) 
 
-    print(tmin,tmax,N,interval,len(values),len(result),method)
+    if not result:
+        result = [values[-1]]
+    #print(tmin,tmax,N,interval,len(values),len(result),method)
     return result
     
 def decimate_table_inline(db, table, attributes = [], 
@@ -248,14 +276,28 @@ def decimate_into_new_db(db_in, db_out, begin, end):
         print('%s decimating table %s.%s (%d/%d)' 
               % (fn.time2str(),db_in.db_name,t,i+1,len(tables)))
         decimate_into_new_table(db_in,db_out,t,begin,end)
-
+        
+        
+def plot_two_arrays(arr1,arr2,start=None,stop=None):
+    import matplotlib.pyplot as plt
+    plt.figure()
+    x0,x1 = min((arr1[0][0],arr2[0][0])),max((arr1[-1][0],arr2[-1][0]))
+    y0,y1 = min(t[1] for t in arr1+arr2),max(t[1] for t in arr1+arr2)
+    plt.subplot(131)
+    plt.plot([v[0] for v in arr1],[v[1] for v in arr1])
+    plt.axis([x0,x1,y0,y1])
+    plt.subplot(132)
+    plt.plot([v[0] for v in arr2],[v[1] for v in arr2])
+    plt.axis([x0,x1,y0,y1])
+    plt.show()
+        
 def decimate_into_new_table(db_in, db_out, table, start, stop, ntable='', 
-        min_period=0, max_period=21600, bunch=86400/4, suffix='_dec',
+        min_period=1, max_period=3600, bunch=86400/4, suffix='_dec',
         drop=False):
     """
     decimate by distinct value, or by fix period
     accept a min_resolution argument
-    do selects in bunches of ids*1000 values or 250000 (the minimum)
+    do selects in bunches 6 hours
     db_in is the origin database; db_out is where decimated data will be stored
     if db_in == db_out; then a temporary table with suffix is created
 
@@ -286,6 +328,7 @@ def decimate_into_new_table(db_in, db_out, table, start, stop, ntable='',
     except: 
         cpart = None
         
+    # BUNCHING PROCEDURE!
     if stop-start > bunch:
         i = 0
         while start+i*bunch < stop:
@@ -307,7 +350,8 @@ def decimate_into_new_table(db_in, db_out, table, start, stop, ntable='',
     db_out.setLogLevel('DEBUG')        
     if drop:
         db_out.Query('drop table if exists %s' % ntable)
-        
+    
+    # Create Table if it doesn't exist
     if ntable not in tables:
         code = db_in.getTableCreator(table)
         qi = code.split('/')[0].replace(table,ntable)
@@ -317,63 +361,95 @@ def decimate_into_new_table(db_in, db_out, table, start, stop, ntable='',
             db_in.warning('Unable to create table %s' % ntable)
             print(e)
 
+    # Create partitions if they doesn't exist
+    pass
+
+    # Create Indexes if they doesn't exit
+    # scalar index
+    pass
+    # array index
+    pass
+
     ###########################################################################
+    # Getting the data
+    
     t0 = fn.now()
     db_in.info('Get %s values between %s and %s' % (table, date0, date1))
-    what = "att_conf_id,data_time,value_r,quality,UNIX_TIMESTAMP(data_time)"
+    what = "att_conf_id,data_time,value_r,quality".split(',')
+    # converting  times on mysql as python seems to be very bad at
+    # converting datetime types
+    float_time = "CAST(UNIX_TIMESTAMP(data_time) AS DOUBLE)"
+    what.append(float_time)
     array = 'idx' in db_in.getTableCols(table)
     if array:
-        what+= ',idx,dim_x_r,dim_y_r'
-    data = db_in.Query('select %s from %s ' % (what, table) + where 
-                     + ' order by att_conf_id, data_time')
-    print(fn.now()-t0,'seconds')
+        what.extend('idx,dim_x_r,dim_y_r'.split(','))
+        
+    import fandango.threads as ft
+    data = ft.SubprocessMethod(db_in.Query,
+        'select %s from %s ' % (','.join(what), table) + where 
+         + ' order by att_conf_id, data_time')
+
+    tquery = fn.now()-t0
+
+    ###########################################################################
+    # Decimating
+    
+    t0 = fn.now()
     
     # Splitting data into attr or (attr,idx) lists
     # Creating empty dictionaries to store decimated data
+    data_ids = fn.defaultdict(lambda:fn.defaultdict(list))
+    # i,j : att_id, idx
     if array:
-        data_ids = fn.defaultdict(lambda:fn.defaultdict(list))
-        [data_ids[i][j].append((d,v,q,t,x,y)) for i,d,v,q,t,j,x,y in data];
-        data_dec = {}
-        for kk,vv in data_ids.items():
-            data_dec[kk] = {}
-            for k,v in vv.items():
-                data_dec[kk][k] = [] if not v else [v.pop(0)]
+        [data_ids[aid][idx].append((t,v,d,q,x,y)) for aid,d,v,q,t,idx,x,y in data];
     else:
-        data_ids = fn.defaultdict(list)
-        [data_ids[i].append((d,v,q,t)) for i,d,v,q,t in data];
-        data_dec = dict((k,[] if not v else 
-                         [v.pop(0)]) for k,v in data_ids.items())
-    
-    ###########################################################################
-    t0 = fn.now()
+        [data_ids[aid][None].append((t,v,d,q)) for aid,d,v,q,t in data];
+       
     db_in.info('Decimating %d values, period = (%s,%s,[%s])' % 
                (len(data),min_period,max_period,bunch))
-    sample = data[:10]
-    for s in sample:
-        print(str(s))
-    
-    if array:
-        [data_dec[i][j].append((d,v,q,x,y,t)) for i in data_ids 
-            for j in data_ids[i] for d,v,q,t,x,y in data_ids[i][j]
-            if not data_dec[i][j] or (
-                (v!=data_dec[i][j][-1][1] or q!=data_dec[i][j][-1][2] 
-                    or t>data_dec[i][j][-1][-1]+max_period)
-                and (t-min_period)>data_dec[i][j][-1][-1])]
-            
-        data_all = sorted((d,i,v,q,j,x,y) for i in data_dec for j in data_dec[i] 
-                          for d,v,q,x,y,t in data_dec[i][j])
-    else:
-        [data_dec[i].append((d,v,q,t)) for i in data_ids for d,v,q,t in data_ids[i] 
-            if not data_dec[i] or (
-                (v!=data_dec[i][-1][1] or q!=data_dec[i][-1][2] 
-                    or t>data_dec[i][-1][-1]+max_period) 
-                and (t-min_period)>data_dec[i][-1][-1])]
-            
-        data_all = sorted((d,i,v,q) for i in data_dec for d,v,q,t in data_dec[i])
-    print(fn.now()-t0,'seconds')
 
+    data_dec = {}  
+    for kk,vv in data_ids.items():
+        data_dec[kk] = {}
+        for k,v in vv.items():
+            data_dec[kk][k] = decimate_value_list(v,
+                period=min_period, max_period=max_period, method=None)
+            
+    if array:
+        data_all = sorted((d,aid,v,q,idx,x,y) for aid in data_dec 
+            for idx in data_dec[aid] for t,v,d,q,x,y in data_dec[aid][idx])
+    else:
+        data_all = sorted((d,i,v,q) for i in data_dec for t,v,d,q in data_dec[i][None])
+            
+    tdec = fn.now()-t0
+    
+    t0 = fn.now()
+    r = ft.SubprocessMethod(insert_into_new_table,db_out,ntable,data_all)
+    tinsert = (fn.now()-t0,'seconds')
+    
+    try:
+        cpart = (db_out.get_partitions_at_dates(ntable,begin) or [None])[0]
+        r = db.getPartitionSize(ntable,cpart)
+        print('%s.%s.%s new size = %s' % 
+            (db_out,ntable,cpart,r))
+    except: 
+        cpart = None    
+        r = 0
+        
+    print('%s.%s[%s] => %s.%s[%s] (tquery=%s,tdec=%s,tinsert=%s)' % (
+        db_in.db_name,table,len(data),db_out.db_name,ntable,len(data_all),
+            tquery,tdec,tinsert))
+    
+    return r
+
+
+def insert_into_new_table(db_out, ntable, data_all):
     ###########################################################################    
+    # Inserting into database
+    
     db_out.setLogLevel('INFO')
+    array = 'array' in ntable
+    
     if array:
         qi = 'insert into %s (`data_time`,`att_conf_id`,`value_r`,`quality`,'\
             '`idx`,`dim_x_r`,`dim_y_r`) VALUES %s'
@@ -410,25 +486,9 @@ def decimate_into_new_table(db_in, db_out, table, start, stop, ntable='',
 
                     svals.append(s.replace('None','NULL'))
 
-                #if array:
-                    #vals = ','.join(("('%s',%s,%s,%s,%s,%s,%s)"%(d,i,v,q,j,x,y)
-                                     #).replace('None','NULL') 
-                                #for d,i,v,q,j,x,y in vals)
-                #else:
-                    #vals = ','.join(("('%s',%s,%s,%s)"%(d,i,v,q)
-                                     #).replace('None','NULL') 
-                            #for d,i,v,q in vals)
                 db_out.Query(qi % (ntable,','.join(svals)))
 
-    db_out.setLogLevel(l)
-    try:
-        cpart = (db_out.get_partitions_at_dates(ntable,begin) or [None])[0]
-        print('%s.%s.%s new size = %s' % 
-            (db_out,ntable,cpart,db.getPartitionSize(ntable,cpart)))
-    except: 
-        cpart = None    
-    print(fn.now()-t0,'seconds')
-    return
+    return len(data_all)
 
 def copy_between_tables(api, table, source, start, stop, step = 86400):
     
@@ -594,7 +654,7 @@ def get_last_value_in_table(api, table, tref = -180*86400):
     """
     t0,last,size = fn.now(),0,0
     db = pta.api(api) if fn.isString(api) else api
-    print('get_last_value_in_table(%s, %s)' % (db.db_name, table))
+    #print('get_last_value_in_table(%s, %s)' % (db.db_name, table))
     last_part = db.get_last_partition(table)
     tref = tref if tref>0 else fn.now()+tref
 
@@ -632,7 +692,7 @@ def get_last_value_in_table(api, table, tref = -180*86400):
         last = db.Query(q)
         last = fn.first(last[0]) if len(last) else 0
 
-    print('\tlast value at %s, check took %d secs' % (last, fn.now()-t0))
+    #print('\tlast value at %s, check took %d secs' % (last, fn.now()-t0))
     return (last, size, fn.now()-t0)
 
 def delete_data_older_than(api, table, timestamp, doit=False, force=False):
