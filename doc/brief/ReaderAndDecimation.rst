@@ -21,11 +21,13 @@ Extraction from archiving2csv
 -----------------------------
 
  - resolution parameter it's translated into correlate argument for Reader
- - But!, not passed to Reader but applied on the archiving2csv code instead!
+ - But, not passed to Reader but applied on the archiving2csv code instead!
    - with some bugs on arrays correlation
    - This should be corrected and moved to the reader code
    
-for non-array attributes: values = fandango.arrays.filter_array(v,window=correlate)
+for non-array attributes::
+
+  values = fandango.arrays.filter_array(v,window=correlate)
 
 Decimation modes on Taurus Clients
 ----------------------------------
