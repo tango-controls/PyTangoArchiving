@@ -21,6 +21,8 @@ def get_search_model(model):
     model = clsub('[:][0-9]+','%:%',model)
     return model
 
+RAW = None
+
 partition_prefixes = {
 ### BUT, NOT ALL TABLES ARE IN THIS LIST!
 # I'm partitioning only the big ones, and ignoring the others
@@ -195,7 +197,8 @@ class HDBppReader(HDBppDB):
     def get_attribute_values_query(self,attribute,
             start_date=None,stop_date=None,
             desc=False,N=0,unixtime=True,
-            extra_columns='quality',decimate=0,human=False,
+            extra_columns='quality',
+            decimate=0,human=False,
             as_double=True,
             aggregate='', #'MAX',
             int_time=True,
@@ -240,6 +243,7 @@ class HDBppReader(HDBppDB):
         
         if int_time:
             self.info('Using int_time indexing for %s' % table)
+            
         if start_date or stop_date:
             start_date,start_time,stop_date,stop_time = \
                 Reader.get_time_interval(start_date,stop_date)
@@ -277,17 +281,21 @@ class HDBppReader(HDBppDB):
                 d = int(decimate) or 1
             else:
                 d = int((stop_time-start_time)/MAX_QUERY_SIZE) or 1
+
             def next_power_of_2(x):  
                 return 1 if x == 0 else 2**int(x - 1).bit_length()
             d = next_power_of_2(d/2)
             
             # decimation on server side
             if int_time:
-                query += ' group by %s DIV %d' % (
+                query += ' group by (%s DIV %d)' % (
                     'int_time', d)
             else:
-                query += ' group by FLOOR(%s/%d)' % (
+                query += ' group by (FLOOR(%s/%d))' % (
                     'UNIX_TIMESTAMP(data_time)', d)
+
+            if 'array' in table:
+                query += ',idx'
             
         query += ' order by %s' % ('int_time' #, DTS' # much slower!
                             if int_time else 'data_time')
@@ -340,6 +348,9 @@ class HDBppReader(HDBppDB):
         extra_columns
             adds columns to result ('quality' by default)
         decimate
+            period or aggregation methods
+            0 by default (the method will choose)
+            if None (RAW), no decimation is done at all
             
         """
         INDEX_IN_QUERY = True
@@ -380,16 +391,16 @@ class HDBppReader(HDBppDB):
             lasts = {}
             cursor = self.Query(query, export = False)
             while True:
+                # Fetching/decimating data in blocks of 1024 rows
                 v = cursor.fetchmany(1024)
                 if v is None: 
                     break
                 density = len(v)/(v[-1][0]-v[0][0]) if len(v)>1 else 0
-                if decimate or (density*(stop_time-start_time))>MAX_QUERY_SIZE:
+                if decimate!=RAW and (density*(stop_time-start_time))>MAX_QUERY_SIZE:
                     if not decimate or type(decimate) not in (int,float):
-                        self.warning('density=%s values/s: ENFORCING DECIMATION!'
-                                 % density)
                         decimate = float(stop_time-start_time)/MAX_QUERY_SIZE
-                        self.warning('decimate = %s' % decimate)
+                        self.warning('density=%s values/s!: enforce decimate every %s seconds'
+                                 % (density,decimate))
                     for l in v:
                         ix = l[2] if is_array else None
                         if ((ix not in lasts)
