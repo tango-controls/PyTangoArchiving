@@ -37,273 +37,278 @@ To extract attribute values:
   --noepoch : do not include epochs
 """
 
-sep = '\t'
-linesep = '\n'
-arrsep = ', '
-lines = []
-attrs = []
-filename = ''
-print arrsep*80
-
 def is_filename(a):
     return (not pta.utils.is_regexp(a) 
             and ('/' not in a or os.path.exists(a.rsplit('/',1)[0])))
 
-try:
-    if not sys.argv[1:] or any(a in sys.argv[1:] 
-                               for a in ('-?','-h','--help','help')):
-        print(__doc__)
-        sys.exit(0)
-        
-    attrs = [a for a in sys.argv[1:] if not a.startswith('-')]
-    args = [a for a in sys.argv[1:] if a.startswith('-')]
+def main():
     
-    if attrs and is_filename(attrs[-1]):
-        filename = attrs.pop(-1)    
-    
-    if any(fn.inCl(s,args) for s in ('--modes','--config')):
-        if not filename: 
-            host = fn.tango.get_tango_host().split(':')[0].split('.')[0]
-            filename = '/tmp/%s_archiving_modes_%s.csv'%(
-                host,fn.time2str(cad='%Y%m%d-%H%M%S'))        
+    sep = '\t'
+    linesep = '\n'
+    arrsep = ', '
+    lines = []
+    attrs = []
+    filename = ''
+    print arrsep*80
 
-    elif '--list' in args:
-        pass
-
-    elif attrs:
-        #assert filename and len(attrs)>3, "Dates and filename required!"
-        start,stop = attrs[-2:]
-        attrs = map(str.lower,attrs[:-2])
-        assert fn.str2time(start)>0,'wrong start'
-        assert fn.str2time(stop)>0,'wrong stop'
-        [a.split('/')[2] for a in attrs]
+    try:
+        if not sys.argv[1:] or any(a in sys.argv[1:] 
+                                for a in ('-?','-h','--help','help')):
+            print(__doc__)
+            sys.exit(0)
             
-    if attrs:
-        ext = [a for a in attrs if pta.utils.is_regexp(a)]
-        if ext:
-            [attrs.remove(e) for e in ext]
-            rd = pta.Reader()
-            for a in rd.get_attributes():
-                if any(fn.clmatch(e,a) for e in ext):
-                    attrs.append(a)
-            
-        attrs = [fn.tango.get_full_name(a,fqdn=1).lower() for a in attrs]
-
-    schema = '*'
-    for a in args[:]:
-        if a.startswith('--schema='):
-            schema = a.split('=')[-1]
-            args.remove(a)
+        attrs = [a for a in sys.argv[1:] if not a.startswith('-')]
+        args = [a for a in sys.argv[1:] if a.startswith('-')]
         
-except:
-  print traceback.format_exc()
-  print '\nWrong arguments, right syntax is:\n\t'
-  print __doc__
-  sys.exit(-1)
-    
-if '--config' in args or '--modes' in args:
-    print('Saving backup of current archiving configuration')
-    if '--config' in args:
-        print('(human readable)')
+        if attrs and is_filename(attrs[-1]):
+            filename = attrs.pop(-1)    
         
-    if schema == '*': 
-        schema = ','.join(k for k,v in pta.Schemas.load().items() if v)
-    schemas = schema.split(',')
-    for schema in schemas:
-        try:
-            api = pta.api(schema)
-        except:
-            print('%s schema not available' % schema)
-            continue
+        if any(fn.inCl(s,args) for s in ('--modes','--config')):
+            if not filename: 
+                host = fn.tango.get_tango_host().split(':')[0].split('.')[0]
+                filename = '/tmp/%s_archiving_modes_%s.csv'%(
+                    host,fn.time2str(cad='%Y%m%d-%H%M%S'))        
 
-        if not attrs:
-            attrs = api.keys() if hasattr(api,'keys') else api.get_attributes()
-            
-        print('Extracting %d attribute modes from %s' % (len(attrs),schema))
+        elif '--list' in args:
+            pass
 
-        for a in attrs:
-            try:
-                v = api[a]
-                dev,attr = a.rsplit('/',1)
-                if not hasattr(v,'modes') and\
-                    hasattr(api,'get_attribute_archiver'):
-                        #v.modes = api.get_attribute_modes(a)
-                        ## For HDB++ the modes gives you no useful info
-                        # A check_attribute_events is needed for each attr
-                        if not hasattr(v,'archiver'):
-                            v.archiver = api.get_attribute_archiver(a)
-                        if v.archiver:
-                            v.modes = {'MODE_E':[v.archiver]}
-            except:
-                v = fn.Struct()
-                v.modes = {'ERROR':[]}
-                    
-            if hasattr(v,'modes'):
-                if not hasattr(v,'archiver'):
-                    #if hasattr(api,'get_attribute_archiver'):
-                        #v.archiver = api.get_attribute_archiver(a)
-                    #else:
-                    v.archiver = ''
-                        
-                #if '--config' in args and not 'archiver' in v.modes:
-                    #v.modes['archiver'] = [v.archiver]
-                        
-                for m,p in v.modes.items():
-                    
-                    if '--config' in args:
-                        m,p[0] = m.replace(
-                            'MODE_P','periodic').replace(
-                            'MODE_A','absolute').replace(
-                            'MODE_R','relative').replace(
-                            'MODE_E','events'
-                            ),(fn.isNumber(p[0]) and int(p[0]/1e3) or p[0])
-
-                        lines.append('\t'.join(map(str,
-                            [api.host,dev,attr,schema,m]+p)))
-                            
-                    else:
-                        if not fn.isSequence(p):
-                            p = [str(p)]
-                            
-                        lines.append('\t'.join(map(str,
-                            [a,schema,v.archiver,m]+p)))
-            
-            elif '--config' in args:
-                lines.append('\t'.join(map(str,
-                [api.host,dev,attr,schema,'STOP']+['']*2)))
-            else:
-                lines.append('\t'.join(map(str,[a,schema]+['']*3)))
+        elif attrs:
+            #assert filename and len(attrs)>3, "Dates and filename required!"
+            start,stop = attrs[-2:]
+            attrs = map(str.lower,attrs[:-2])
+            assert fn.str2time(start)>0,'wrong start'
+            assert fn.str2time(stop)>0,'wrong stop'
+            [a.split('/')[2] for a in attrs]
                 
-    lines = sorted(lines)
-    
-elif "--list" in args:
-    rd = pta.Reader()
-    attrs = attrs or rd.get_attributes(active=True)
-    print("Parsing all attributes from databases ...")
-    for a in attrs:
-        h = rd.is_attribute_archived(a)
-        if h:
-            lines.append('%s: %s' % (a,','.join(h)))
-    
-else:
-    # Getting the right Reader object
-    rd = pta.Reader(schema)
-    print('Using %s db schema' % schema)
+        if attrs:
+            ext = [a for a in attrs if pta.utils.is_regexp(a)]
+            if ext:
+                [attrs.remove(e) for e in ext]
+                rd = pta.Reader()
+                for a in rd.get_attributes():
+                    if any(fn.clmatch(e,a) for e in ext):
+                        attrs.append(a)
+                
+            attrs = [fn.tango.get_full_name(a,fqdn=1).lower() for a in attrs]
+
+        schema = '*'
+        for a in args[:]:
+            if a.startswith('--schema='):
+                schema = a.split('=')[-1]
+                args.remove(a)
+            
+    except:
+        print traceback.format_exc()
+        print '\nWrong arguments, right syntax is:\n\t'
+        print __doc__
+        sys.exit(-1)
         
-    print('The list of attributes is: %s'%attrs)
-    if len(attrs) == 1 and '.csv' in attrs[0]:
-        try: attrs = pta.ParseCSV(attrs[0]).keys()
-        except: pass
-    
-    print('Attributes: %s\nStart: %s\nStop: %s\n'%(attrs,start,stop))
-    correlate = len(attrs)>1
-    import codecs
-    for a in args:
-        if a.startswith('--resolution='):
-            correlate = float(a.replace('--resolution=',''))
-            print 'Correlation step set to %3.2f s'%correlate
-        if a.startswith('--arrsep='):
-            arrsep = a.split('=',1)[-1]
-            arrsep = codecs.escape_decode(arrsep)[0]
-        if a.startswith('--sep='):
-            sep = a.split('=',1)[-1]
-            sep = codecs.escape_decode(sep)[0]
-        if a.startswith('--linesep='):
-            linesep = a.split('=',1)[-1]
-            linesep = codecs.escape_decode(linesep)[0]
-        if a == '--nosep':
-            sep = arrsep = ' '
+    if '--config' in args or '--modes' in args:
+        print('Saving backup of current archiving configuration')
+        if '--config' in args:
+            print('(human readable)')
             
-    raws = rd.get_attributes_values(attrs,start,stop,text=False,correlate=False)
-    values = fn.SortedDict()
-    for a in attrs: 
-        values[a] = raws[a]
-    
-    print 'Obtained data from database:'
-    print ' \n'.join(sorted('%s: %d values'%(a,len(v)) for a,v in values.items()))
-    ll = max(len(v) for v in values.values())-1
-
-    if correlate:
-        print 'Filtering %d arrays (1/%dT)'%(len(values),correlate)
-        import fandango
-        for a,v in values.items():
+        if schema == '*': 
+            schema = ','.join(k for k,v in pta.Schemas.load().items() if v)
+        schemas = schema.split(',')
+        for schema in schemas:
             try:
-                is_array = False
-                for vv in v:
-                    if vv[1] is not None:
-                        if fandango.isSequence(vv[1]):
-                            is_array = True
-                        else:
-                            break
-                if is_array:
-                    values[a] = []
-                    for t,vv in v:
-                        if not values[a]:
-                            values[a].append((t,vv)) #TODO: should be rounded
-                        # fill up output until catching the raw values
-                        while values[a][-1][0]+correlate < t:
-                            values[a].append((values[a][-1][0]+correlate,vv))
-                        # this inserts into original only if a value matches?
-                        # TODO: what happens if no value matches!?!?!
-                        # TODO: int(t) should be rounded!!!
-                        if int(t) == int(values[a][-1][0])+correlate:
-                            values[a].append((t,vv))
-                else:
-                    values[a] = fandango.arrays.filter_array(v,window=correlate)
-                    
-            except Exception,e:
-                print(e)
-                print('Unable to correlate %s data, please try to export it '
-                      'to a separate file' % a)
-                values.pop(a);
-
-        if not values:
-            print('Unable to export data ...')
-            sys.exit()
-            
-        if len(attrs)>1:
-          try:
-            Ts = (max(v[0][0] for v in values.values()),
-                  min(v[-1][0] for v in values.values()))
-            #print('interval: %s : %s' % (str(Ts), map(fandango.time2str,Ts)))
-            for a,v in values.items():
-                values[a]=[t for t in v if Ts[0]<=t[0]<=Ts[-1]]
-            print sorted((a,len(v)) for a,v in values.items())
-          except: traceback.print_exc()
-    
-    options = {'arrsep':arrsep,'sep':sep,'linesep':linesep}
-    print 'Options: %s'%options
-    data = pta.Reader.export_to_text(
-        values,order=attrs,**options).replace('None','NaN')
-    
-    #Remove repeated dates
-    lines = data.split(linesep)
-    ll = i = len(lines)-1
-    while i:
-        #if lines[i].split('\t')[1]==lines[i-1].split('\t')[1]:
-        if lines[i] == lines[i-1]:
-            lines.pop(i-1)
-        i-=1
-    #print 'data reduction: %s -> %s' % (ll,len(lines))        
-    
-    skip = 0 if '--nodate' in args else (1 if '--noepoch' in args else None)
-    if skip is not None:
-        for i,l in enumerate(lines):
-            l = l.split(sep)
-            try:
-                l.pop(skip)
-                lines[i] = sep.join(l)
+                api = pta.api(schema)
             except:
-                print(i,l,'?')
-            
-    if '--noheader' in args:
-        lines = lines[1:]
+                print('%s schema not available' % schema)
+                continue
 
-if filename:
-    print 'Writing %s'%filename
-    data = linesep.join(lines)
-    open(filename,'w').write(data)
-    
-else:
-    for l in lines:
-        print(str(l))
+            if not attrs:
+                attrs = api.keys() if hasattr(api,'keys') else api.get_attributes()
+                
+            print('Extracting %d attribute modes from %s' % (len(attrs),schema))
+
+            for a in attrs:
+                try:
+                    v = api[a]
+                    dev,attr = a.rsplit('/',1)
+                    if not hasattr(v,'modes') and\
+                        hasattr(api,'get_attribute_archiver'):
+                            #v.modes = api.get_attribute_modes(a)
+                            ## For HDB++ the modes gives you no useful info
+                            # A check_attribute_events is needed for each attr
+                            if not hasattr(v,'archiver'):
+                                v.archiver = api.get_attribute_archiver(a)
+                            if v.archiver:
+                                v.modes = {'MODE_E':[v.archiver]}
+                except:
+                    v = fn.Struct()
+                    v.modes = {'ERROR':[]}
+                        
+                if hasattr(v,'modes'):
+                    if not hasattr(v,'archiver'):
+                        #if hasattr(api,'get_attribute_archiver'):
+                            #v.archiver = api.get_attribute_archiver(a)
+                        #else:
+                        v.archiver = ''
+                            
+                    #if '--config' in args and not 'archiver' in v.modes:
+                        #v.modes['archiver'] = [v.archiver]
+                            
+                    for m,p in v.modes.items():
+                        
+                        if '--config' in args:
+                            m,p[0] = m.replace(
+                                'MODE_P','periodic').replace(
+                                'MODE_A','absolute').replace(
+                                'MODE_R','relative').replace(
+                                'MODE_E','events'
+                                ),(fn.isNumber(p[0]) and int(p[0]/1e3) or p[0])
+
+                            lines.append('\t'.join(map(str,
+                                [api.host,dev,attr,schema,m]+p)))
+                                
+                        else:
+                            if not fn.isSequence(p):
+                                p = [str(p)]
+                                
+                            lines.append('\t'.join(map(str,
+                                [a,schema,v.archiver,m]+p)))
+                
+                elif '--config' in args:
+                    lines.append('\t'.join(map(str,
+                    [api.host,dev,attr,schema,'STOP']+['']*2)))
+                else:
+                    lines.append('\t'.join(map(str,[a,schema]+['']*3)))
+                    
+        lines = sorted(lines)
+        
+    elif "--list" in args:
+        rd = pta.Reader()
+        attrs = attrs or rd.get_attributes(active=True)
+        print("Parsing all attributes from databases ...")
+        for a in attrs:
+            h = rd.is_attribute_archived(a)
+            if h:
+                lines.append('%s: %s' % (a,','.join(h)))
+        
+    else:
+        # Getting the right Reader object
+        rd = pta.Reader(schema)
+        print('Using %s db schema' % schema)
+            
+        print('The list of attributes is: %s'%attrs)
+        if len(attrs) == 1 and '.csv' in attrs[0]:
+            try: attrs = pta.ParseCSV(attrs[0]).keys()
+            except: pass
+        
+        print('Attributes: %s\nStart: %s\nStop: %s\n'%(attrs,start,stop))
+        correlate = len(attrs)>1
+        import codecs
+        for a in args:
+            if a.startswith('--resolution='):
+                correlate = float(a.replace('--resolution=',''))
+                print 'Correlation step set to %3.2f s'%correlate
+            if a.startswith('--arrsep='):
+                arrsep = a.split('=',1)[-1]
+                arrsep = codecs.escape_decode(arrsep)[0]
+            if a.startswith('--sep='):
+                sep = a.split('=',1)[-1]
+                sep = codecs.escape_decode(sep)[0]
+            if a.startswith('--linesep='):
+                linesep = a.split('=',1)[-1]
+                linesep = codecs.escape_decode(linesep)[0]
+            if a == '--nosep':
+                sep = arrsep = ' '
+                
+        raws = rd.get_attributes_values(attrs,start,stop,text=False,correlate=False)
+        values = fn.SortedDict()
+        for a in attrs: 
+            values[a] = raws[a]
+        
+        print 'Obtained data from database:'
+        print ' \n'.join(sorted('%s: %d values'%(a,len(v)) for a,v in values.items()))
+        ll = max(len(v) for v in values.values())-1
+
+        if correlate:
+            print 'Filtering %d arrays (1/%dT)'%(len(values),correlate)
+            import fandango
+            for a,v in values.items():
+                try:
+                    is_array = False
+                    for vv in v:
+                        if vv[1] is not None:
+                            if fandango.isSequence(vv[1]):
+                                is_array = True
+                            else:
+                                break
+                    if is_array:
+                        values[a] = []
+                        for t,vv in v:
+                            if not values[a]:
+                                values[a].append((t,vv)) #TODO: should be rounded
+                            # fill up output until catching the raw values
+                            while values[a][-1][0]+correlate < t:
+                                values[a].append((values[a][-1][0]+correlate,vv))
+                            # this inserts into original only if a value matches?
+                            # TODO: what happens if no value matches!?!?!
+                            # TODO: int(t) should be rounded!!!
+                            if int(t) == int(values[a][-1][0])+correlate:
+                                values[a].append((t,vv))
+                    else:
+                        values[a] = fandango.arrays.filter_array(v,window=correlate)
+                        
+                except Exception,e:
+                    print(e)
+                    print('Unable to correlate %s data, please try to export it '
+                        'to a separate file' % a)
+                    values.pop(a);
+
+            if not values:
+                print('Unable to export data ...')
+                sys.exit()
+                
+            if len(attrs)>1:
+                try:
+                    Ts = (max(v[0][0] for v in values.values()),
+                        min(v[-1][0] for v in values.values()))
+                    #print('interval: %s : %s' % (str(Ts), map(fandango.time2str,Ts)))
+                    for a,v in values.items():
+                        values[a]=[t for t in v if Ts[0]<=t[0]<=Ts[-1]]
+                    print sorted((a,len(v)) for a,v in values.items())
+                except: traceback.print_exc()
+        
+        options = {'arrsep':arrsep,'sep':sep,'linesep':linesep}
+        print 'Options: %s'%options
+        data = pta.Reader.export_to_text(
+            values,order=attrs,**options).replace('None','NaN')
+        
+        #Remove repeated dates
+        lines = data.split(linesep)
+        ll = i = len(lines)-1
+        while i:
+            #if lines[i].split('\t')[1]==lines[i-1].split('\t')[1]:
+            if lines[i] == lines[i-1]:
+                lines.pop(i-1)
+            i-=1
+        #print 'data reduction: %s -> %s' % (ll,len(lines))        
+        
+        skip = 0 if '--nodate' in args else (1 if '--noepoch' in args else None)
+        if skip is not None:
+            for i,l in enumerate(lines):
+                l = l.split(sep)
+                try:
+                    l.pop(skip)
+                    lines[i] = sep.join(l)
+                except:
+                    print(i,l,'?')
+                
+        if '--noheader' in args:
+            lines = lines[1:]
+
+    if filename:
+        print 'Writing %s'%filename
+        data = linesep.join(lines)
+        open(filename,'w').write(data)
+        
+    else:
+        for l in lines:
+            print(str(l))
+            
+if __name__ == '__main__':
+    main()
