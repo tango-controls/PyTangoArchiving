@@ -858,7 +858,7 @@ class Reader(Object,SingletonMap):
         
     def get_attribute_values(self,attribute,start_date,stop_date=None,
             asHistoryBuffer=False,decimate=False,notNone=False,N=0,
-            cache=True,fallback=True,schemas=None):
+            cache=True,fallback=True,schemas=None, subprocess=True):
         '''         
         This method reads values for an attribute between specified dates.
         This method may use MySQL queries or an H/TdbExtractor DeviceServer to 
@@ -974,38 +974,14 @@ class Reader(Object,SingletonMap):
                           % attribute)
             args = (attribute, start_date,stop_date, start_time, stop_time,
                     asHistoryBuffer, decimate, notNone, N, cache, 
-                    fallback, schemas)            
-            values = SubprocessMethod(
-                self.get_attribute_values_from_any,
-                *args,
-                timeout = 3600, callback = None)
-                
-            #def get_attribute_values_from_any(self, attribute, start_date, 
-                #stop_date, start_time, stop_time, asHistoryBuffer=False, 
-                #decimate=False, notNone=False, N=0, cache=True, fallback=True,
-                #schemas = None):
-                        
-                                      
-            
-            #q = multiprocessing.Queue()
-            #process = multiprocessing.Process(
-                #target=utils.Queued(q)(self.get_attribute_values_from_any),
-                #args = (attribute, start_date,stop_date, start_time, stop_time,
-                        #asHistoryBuffer, decimate,
-                        #notNone, N, cache, fallback),
-                #kwargs = {'schemas':schemas})
-            #process.start()
-            #tx = fn.now()
-            ### IT IS MANDATORY TO READ THE QueuE BEFORE .join()
-            #while q.empty():
-                #self.log.debug('waiting ...')
-                #fn.wait(5.)
-            #self.log.info('Getting queued results ...')
-            #try:
-                #values = q.get(False)
-            #except:
-                #values = []
-            #process.join()
+                    fallback, schemas)         
+            if subprocess:
+                values = SubprocessMethod(
+                    self.get_attribute_values_from_any,
+                    *args,
+                    timeout = 3600, callback = None)
+            else:
+                values = self.get_attribute_values_from_any(*args)
           
         #######################################################################
         # HDB/TDB Specific Code
@@ -1327,8 +1303,11 @@ class Reader(Object,SingletonMap):
             self.log.info('\tIn extract_array_index(...).raw: decimated repeated values in spectrum ... %s -> %s'%(l0,len(new_values)))
         return new_values
     
-    def get_attributes_values(self,attributes,start_date,stop_date=None,correlate=False,
-                              asHistoryBuffer=False,trace = False, text = False, N=0):
+    
+    def get_attributes_values(self,attributes,start_date,stop_date=None,
+            asHistoryBuffer=False,decimate=False,notNone=False,N=0,
+            cache=True,fallback=True,schemas=None,
+            correlate=False, trace = False, text = False):
         """ 
         This method reads values for a list of attributes between specified dates.
         
@@ -1337,9 +1316,10 @@ class Reader(Object,SingletonMap):
         :param stop_date: timestamp of the last value
         :param correlate: group values by time using first attribute timestamps
         :param asHistoryBuffer: return a history buffer object instead of a list (for trends)
-        :param trace: print out the values obtained
+        
         :param text: return a tabulated text instead of a dictionary of values
         :param N: if N>0, only the last N values will be returned
+        :param trace: print out the values obtained
         
         :return: a dictionary with the values of each attribute or (if text=True) a text with tabulated columns
         
@@ -1353,7 +1333,8 @@ class Reader(Object,SingletonMap):
         
         values = dict([(attr,
             self.get_attribute_values(attr, start_date, stop_date,
-                        asHistoryBuffer, N=N)) 
+                        asHistoryBuffer, decimate, notNone, N,
+                        cache, fallback, schemas))
                         for attr in attributes])
         self.log.debug('Query finished in %d milliseconds'%(1000*(time.time()-start)))
         if correlate or text:
