@@ -42,7 +42,7 @@ from fandango.tango import ( get_tango_host,parse_tango_model, get_full_name,
     get_normal_name, get_free_property,get_class_property,get_device_property)
 from fandango.threads import SubprocessMethod, AsynchronousFunction
 
-from PyTangoArchiving.utils import * #PyTango, patch_booleans
+from PyTangoArchiving.utils import * #PyTango, patch_booleans, extract_array_index
 import PyTangoArchiving.utils as utils
 
 from PyTangoArchiving.dbs import ArchivingDB, get_table_name
@@ -932,7 +932,7 @@ class Reader(Object,SingletonMap):
                 self.log.info('Reusing Cached values for (%s)' % (str(ckey)))
                 #Array index is an string or None
                 if array_index: 
-                    values = self.extract_array_index(
+                    values = extract_array_index(
                                 values,array_index,decimate,asHistoryBuffer)                
                 return values     
         
@@ -1046,7 +1046,7 @@ class Reader(Object,SingletonMap):
             
         #Array index is an string or None
         if array_index: 
-            values = self.extract_array_index(values,array_index,
+            values = extract_array_index(values,array_index,
                                                 decimate) #,asHistoryBuffer)
                 
         #######################################################################
@@ -1269,40 +1269,7 @@ class Reader(Object,SingletonMap):
 
         #@debug
         self.log.info('\tParsed [%d] in %s s'%(len(values),time.time()-t1))
-        return values    
-        
-    def extract_array_index(self,values,array_index,decimate=False,asHistoryBuffer=False):
-        # Applying array_index to the obtained results, it has to be applied after attribute loading to allow reusing cache in array-indexed attributes
-        last,l0 = (0,None),len(values)
-        
-        # Check if it has been already parsed
-        for r in values:
-            if r[1] is not None:
-                if not fandango.isSequence(r[1]):
-                    return values
-                break
-        
-        self.log.debug('Applying array_index(%s) to the obtained results'%array_index)
-        array_index = int(array_index)
-        new_values = [] # We create a new list on purpose to not modify the cached values
-        fin = (lambda v: (v.time,v.value[array_index] if v.value is not None and len(v.value)>array_index else None)) if asHistoryBuffer \
-            else (lambda v: (v[0],v[1][array_index] if v[1] is not None and len(v[1])>array_index else None))
-        fcmp = (lambda l: (l[0].tv_sec,l[1])) if asHistoryBuffer else (lambda l: l)
-        fout = (lambda vv: FakeAttributeHistory(*(vv))) if asHistoryBuffer else (lambda vv: vv)
-        for i,v in enumerate(values):
-            try:
-                if v is None: continue
-                vv = fin(v)
-                next = ((values[i+1] and fin(values[i+1]) or None) if i+1<l0 else None)
-                if not decimate or next is None or not new_values or data_has_changed(fcmp(vv),fcmp(last),fcmp(next)):
-                    new_values.append(fout(vv))
-                    last = vv
-            except Exception,e:
-                self.log.warning('reader.get_attribute_values(...,asHistoryBuffer=%s): Unable to parse %d[%s]:(%s); %s'%(asHistoryBuffer,i,array_index,v,traceback.format_exc()))
-        if decimate:
-            self.log.info('\tIn extract_array_index(...).raw: decimated repeated values in spectrum ... %s -> %s'%(l0,len(new_values)))
-        return new_values
-    
+        return values       
     
     def get_attributes_values(self,attributes,start_date,stop_date=None,
             asHistoryBuffer=False,decimate=False,notNone=False,N=0,

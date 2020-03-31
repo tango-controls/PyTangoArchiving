@@ -591,6 +591,40 @@ def mysql2bool(v):
     if v in ('1','1.0','True','true'): return 1 
     return 0
 
+        
+def extract_array_index(values,array_index,decimate=False,asHistoryBuffer=False):
+    # Applying array_index to the obtained results, it has to be applied after attribute loading to allow reusing cache in array-indexed attributes
+    last,l0 = (0,None),len(values)
+    
+    # Check if it has been already parsed
+    for r in values:
+        if r[1] is not None:
+            if not fandango.isSequence(r[1]):
+                return values
+            break
+    
+    #print('extract_array_index(%s) to the obtained results'%array_index)
+    array_index = int(array_index)
+    new_values = [] # We create a new list on purpose to not modify the cached values
+    fin = ((lambda v: (v.time,v.value[array_index] if v.value is not None and len(v.value)>array_index else None)) 
+            if asHistoryBuffer else 
+                (lambda v: (v[0],v[1][array_index] if v[1] is not None and len(v[1])>array_index else None)))
+    fcmp = (lambda l: (l[0].tv_sec,l[1])) if asHistoryBuffer else (lambda l: l)
+    fout = (lambda vv: FakeAttributeHistory(*(vv))) if asHistoryBuffer else (lambda vv: vv)
+    for i,v in enumerate(values):
+        try:
+            if v is None: continue
+            vv = fin(v)
+            nxt = ((values[i+1] and fin(values[i+1]) or None) if i+1<l0 else None)
+            if not decimate or nxt is None or not new_values or data_has_changed(fcmp(vv),fcmp(last),fcmp(nxt)):
+                new_values.append(fout(vv))
+                last = vv
+        except Exception,e:
+            print('extract_array_index(...,asHistoryBuffer=%s): Unable to parse %d[%s]:(%s); %s'%(asHistoryBuffer,i,array_index,v,traceback.format_exc()))
+    if decimate:
+        print('\tIn extract_array_index(...).raw: decimated repeated values in spectrum ... %s -> %s'%(l0,len(new_values)))
+    return new_values
+
 
 ###############################################################################
 # Numpy based methods for decimation/filtering
