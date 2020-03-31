@@ -387,7 +387,7 @@ def mysqldump(schema,user,password,filename,tables='',where='',options=''):
         cmd += ' --where=" %s"' % where
     if tables:
         cmd += ' --tables '+(' '.join(tables) if fn.isSequence(tables) 
-                             else tables)
+                             else str(tables).replace(',',' '))
     cmd += ' > '+filename
     print(cmd)
     fn.linos.shell_command(cmd)
