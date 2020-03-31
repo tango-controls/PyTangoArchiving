@@ -72,10 +72,15 @@ class HDBppReader(HDBppDB):
     """
     MIN_FILE_SIZE = MIN_FILE_SIZE
     
-    def get_mysqlsecsdiff(self,date):
+    @Cached(depth=1000,expire=600)
+    def get_mysqlsecsdiff(self,date=None):
         """
         Returns the value to be added to dates when querying int_time tables
         """
+        if date is None: 
+            date = fn.time2str()
+        if isinstance(date,(int,float)): 
+            date = fn.time2str(date)
         return self.Query(
             "select (TO_SECONDS('%s')-62167222800) - UNIX_TIMESTAMP('%s')" 
             % (date,date))[0][0]
@@ -88,19 +93,28 @@ class HDBppReader(HDBppDB):
         else:
             return fn.END_OF_TIME
     
-    def get_last_partition(self, table, min_size = MIN_FILE_SIZE):
+    def get_last_partition(self, table, min_size = MIN_FILE_SIZE, 
+                           add_last = True, tref = None):
         """
         Return the last partition updated (size > min_size)
         Returns None if the table is not partitioned
         """    
         parts = self.getTablePartitions(table)
-        last_part = fn.last(sorted(p for p in parts 
-                if p and self.getPartitionSize(table,p) > min_size), 
+        tref = fn.END_OF_TIME if tref is None else tref
+        # Gets last partition used
+        if not min_size:
+            last_part = None
+        else:
+            last_part = fn.last(sorted(p for p in parts 
+                if p and self.getPartitionSize(table,p) > min_size
+                    and (add_last or '_last' not in p)), 
                     default=None)
+        # Gets last partition declared
         if parts and not last_part:
-            last_part = fn.first([p for p in parts 
-                if self.get_partition_time_by_name(p) < fn.now()],
-                    default=parts[0])
+            last_part = fn.last(sorted(p for p in parts 
+                if (add_last and '_last' in p) 
+                    or self.get_partition_time_by_name(p) < tref),
+                        default=parts[0])
         return last_part
     
     def generate_partition_name_for_date(self, table, date):
@@ -193,6 +207,18 @@ class HDBppReader(HDBppDB):
                     pass               
             aid,tid,table = self.get_attr_id_type_table(table)
         return aid,tid,table,index
+    
+    def str2mysqlsecs(self,date):
+        """ converts given date to int mysql seconds() value """
+        rt = fn.str2time(date)
+        return int(rt+self.get_mysqlsecsdiff(date))
+    
+    def mysqlsecs2time(self,int_time,tref=0):
+        """ converts a mysql secons() value to epoch """
+        tref = tref or int_time
+        return int_time - self.get_mysqlsecsdiff(fn.time2str(tref))
+    
+    INDEX_IN_QUERY = True
         
     def get_attribute_values_query(self,attribute,
             start_date=None,stop_date=None,
@@ -204,9 +230,13 @@ class HDBppReader(HDBppDB):
             int_time=True,
             what='',
             where='',
+            group_by='',
             **kwargs):
-        
-        aid,tid,table,index = self.get_attribute_indexes(attribute)
+
+        if attribute in self.getTables():
+            aid,tid,table,index = None,None,attribute,None
+        else:
+            aid,tid,table,index = self.get_attribute_indexes(attribute)
                                    
         if not what:
             what = 'UNIX_TIMESTAMP(data_time)' if unixtime else 'data_time'
@@ -233,9 +263,9 @@ class HDBppReader(HDBppDB):
             where = 'where '+where
 
         interval = 'att_conf_id = %s'%aid if aid is not None \
-                                                else 'where att_conf_id >= 0 '
+                                                else 'att_conf_id >= 0 '
                                             
-        if index and INDEX_IN_QUERY:
+        if index and self.INDEX_IN_QUERY:
             interval += ' and idx = %s ' % index
                                             
         #self.info('%s : %s' % (table, self.getTableCols(table)))
@@ -250,18 +280,14 @@ class HDBppReader(HDBppDB):
             
             if int_time:
                 
-                def str2mysqlsecs(date):
-                    rt = fn.str2time(date)
-                    return int(rt+self.get_mysqlsecsdiff(date))
-                
                 if start_date and stop_date:
                     interval += (" and int_time between %d and %d"
-                            %(str2mysqlsecs(start_date),
-                              str2mysqlsecs(stop_date)))
+                            %(self.str2mysqlsecs(start_date),
+                              self.str2mysqlsecs(stop_date)))
                 
                 elif start_date and fandango.str2epoch(start_date):
                     interval += (" and int_time > %d" 
-                                 % str2mysqlsecs)
+                                 % self.str2mysqlsecs)
                 
             else:
                 if start_date and stop_date:
@@ -284,18 +310,20 @@ class HDBppReader(HDBppDB):
 
             def next_power_of_2(x):  
                 return 1 if x == 0 else 2**int(x - 1).bit_length()
-            d = next_power_of_2(d/2)
+            #d = next_power_of_2(d) #(d/2 or 1)
             
             # decimation on server side
-            if int_time:
-                query += ' group by (%s DIV %d)' % (
-                    'int_time', d)
-            else:
-                query += ' group by (FLOOR(%s/%d))' % (
-                    'UNIX_TIMESTAMP(data_time)', d)
+            if not group_by:
+                group_by = 'att_conf_id,' if 'att_conf_id' in str(what) else ''
+                if int_time:
+                    group_by += '(%s DIV %d)' % ('int_time', d)
+                else:
+                    group_by += '(FLOOR(%s/%d))' % ('UNIX_TIMESTAMP(data_time)', d)
 
-            if 'array' in table:
-                query += ',idx'
+                if 'array' in table:
+                    group_by += ',idx'
+
+            query += " group by %s" % group_by
             
         query += ' order by %s' % ('int_time' #, DTS' # much slower!
                             if int_time else 'data_time')
@@ -353,8 +381,6 @@ class HDBppReader(HDBppDB):
             if None (RAW), no decimation is done at all
             
         """
-        INDEX_IN_QUERY = True
-        
         t0 = time.time()
         N = N or kwargs.get('n',0)
         self.info('HDBpp.get_attribute_values(%s,%s,%s,N=%s,decimate=%s,'
@@ -395,7 +421,8 @@ class HDBppReader(HDBppDB):
                 v = cursor.fetchmany(1024)
                 if v is None: 
                     break
-                density = len(v)/(v[-1][0]-v[0][0]) if len(v)>1 else 0
+                span = ((v[-1][0]-v[0][0]) if len(v)>1 else 0)
+                density = len(v)/(span or 1)
                 if decimate!=RAW and (density*(stop_time-start_time))>MAX_QUERY_SIZE:
                     if not decimate or type(decimate) not in (int,float):
                         decimate = float(stop_time-start_time)/MAX_QUERY_SIZE
@@ -410,7 +437,7 @@ class HDBppReader(HDBppDB):
                             lasts[ix] = l
                 else:
                     result.extend(v)
-                self.info(str(len(result)))
+
                 if len(v) < 1024:
                     break
             
@@ -433,7 +460,7 @@ class HDBppReader(HDBppDB):
         
         t0 = time.time()
         
-        if is_array and (not index or not INDEX_IN_QUERY):
+        if is_array and (not index or not self.INDEX_IN_QUERY):
             max_ix = 0
             data = fandango.dicts.defaultdict(list)
             for t in result:
@@ -512,7 +539,7 @@ class HDBppReader(HDBppDB):
             dates = map(time2str,(start_date,stop_date))
             if int_time:
                 where = " and int_time between %d and %d" % (
-                    str2mysqlsecs(dates[0]),str2mysqlsecs(dates[1]))
+                    self.str2mysqlsecs(dates[0]),self.str2mysqlsecs(dates[1]))
             else:
                 where = " and data_time between '%s' and '%s'" % (
                     dates[0],dates[1])            
