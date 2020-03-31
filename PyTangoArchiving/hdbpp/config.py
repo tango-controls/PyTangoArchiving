@@ -314,6 +314,7 @@ class HDBppDB(ArchivingDB,SingletonMap):
 
         return sorted(fn.filtersmart(r,regexp) if regexp else r)
         
+    @Cached(expire=86400)
     def get_data_types(self):
         return [l[0] for l in self.Query(
             "select data_type from att_conf_data_type")]
@@ -321,18 +322,20 @@ class HDBppDB(ArchivingDB,SingletonMap):
     def get_data_tables(self):
         return sorted('att_'+t for t in self.get_data_types())
         
-    def get_attributes_by_table(self,table=''):
+    def get_attributes_by_table(self,table='',as_id=False):
         if table:
             table = table.replace('att_','')
-            return [l[0] for l in self.Query(
-                "select att_name from att_conf,att_conf_data_type where "
+            r = self.Query(
+                "select att_name,att_conf_id from att_conf,att_conf_data_type where "
                 "data_type like '%s' and att_conf.att_conf_data_type_id "
-                "= att_conf_data_type.att_conf_data_type_id" % table)]
+                "= att_conf_data_type.att_conf_data_type_id" % table)
+            return [l[as_id] for l in r]
         else:
             types = self.Query("select data_type,att_conf_data_type_id "
                 "from att_conf_data_type")
-            return dict(('att_'+t,self.Query("select att_name from att_conf"
-                "  where att_conf_data_type_id = %s"%i)) for t,i in types)        
+            w = 'att_conf_id' if as_id else 'att_name'
+            return dict(('att_'+t,self.Query("select %s from att_conf"
+                "  where att_conf_data_type_id = %s" % (w,i))) for t,i in types)        
         
     @Cached(depth=10,expire=60.)
     def get_archived_attributes(self,search=''):
@@ -379,7 +382,7 @@ class HDBppDB(ArchivingDB,SingletonMap):
     def get_table_name(self,attr):
         return get_attr_id_type_table(attr)[-1]
       
-    @Cached(depth=10000,expire=60.)
+    @Cached(depth=20000,expire=3600)
     def get_attr_id_type_table(self,attr):
         
         if fn.isNumber(attr):
