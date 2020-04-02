@@ -172,7 +172,7 @@ class HDBppReader(HDBppDB):
         tref: time from which start searching values (-1d by default)
         epoch: end of window to search values (now by default)
         """
-        epoch = fn.str2time(epoch) if fn.isString(epoch) else epoch
+        epoch = fn.str2time(epoch) if fn.isString(epoch) else (epoch or fn.now())
         if attributes is None:
             attributes = self.get_archived_attributes()
         period = -tref if tref<0 else ((epoch-tref) if tref<1e9 else tref)
