@@ -287,13 +287,13 @@ def decimate_into_new_db(db_in, db_out, min_period = 1, min_array_period = 3,
               % (fn.time2str(),db_in.db_name,table,i+1,len(tables)))
     
         if begin is None:
-            tbegin = get_last_value_in_table(db_out,table)[0]
+            tbegin = get_last_value_in_table(db_out,table,ignore_errors=True)[0]
             if not tbegin:
-                tbegin = get_first_value_in_table(db_in, table)[0]
+                tbegin = get_first_value_in_table(db_in,table,ignore_errors=True)[0]
         else:
             tbegin = begin
         if end is None:
-            tend = get_last_value_in_table(db_in,table)[0]
+            tend = get_last_value_in_table(db_in,table,ignore_errors=True)[0]
         else:
             tend = end
 
