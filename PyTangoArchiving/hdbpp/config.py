@@ -416,7 +416,7 @@ class HDBppDB(ArchivingDB,SingletonMap):
         m = get_full_name(attribute,fqdn=True)
         for k,v in self.dedicated.items():
             for l in v:
-                if m in l.split(';'):
+                if fn.inCl(m,l.split(';')):
                     return k
         return None
     
@@ -426,7 +426,7 @@ class HDBppDB(ArchivingDB,SingletonMap):
         d = self.get_manager()
         if d and cached:
             self.get_archived_attributes()
-            if any(m in self.attributes for m 
+            if any(fn.inCl(m,self.attributes) for m 
                    in (attribute,model.fullname,model.normalname)):
                 return model.fullname
             else:
