@@ -860,7 +860,8 @@ def get_db_last_values_per_table(api, tables = None):
         tables[t] = last
     return tables
 
-def get_last_value_in_table(api, table, method='max'): #, tref = -180*86400):
+def get_last_value_in_table(api, table, method='max', 
+                            ignore_errors = False): #, tref = -180*86400):
     """
     Returns a tuple containing:
     the last value stored in the given table, in epoch and date format
@@ -871,22 +872,10 @@ def get_last_value_in_table(api, table, method='max'): #, tref = -180*86400):
 
     int_time = any('int_time' in v for v in db.getTableIndex(table).values())
 
+    # If using UNIX_TIMESTAMP THE INDEXING FAILS!!
     field = 'int_time' if int_time else 'data_time'
     q = 'select %s(%s) from %s ' % (method,field,table)
     
-    #tref = tref if tref>0 else fn.now()+tref
-    #if tref:
-        #last_part = db.get_partitions_at_dates(table,tref)    
-        #if last_part:
-            #q += ' partition (%s)' % last_part
-            #size = db.getPartitionSize(table,last_part)
-            #pt = db.get_partition_time_by_name(last_part)
-            #if pt not in (0,fn.END_OF_TIME):
-                #tref = pt
-        #tref = fn.time2str(tref)
-        #if int_time:
-            #tref = db.str2tmysqlsecs(tref)
-    #else:
     size = db.getTableSize(table)
     ids = db.get_attributes_by_table(table,as_id=True)
     r = []
@@ -897,23 +886,17 @@ def get_last_value_in_table(api, table, method='max'): #, tref = -180*86400):
         r.extend(db.Query(qi))
         
     method = {'max':max,'min':min}[method]
-    r = [l[0] for l in r if l[0]]
+    r = [db.mysqlsecs2time(l[0]) if int_time else fn.date2time(l[0]) 
+         for l in r if l[0] not in (0,None)]
+    r = [l for l in r if l if (ignore_errors or 1e9<l<fn.now())]
+
     last = method(r) if len(r) else 0
-    #if not len(r):
-        #print('no values found at %s.%s' % (db.db_name,table))
-    if last:
-        if int_time:
-            last = db.mysqlsecs2time(last)
-            date = fn.time2str(last)
-        else:
-            last,date = fn.date2time(last),fn.date2str(last)
-    else:
-        last,date = 0,'1970-01-01'
+    date = fn.time2str(last)
 
     return (last, date, size, fn.now()-t0)
 
-def get_first_value_in_table(api, table):
-    return get_last_value_in_table(api, table, method='min')
+def get_first_value_in_table(api, table, ignore_errors=False):
+    return get_last_value_in_table(api, table, method='min',ignore_errors=ignore_errors)
 
 def delete_data_older_than(api, table, timestamp, doit=False, force=False):
     if not doit:
