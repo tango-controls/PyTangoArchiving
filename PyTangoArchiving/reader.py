@@ -784,12 +784,19 @@ class Reader(Object,SingletonMap):
                 
         return False
                 
-    def load_last_values(self,attribute,schema=None,n=1,epoch=None,active=True):
-        """ Returns the last values stored for each schema """
+    def load_last_values(self,attribute,schema=None,n=1,epoch=None,
+                         active=False, brief=False):
+        """
+        Returns the last values stored for each schema
+        
+        active = True will search on schemas currently running only
+        
+        brief = True will return only the most updated
+        """
         result = dict()
         if fandango.isSequence(attribute):
             result.update((a,self.load_last_values(a, n=n, active=active, 
-                schema = schema, epoch = epoch)) for a in attribute)
+                schema = schema, epoch = epoch, brief=brief)) for a in attribute)
             return result
         
         elif schema is None or fn.isNumber(schema):
@@ -798,9 +805,10 @@ class Reader(Object,SingletonMap):
                 schemas = schemas[:schema]
         else:
             schemas = fandango.toList(schema)
-            
+        
         for s in schemas:
             api = Schemas.getApi(s)
+            #print('Reader(%s).load_last_values(%s,%s,%s)' % (s,attribute,n,epoch))
             vs = api.load_last_values(attribute, n=n, epoch=epoch)
             vs = vs.values() if hasattr(vs,'values') else vs
             r = vs and vs[0]
@@ -808,8 +816,12 @@ class Reader(Object,SingletonMap):
                 r = [fn.date2time(r[0]),r[1],(r[2:3] or [None])[0],
                      fn.date2str(r[0])]
             result[s] = r
+            
+        if brief and result:
+            result = sorted((t[0],t[1],t[2],t[3],s) for s,t in result.items() if t)
+            result = result and result[-1]
+
         return result
-        
         
     def get_last_attribute_dates(self,attribute):
         """ 

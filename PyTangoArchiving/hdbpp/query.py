@@ -136,9 +136,11 @@ class HDBppReader(HDBppDB):
         p1 = self.generate_partition_name_for_date(table,date1)
         p2 = self.generate_partition_name_for_date(table,date2 or date1)
         parts = self.getTablePartitions(table)  
+        if parts is None or not len(parts):
+            return None
+        
         p1 = parts[0] if p1 not in parts else p1
         p2 = parts[-1] if p2 not in parts else p2
-
         if None in (p1,p2): 
             return None
         else:
@@ -146,19 +148,70 @@ class HDBppReader(HDBppDB):
             return parts if date2 or not len(parts) else parts[0]
         
     get_table_partitions_for_dates = get_partitions_at_dates   
+    
+    def get_table_timestamp(self, table, method='max', 
+            epoch = None, ignore_errors = False): #, tref = -180*86400):
+        """
+        method should be min() for first value and max() for last
+        this query goes directly to table indexes
+        this doesn't access values (but it is much faster)
+        
+        if table is an attribute name, only these attribute is checked
+        
+        ignore_errors=True, it will ignore dates out of 1970-NOW interval
+        
+        epoch=timestamp, gets last timestamp before epoch
+        
+        Returns a tuple containing:
+            (the first/last value stored, in epoch and date format, 
+                size of table, time needed)
+        """
+        t0,last,size = fn.now(),0,0
+        #print('get_last_value_in_table(%s, %s)' % (self.self_name, table))
+        
+        if table in self.get_data_tables():
+            ids = self.get_attributes_by_table(table,as_id=True)
+        else:
+            aid,atype,table = self.get_attr_id_type_table(table)
+            ids = [aid]
+
+        int_time = any('int_time' in v for v in self.getTableIndex(table).values())
+        # If using UNIX_TIMESTAMP THE INDEXING FAILS!!
+        field = 'int_time' if int_time else 'data_time'
+        q = 'select %s(%s) from %s ' % (method,field,table)      
+        size = self.getTableSize(table)
+        r = []
+
+        for i in ids:
+            qi = q+' where att_conf_id=%d' % i
+            #if tref and int_time: where += ('int_time <= %d'% (tref))
+            r.extend(self.Query(qi))
+            
+        method = {'max':max,'min':min}[method]
+        r = [self.mysqlsecs2time(l[0]) if int_time else fn.date2time(l[0]) 
+            for l in r if l[0] not in (0,None)]
+        r = [l for l in r if l if (ignore_errors or 1e9<l<fn.now())]
+
+        last = method(r) if len(r) else 0
+        date = fn.time2str(last)
+
+        return (last, date, size, fn.now()-t0) 
       
-    def get_last_attribute_values(self,table,n=1,
-            check_table=False,epoch=None,period=86400):
+    def get_last_attribute_values(self,attribute,n=1,
+            check_attribute=False,epoch=None,period=86400):
+        """
+        load_last_values provided to comply with Reader API
+        get_last_attribute_values provided to comply with CommonAPI
+        
+        returns last n values (or just one if n=1)
+        """
         if epoch is None:
-            epoch = fn.now()+600
+            epoch = self.get_table_timestamp(attribute,method='max')[0]
         elif epoch < 0:
             epoch = fn.now()+epoch
+        start = epoch - abs(period)
 
-        #Rounding start to the last month partition - 3d before epoch
-        start = -period + fn.str2time(
-            fn.time2str(epoch).split()[0].rsplit('-',1)[0]+'-01')
-
-        vals = self.get_attribute_values(table, N=n, human=True, desc=True,
+        vals = self.get_attribute_values(attribute, N=n, human=True, desc=True,
                         start_date=start, stop_date=epoch)
         if len(vals):
             return vals[0] if abs(n)==1 else vals
@@ -167,17 +220,28 @@ class HDBppReader(HDBppDB):
     
     def load_last_values(self,attributes=None,n=1,epoch=None,tref=86400):
         """
+        load_last_values provided to comply with Reader API
+        get_last_attribute_values provided to comply with CommonAPI 
+        
+        load_last_values returns a dictionary {attr:(last_time,last_value)}
+        
         attributes: attribute name or list
         n: the number of last values to be retorned
         tref: time from which start searching values (-1d by default)
         epoch: end of window to search values (now by default)
-        """
-        epoch = fn.str2time(epoch) if fn.isString(epoch) else (epoch or fn.now())
+        """       
         if attributes is None:
-            attributes = self.get_archived_attributes()
-        period = -tref if tref<0 else ((epoch-tref) if tref<1e9 else tref)
-        vals = dict((a,self.get_last_attribute_values(a,n=n,epoch=epoch)) 
+           attributes = self.get_archived_attributes()
+
+        if epoch is not None:
+            epoch = fn.str2time(epoch) if fn.isString(epoch) else epoch
+            kwargs = {'epoch':epoch,'period':(epoch-tref) if tref>1e9 else abs(tref)}
+        else:
+            kwargs = {}
+
+        vals = dict((a,self.get_last_attribute_values(a,n=n,**kwargs)) 
                     for a in fn.toList(attributes))
+
         for a,v in vals.items():
             if n!=1:
                 v = v and v[0]
