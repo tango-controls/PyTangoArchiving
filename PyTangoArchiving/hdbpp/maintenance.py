@@ -286,16 +286,18 @@ def decimate_into_new_db(db_in, db_out, min_period = 1, min_array_period = 3,
         print('%s decimating table %s.%s (%d/%d)' 
               % (fn.time2str(),db_in.db_name,table,i+1,len(tables)))
     
-        if begin is None:
-            tbegin = get_last_value_in_table(db_out,table,ignore_errors=True)[0]
-            if not tbegin:
-                tbegin = get_first_value_in_table(db_in,table,ignore_errors=True)[0]
-        else:
-            tbegin = begin
-        if end is None:
-            tend = get_last_value_in_table(db_in,table,ignore_errors=True)[0]
-        else:
-            tend = end
+        begin = fn.str2time(begin) if fn.isString(begin) else begin
+        end = fn.str2time(end) if fn.isString(end) else end
+        
+        tbegin = get_last_value_in_table(db_out,table,ignore_errors=True)[0]
+        if not tbegin:
+            tbegin = get_first_value_in_table(db_in,table,ignore_errors=True)[0]
+        if begin is not None:
+            tbegin = max((begin,tbegin)) #Query may start later
+
+        tend = get_last_value_in_table(db_in,table,ignore_errors=True)[0]
+        if end is not None:
+            tend = min((end,tend,fn.now())) #Query may finish earlier
 
         if 'array' in table:
             period = min_array_period
@@ -314,8 +316,18 @@ def decimate_into_new_db(db_in, db_out, min_period = 1, min_array_period = 3,
             traceback.print_exc()
             
     return done
-        
-        
+
+def compare_two_databases(db_in,db_out):
+    ups0, ups1 = {},{}
+    for t in sorted(db_in.get_data_tables()):
+        ups0[t] = db_in.get_table_timestamp(t)
+        ups1[t] = db_out.get_table_timestamp(t)
+        if ups0[t][0] > 100:
+            print('%s: %s:\t%s\t=>\t%s:\t%s\t:\t%s' %
+                (t,db_in.db_name,ups0[t][1],db_out.db_name,ups1[t][1],
+                 ups0[t][0]-ups1[t][0]))
+    return dict((t,(ups0[t],ups1[t])) for t in ups0)
+
 def plot_two_arrays(arr1,arr2,start=None,stop=None):
     import matplotlib.pyplot as plt
     plt.figure()
@@ -430,8 +442,13 @@ def decimate_into_new_table(db_in, db_out, table, start, stop, ntable='',
     
     t0 = fn.now()
     db_in.info('Get %s values between %s and %s' % (table, date0, date1))
+    aggr = 'value_r'
+    if server_dec:
+        if method in (max,'max'): aggr = 'max(value_r)'
+        elif method in (min,'min'): aggr = 'min(value_r)'
+        elif method in (fn.arrays.average,'avg'): aggr = 'avg(value_r)'
 
-    what = "att_conf_id,data_time,value_r,quality".split(',')
+    what = ("att_conf_id,data_time,%s,quality"%aggr).split(',')
     # converting  times on mysql as python seems to be very bad at
     # converting datetime types
     float_time = "CAST(UNIX_TIMESTAMP(data_time) AS DOUBLE)"
@@ -440,30 +457,28 @@ def decimate_into_new_table(db_in, db_out, table, start, stop, ntable='',
     if array:
         what.extend('idx,dim_x_r,dim_y_r'.split(','))
         
-    #-------------------------------------------------------------------------
-    
+    #-------------------------------------------------------------------------   
     attrs = db_in.get_attributes_by_table(table)
     ids = [db_in.get_attr_id_type_table(a)[0] for a in attrs]
     data = []
     #  QUERYING THE DATA PER ATTRIBUTE IS MUUUUUCH FASTER!
-    for a in attrs:
+    for i,a in enumerate(attrs):
         q = db_in.get_attribute_values_query(a,
             what = ','.join(what),
             where = '',
-            #aid = i, #None,
             start_date = start,
             stop_date = stop,
-            decimate = min_period if server_dec else 0
+            decimate = min_period if server_dec else 0,
             )
             
-        print(q)
+        if not i: print(q)
         if use_process:
-            data.extend(ft.SubprocessMethod(db_in.Query,q,timeout=1800))
+            dd = ft.SubprocessMethod(db_in.Query,q,timeout=1800)
         else:
-            data.extend(db_in.Query(q))
-            #'select %s from %s ' % (','.join(what), table) + where 
-            #+ ' order by att_conf_id, data_time',
-            #timeout = 1800)
+            dd = db_in.Query(q)
+        db_in.info('%s values [%d] (%2.3f values/second)' 
+                    % (a,len(dd),len(dd)/(stop-start)))
+        data.extend(dd)
 
     ldata = len(data)
     tquery = fn.now()-t0
