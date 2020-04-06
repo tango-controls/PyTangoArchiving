@@ -332,11 +332,8 @@ class HDBppReader(HDBppDB):
         if index and self.INDEX_IN_QUERY:
             interval += ' and idx = %s ' % index
                                             
-        #self.info('%s : %s' % (table, self.getTableCols(table)))
         int_time = int_time and 'int_time' in self.getTableCols(table)
-        
-        if int_time:
-            self.info('Using int_time indexing for %s' % table)
+        #if int_time: self.debug('Using int_time indexing for %s' % table)
             
         if start_date or stop_date:
             start_date,start_time,stop_date,stop_time = \

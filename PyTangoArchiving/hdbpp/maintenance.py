@@ -305,11 +305,16 @@ def decimate_into_new_db(db_in, db_out, min_period = 1, min_array_period = 3,
             period = min_period
         
         try:
+            db_out.Query("ALTER TABLE `%s` DISABLE KEYS;" % table)
+
             decimate_into_new_table(db_in,db_out,table,
                 tbegin,tend,min_period=period, max_period = max_period,
                 method = method,remove_nones = remove_nones,
                 server_dec = server_dec, bunch = bunch,
                 use_files = use_files)
+            
+            db_out.Query("ALTER TABLE `%s` ENABLE KEYS;" % table)
+            
             done.append(table)
         except:
             print(fn.time2str())
@@ -472,12 +477,13 @@ def decimate_into_new_table(db_in, db_out, table, start, stop, ntable='',
             )
             
         if not i: print(q)
+
         if use_process:
             dd = ft.SubprocessMethod(db_in.Query,q,timeout=1800)
         else:
             dd = db_in.Query(q)
         db_in.info('%s values [%d] (%2.3f values/second)' 
-                    % (a,len(dd),len(dd)/(stop-start)))
+                % (fn.tango.get_normal_name(a),len(dd),len(dd)/(stop-start)))
         data.extend(dd)
 
     ldata = len(data)
@@ -493,7 +499,8 @@ def decimate_into_new_table(db_in, db_out, table, start, stop, ntable='',
     data_ids = fn.defaultdict(lambda:fn.defaultdict(list))
     # i,j : att_id, idx
     
-    if remove_nones:
+    # Do not remove nones when using server-side decimation!
+    if ('array' in table or not server_dec) and remove_nones:
         if array:
             [data_ids[aid][idx].append((t,v,d,q,x,y)) for aid,d,v,q,t,idx,x,y in data if v is not None];
         else:
@@ -504,14 +511,18 @@ def decimate_into_new_table(db_in, db_out, table, start, stop, ntable='',
         else:
             [data_ids[aid][None].append((t,v,d,q)) for aid,d,v,q,t in data];
        
-    db_in.info('Decimating %d values, period = (%s,%s,[%s])' % 
-               (len(data),min_period,max_period,bunch))
+    db_in.info('Decimating %d values, period = (%s,%s,[%s]), server_dec = %s' % 
+               (len(data),min_period,max_period,bunch,server_dec))
+    #print(data)
+    #print(data_ids)
 
     data_dec = {}  
     for kk,vv in data_ids.items():
         data_dec[kk] = {}
         for k,v in vv.items():
             if server_dec: # and int(server_dec) == int(min_period):
+                #if kk == data_ids.keys()[0]:
+                    #print(kk,k,len(v))
                 data_dec[kk][k] = v
             else:
                 data_dec[kk][k] = decimate_value_list(v,
@@ -519,11 +530,14 @@ def decimate_into_new_table(db_in, db_out, table, start, stop, ntable='',
             
     if array:
         # TODO: idx should go before value_r!!!
-        data_all = sorted((d,aid,v,q,idx,x,y) for aid in data_dec 
+        #data_all = sorted((d,aid,v,q,idx,x,y) for aid in data_dec
+        data_all = sorted((aid,idx,d,v,q,x,y) for aid in data_dec 
             for idx in data_dec[aid] for t,v,d,q,x,y in data_dec[aid][idx])
     else:
-        data_all = sorted((d,i,v,q) for i in data_dec for t,v,d,q in data_dec[i][None])
+        #data_all = sorted((d,i,v,q) for i in data_dec for t,v,d,q in data_dec[i][None])
+        data_all = sorted((i,d,v,q) for i in data_dec for t,v,d,q in data_dec[i][None])
             
+    print(len(data_all))
     tdec = fn.now()-t0
     ldec = len(data_all)
     t0 = fn.now()
@@ -531,9 +545,12 @@ def decimate_into_new_table(db_in, db_out, table, start, stop, ntable='',
     if insert:
         if use_files:
             filename = '/tmp/%s.%s.bulk' % (db_out.db_name,ntable)
-            columns = 'data_time,att_conf_id,value_r,quality'
+            columns = 'att_conf_id'
+            if array:
+                columns += ',idx'
+            columns += ',data_time,value_r,quality'
             if array: 
-                columns += ',idx,dim_x_r,dim_y_r'
+                columns += ',dim_x_r,dim_y_r'
                 if ntable.endswith('_rw'):
                     columns += ',dim_x_w,dim_y_w'
             insert_into_csv_file(data_all,columns,ntable,filename)
@@ -594,6 +611,9 @@ def insert_into_csv_file(data, columns, table, filename):
 
                     if c == 'data_time':
                         v = v.replace(' ','T')
+                        
+                    if v == 'None':
+                        v = 'NULL'
                         
                     l.append('"%s"' % v)
             f.write(','.join(l) + '\n')
@@ -856,7 +876,9 @@ def add_idx_index(api, table):
         if not pref:
             return
         it = 'int_time' if 'int_time' in api.getTableCols(table) else 'data_time'
-        q = ('create index ii%s on %s(att_conf_id, idx, %s)' % (pref,table,it))
+        #q = ('create index ii%s on %s(att_conf_id, idx, %s)' % (pref,table,it))
+        # old index (aid/time) should go first!
+        q = ('create index ii%s on %s(att_conf_id, %s, it)' % (pref,table,it))
         print(api.db_name,q)
         api.Query(q)
         return 1
