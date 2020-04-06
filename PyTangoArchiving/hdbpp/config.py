@@ -408,7 +408,7 @@ class HDBppDB(ArchivingDB,SingletonMap):
         return aid,tid,'att_'+table    
     
     @Cached(depth=1000,expire=60.)
-    def get_attribute_archiver(self,attribute):
+    def get_attribute_subscriber(self,attribute):
         if not self.dedicated:
             [self.get_archiver_attributes(d) for d in self.get_archivers()]
 
@@ -418,7 +418,10 @@ class HDBppDB(ArchivingDB,SingletonMap):
             for l in v:
                 if fn.inCl(m,l.split(';')):
                     return k
+        
         return None
+    
+    get_attribute_archiver = get_attribute_subscriber
     
     def is_attribute_archived(self,attribute,active=None,cached=True):
         # @TODO active argument not implemented

@@ -5,6 +5,13 @@ from .config import HDBppDB
 
 class HDBppPeriodic(HDBppDB):
     
+    @Cached(depth=1000,expire=60.)
+    def get_attribute_archiver(self,attribute):
+        r = HDBppDB.get_attribute_archiver(self,attribute)
+        if not r:
+            r = self.get_periodic_attribute_archiver(attribute)
+        return r
+    
     def add_periodic_archiver(self,server,device,properties={}):
         klass = 'PyHdbppPeriodicArchiver'
         if '/' not in server: 
@@ -35,13 +42,13 @@ class HDBppPeriodic(HDBppDB):
         archivers = dict.fromkeys([a for a in self.get_periodic_archivers() 
                      if fn.clmatch(regexp,a)])
         for a in archivers:
-            archivers[a] = self.get_periodic_archiver_attributes(a)
+            archivers[a.lower()] = self.get_periodic_archiver_attributes(a)
         return archivers
 
     @Cached(expire=10.)    
     def get_periodic_archiver_attributes(self,archiver):
         prop = fn.toList(fn.tango.get_device_property(archiver,'AttributeList'))
-        return dict(p.split(';',1) for p in prop if p.strip())
+        return dict(p.lower().split(';',1) for p in prop if p.strip())
         
     
     @Cached(expire=10.)
@@ -49,13 +56,13 @@ class HDBppPeriodic(HDBppDB):
         attribute = fn.tango.get_full_name(attribute,fqdn=True)
         archivers = self.get_periodic_archivers_attributes()
         for a,v in archivers.items():
-            if attribute in v:
+            if fn.inCl(attribute,v):
                 return a
         return ''
     
     @Cached(depth=10000,expire=60.)
     def get_periodic_attribute_period(self,attribute):
-        attribute = fn.tango.get_full_name(attribute,fqdn=True)
+        attribute = fn.tango.get_full_name(attribute,fqdn=True).lower()
         archivers = self.get_periodic_archivers_attributes()
         for a,v in archivers.items():
             if attribute in v:
@@ -67,7 +74,7 @@ class HDBppPeriodic(HDBppDB):
         prop = fn.tango.get_device_property(archiver,'AttributeList')
         periods = dict()
         for p in prop:
-            p = p.split(';')
+            p = p.lower().split(';')
             period = [k for k in p if 'period' in k]
             if not period: continue
             period = float(period[0].split('=')[-1].strip()) if period else 0
@@ -82,8 +89,8 @@ class HDBppPeriodic(HDBppDB):
         for v in self.get_periodic_archivers_attributes().values():
             for k,p in v.items():
                 try:
-                    p = [s for s in p.split(';') if 'period' in s][0]
-                    self.periodic_attributes[k] = int(p.split('=')[-1])
+                    p = [s.lower() for s in p.split(';') if 'period' in s][0]
+                    self.periodic_attributes[k.lower()] = int(p.split('=')[-1])
                 except:
                     print(fn.except2str())
         return self.periodic_attributes
@@ -121,6 +128,8 @@ class HDBppPeriodic(HDBppDB):
     
     def add_periodic_attribute(self,attribute,period,archiver=None,wait=3.):
         
+        attribute = parse_tango_model(attribute,fqdn=True).fullname.lower()
+        
         arch = self.get_periodic_attribute_archiver(attribute)
         if arch:
             p = self.get_periodic_attribute_period(attribute)
@@ -130,7 +139,6 @@ class HDBppPeriodic(HDBppDB):
             else:
                 archiver = arch
         
-        attribute = parse_tango_model(attribute,fqdn=True).fullname
         archiver = archiver or self.get_next_periodic_archiver(
                             attrexp = fn.tango.get_dev_name(attribute)+'/*')
             
@@ -149,7 +157,7 @@ class HDBppPeriodic(HDBppDB):
         """
         attributes must be a list, periods a number, list or dict
         """
-        attributes = sorted(parse_tango_model(a,fqdn=True).fullname 
+        attributes = sorted(parse_tango_model(a,fqdn=True).fullname.lower()
                       for a in attributes)
         if fn.isNumber(periods):
             periods = dict((a,periods) for a in attributes)
