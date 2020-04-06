@@ -51,6 +51,8 @@ def main():
     filename = ''
     print arrsep*80
 
+    # PARSING ARGS ###########################################################
+
     try:
         if not sys.argv[1:] or any(a in sys.argv[1:] 
                                 for a in ('-?','-h','--help','help')):
@@ -102,6 +104,8 @@ def main():
         print '\nWrong arguments, right syntax is:\n\t'
         print __doc__
         sys.exit(-1)
+
+    # EXPORT MODES ###########################################################
         
     if '--config' in args or '--modes' in args:
         print('Saving backup of current archiving configuration')
@@ -177,7 +181,9 @@ def main():
                     lines.append('\t'.join(map(str,[a,schema]+['']*3)))
                     
         lines = sorted(lines)
-        
+
+    # LIST ATTRS ###########################################################
+
     elif "--list" in args:
         rd = pta.Reader()
         attrs = attrs or rd.get_attributes(active=True)
@@ -186,24 +192,26 @@ def main():
             h = rd.is_attribute_archived(a)
             if h:
                 lines.append('%s: %s' % (a,','.join(h)))
+
+    # EXTRACT VALUES ###########################################################
         
     else:
         # Getting the right Reader object
         rd = pta.Reader(schema)
         print('Using %s db schema' % schema)
             
-        print('The list of attributes is: %s'%attrs)
+        print('archiving2csv: The list of attributes is: %s'%attrs)
         if len(attrs) == 1 and '.csv' in attrs[0]:
             try: attrs = pta.ParseCSV(attrs[0]).keys()
             except: pass
         
-        print('Attributes: %s\nStart: %s\nStop: %s\n'%(attrs,start,stop))
+        print('archiving2csv: Attributes: %s\nStart: %s\nStop: %s\n'%(attrs,start,stop))
         correlate = len(attrs)>1
         import codecs
         for a in args:
             if a.startswith('--resolution='):
                 correlate = float(a.replace('--resolution=',''))
-                print 'Correlation step set to %3.2f s'%correlate
+                print('archiving2csv: Correlation step set to %3.2f s'%correlate)
             if a.startswith('--arrsep='):
                 arrsep = a.split('=',1)[-1]
                 arrsep = codecs.escape_decode(arrsep)[0]
@@ -221,12 +229,12 @@ def main():
         for a in attrs: 
             values[a] = raws[a]
         
-        print 'Obtained data from database:'
-        print ' \n'.join(sorted('%s: %d values'%(a,len(v)) for a,v in values.items()))
+        print('archiving2csv: Obtained data from database:')
+        print(' \n'.join(sorted('%s: %d values'%(a,len(v)) for a,v in values.items())))
         ll = max(len(v) for v in values.values())-1
 
         if correlate:
-            print 'Filtering %d arrays (1/%dT)'%(len(values),correlate)
+            print('archiving2csv: Filtering %d arrays (1/%dT)'%(len(values),correlate))
             import fandango
             for a,v in values.items():
                 try:
@@ -237,6 +245,7 @@ def main():
                                 is_array = True
                             else:
                                 break
+
                     if is_array:
                         values[a] = []
                         for t,vv in v:
@@ -253,14 +262,14 @@ def main():
                     else:
                         values[a] = fandango.arrays.filter_array(v,window=correlate)
                         
-                except Exception,e:
+                except Exception as e:
                     print(e)
                     print('Unable to correlate %s data, please try to export it '
                         'to a separate file' % a)
                     values.pop(a);
 
             if not values:
-                print('Unable to export data ...')
+                print('archiving2csv: Unable to export data ...')
                 sys.exit()
                 
             if len(attrs)>1:
@@ -274,7 +283,7 @@ def main():
                 except: traceback.print_exc()
         
         options = {'arrsep':arrsep,'sep':sep,'linesep':linesep}
-        print 'Options: %s'%options
+        print('archiving2csv: Options: %s'%options)
         data = pta.Reader.export_to_text(
             values,order=attrs,**options).replace('None','NaN')
         
@@ -301,8 +310,10 @@ def main():
         if '--noheader' in args:
             lines = lines[1:]
 
+    # SAVING FILE ###########################################################
+
     if filename:
-        print 'Writing %s'%filename
+        print('archiving2csv: Writing %s'%filename)
         data = linesep.join(lines)
         open(filename,'w').write(data)
         
