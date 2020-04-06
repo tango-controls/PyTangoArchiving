@@ -302,7 +302,7 @@ class Reader(Object,SingletonMap):
         sch = Schemas.get(schema)
         if sch and not config: config = sch.get('config','')
         
-        self.log.warning('In PyTangoArchiving.Reader.__init__(%s, %s)' 
+        self.log.debug('In PyTangoArchiving.Reader.__init__(%s, %s)'
                        % (schema or db or '...', config))        
         self.db_name = db
         self._last_db = ''
@@ -329,11 +329,11 @@ class Reader(Object,SingletonMap):
             self.init_universal(logger)
         else: 
             self.init_for_schema(self.schema or self.db_name,config,servers)
-            
+
         try:
             alias_file = alias_file or get_alias_file()       
             self.alias = alias_file and read_alias_file(alias_file)
-        except Exception,e: 
+        except Exception as e:
             self.log.warning('Unable to read alias file %s: %s'%(alias_file,e))
 
         #Initializing the state machine        
@@ -425,7 +425,7 @@ class Reader(Object,SingletonMap):
             else:
                 self.log.warning('%s schema not loaded!' % s)
 
-        self.log.debug("... created")        
+        self.log.debug("... created")
         
         
     def __del__(self):
@@ -1002,7 +1002,7 @@ class Reader(Object,SingletonMap):
             #Needed to record last read values for both alias and real name
             attribute,alias = alias,attribute 
             #@debug
-            self.log.warning('In PyTangoArchiving.Reader.get_attribute_values'
+            self.log.debug('In PyTangoArchiving.Reader.get_attribute_values'
                 '(%s,%s,%s,%s)'%(self.db_name,attribute,start_date,stop_date))
             
             #Checks if the attribute is a member of an array 
@@ -1038,7 +1038,7 @@ class Reader(Object,SingletonMap):
                 try: 
                     decimate = eval(decimate)
                 except:
-                    self.log.warning('Decimation(%s)?: %s'
+                    self.log.info('Decimation(%s)?: %s'
                         % (decimate, traceback.format_exc()))
                         
             ## Removal of None values is always done
@@ -1048,7 +1048,7 @@ class Reader(Object,SingletonMap):
                                 logger_obj=self.log)
                 
             #@debug
-            self.log.warning('\tDecimated %s[%d > %d] in %s s' 
+            self.log.debug('\tDecimated %s[%d > %d] in %s s'
                     % (attribute,l0,len(values),time.time()-t1))
             t1 = time.time()
                     
@@ -1067,7 +1067,7 @@ class Reader(Object,SingletonMap):
             self.cache[(attribute,l1,l2,asHistoryBuffer,bool(decimate))
                     ] = values[:]      
             
-        self.log.warning('Out of get_attribute_values(): %d values' % 
+        self.log.debug('Out of get_attribute_values(): %d values' %
                          len(values))
 
         return values
@@ -1091,7 +1091,7 @@ class Reader(Object,SingletonMap):
         
         rd = Schemas.getReader(sch.pop(0))
         #@debug
-        self.log.warning('In get_attribute_values_from_any(%s): '
+        self.log.debug('In get_attribute_values_from_any(%s): '
             'Using %s schema at %s'%(attribute,rd.schema,start_date))
         
         if not rd.is_attribute_archived(attribute):
@@ -1134,7 +1134,7 @@ class Reader(Object,SingletonMap):
                 gapvals = []
 
                 while not len(gapvals) and len(sch):
-                    self.log.warning('In get_attribute_values(%s,%s,%s)(%s): '
+                    self.log.info('In get_attribute_values(%s,%s,%s)(%s): '
                     'fallback to %s as %s returned no data in (%s,%s)'%(
                         attribute,gap0,gap1,prev,sch[0],
                         rd.schema,time2str(gap0),time2str(gap1)))
@@ -1151,7 +1151,7 @@ class Reader(Object,SingletonMap):
             if len(fallback):
                 tf = fn.now()
                 values = sorted(values+fallback)
-                self.log.warning('Adding %d values from fallback took '
+                self.log.debug('Adding %d values from fallback took '
                     '%f seconds' % (len(fallback),fn.now()-tf))
                 
             if not len(values) or not len(values[0]) or values[0][0] > (

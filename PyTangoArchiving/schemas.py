@@ -141,7 +141,7 @@ class Schemas(object):
             schemas = ['tdb','hdb']
             tangodb.put_property('PyTangoArchiving',{'DbSchemas':schemas})
 
-        print('Loading %s from tango@%s ... ' % (pname, tangodb.get_db_host()))
+        #print('Loading %s from tango@%s ... ' % (pname, tangodb.get_db_host()))
 
         [k.getSchema(schema,tango,write=True,logger=logger) 
             for schema in schemas]
@@ -199,7 +199,7 @@ class Schemas(object):
 
         if schema.startswith('#') and EXPERT_MODE:
             schema = schema.strip('#')
-            print('%s is enabled'%schema)
+            #print('%s is enabled'%schema)
 
         if schema in k.SCHEMAS:
             # Failed schemas should be also returned (to avoid unneeded retries)
