@@ -268,16 +268,24 @@ class HDBppDB(ArchivingDB,SingletonMap):
         errors/use_freq are used to compute the archiver load
         attrexp can be used to get archivers already archiving attributes
         """
+        props = dict((a,fn.tango.get_device_property(a,'AttributeFilters'))
+                     for a in self.get_archivers())
+        if any(props.values()):
+            archs = [a for a,v in props.items() if not v]
+        else:
+            archs = [a for a in props if fn.clmatch('*[0-9]$',a)]
 
         loads = dict((a,self.get_archiver_load(a,use_freq=use_freq))
-            for a in self.get_archivers() if fn.clmatch('*[0-9]$',a))
+            for a in archs)
         if errors:
             # Errors count twice as load
             for a,v in loads.items():
                 errs = self.get_archiver_errors(a)
                 loads[a] += 10*len(errs)
-                
-        if attrexp:
+
+        if not len(loads):
+            self.warning('No free archivers found!')
+        elif attrexp:
             attrs = [a for a in self.get_attributes(True) 
                      if fn.clmatch(attrexp,a)]
             archs = [self.get_attribute_archiver(a) for a in attrs]

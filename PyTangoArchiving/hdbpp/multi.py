@@ -221,6 +221,19 @@ def check_attribute_in_all_dbs(attr_regexp,reader = None,
     #for a in attrs:
         #for m,f in filters.items():
             #pass
+
+def get_archivers_filters(archivers=''):
+    """
+    Returns the value of AttributeFilters property for each archiver in the list
+
+    :param archivers: sequence or regular expression  for matching archivers
+    :return: dictionary {archiver:regexp}
+    """
+    archs = archs if fn.isSequence(archivers) else fn.find_devices(archivers)
+    filters = fn.SortedDict(sorted((k,v['AttributeFilters']) for k,v in
+                    fn.tango.get_matching_device_properties(
+                    archiver,'AttributeFilters').items()))
+    return filters
             
 
 def get_archivers_for_attributes(attrs=[],archs='archiving/es/*'):
