@@ -305,6 +305,7 @@ def decimate_into_new_db(db_in, db_out, min_period = 1, min_array_period = 3,
             period = min_period
         
         try:
+            db_out.warning('Disabling keys on %s' % table)
             db_out.Query("ALTER TABLE `%s` DISABLE KEYS;" % table)
 
             decimate_into_new_table(db_in,db_out,table,
@@ -312,7 +313,8 @@ def decimate_into_new_db(db_in, db_out, min_period = 1, min_array_period = 3,
                 method = method,remove_nones = remove_nones,
                 server_dec = server_dec, bunch = bunch,
                 use_files = use_files)
-            
+
+            db_out.warning('Reenabling keys on %s' % table)
             db_out.Query("ALTER TABLE `%s` ENABLE KEYS;" % table)
             
             done.append(table)

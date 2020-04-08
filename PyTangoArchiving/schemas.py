@@ -134,11 +134,12 @@ class Schemas(object):
         schemas = prop or tangodb.get_property('PyTangoArchiving',
                     ['DbSchemas','Schemas'])
 
-        pname = 'DbSchemas' if 'DbSchemas' in schemas else 'Schemas'
-        schemas = schemas.get(pname,[])
+        schemas = schemas.get('DbSchemas',[])
+        if not schemas:
+            schemas = schemas.get('Schemas', []) or []
 
         if not schemas:
-            schemas = ['tdb','hdb']
+            schemas = ['hdbpp']
             tangodb.put_property('PyTangoArchiving',{'DbSchemas':schemas})
 
         #print('Loading %s from tango@%s ... ' % (pname, tangodb.get_db_host()))
