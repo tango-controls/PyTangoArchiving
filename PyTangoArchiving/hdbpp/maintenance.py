@@ -299,6 +299,10 @@ def decimate_into_new_db(db_in, db_out, min_period = 1, min_array_period = 3,
         if end is not None:
             tend = min((end,tend,fn.now())) #Query may finish earlier
 
+        if tend-tbegin < 600:
+            db_out.warning('%s Tables already synchronized' % table)
+            continue
+
         if 'array' in table:
             period = min_array_period
         else:
@@ -308,16 +312,18 @@ def decimate_into_new_db(db_in, db_out, min_period = 1, min_array_period = 3,
             db_out.warning('Disabling keys on %s' % table)
             db_out.Query("ALTER TABLE `%s` DISABLE KEYS;" % table)
 
-            decimate_into_new_table(db_in,db_out,table,
-                tbegin,tend,min_period=period, max_period = max_period,
-                method = method,remove_nones = remove_nones,
-                server_dec = server_dec, bunch = bunch,
-                use_files = use_files)
+            try:
+                decimate_into_new_table(db_in,db_out,table,
+                    tbegin,tend,min_period=period, max_period = max_period,
+                    method = method,remove_nones = remove_nones,
+                    server_dec = server_dec, bunch = bunch,
+                    use_files = use_files)
 
-            db_out.warning('Reenabling keys on %s' % table)
-            db_out.Query("ALTER TABLE `%s` ENABLE KEYS;" % table)
-            
-            done.append(table)
+                done.append(table)
+            finally:
+                db_out.warning('Reenabling keys on %s' % table)
+                db_out.Query("ALTER TABLE `%s` ENABLE KEYS;" % table)
+
         except:
             print(fn.time2str())
             traceback.print_exc()
@@ -502,16 +508,22 @@ def decimate_into_new_table(db_in, db_out, table, start, stop, ntable='',
     # i,j : att_id, idx
     
     # Do not remove nones when using server-side decimation!
-    if ('array' in table or not server_dec) and remove_nones:
+    tlimit = fn.now()+86400
+    if 'array' in table or not server_dec or remove_nones:
+        # Nones are inserted only if using server_decimation on scalars
         if array:
-            [data_ids[aid][idx].append((t,v,d,q,x,y)) for aid,d,v,q,t,idx,x,y in data if v is not None];
+            [data_ids[aid][idx].append((t,v,d,q,x,y)) for aid,d,v,q,t,idx,x,y in data if v is not None
+             and 1e9 < t < tlimit];
         else:
-            [data_ids[aid][None].append((t,v,d,q)) for aid,d,v,q,t in data if v is not None];
+            [data_ids[aid][None].append((t,v,d,q)) for aid,d,v,q,t in data if v is not None
+             and 1e9 < t < tlimit];
     else:
         if array:
-            [data_ids[aid][idx].append((t,v,d,q,x,y)) for aid,d,v,q,t,idx,x,y in data];
+            [data_ids[aid][idx].append((t,v,d,q,x,y)) for aid,d,v,q,t,idx,x,y in data
+             and 1e9 < t < tlimit];
         else:
-            [data_ids[aid][None].append((t,v,d,q)) for aid,d,v,q,t in data];
+            [data_ids[aid][None].append((t,v,d,q)) for aid,d,v,q,t in data
+             and 1e9 < t < tlimit];
        
     db_in.info('Decimating %d values, period = (%s,%s,[%s]), server_dec = %s' % 
                (len(data),min_period,max_period,bunch,server_dec))
@@ -900,8 +912,11 @@ def get_db_last_values_per_table(api, tables = None):
     return tables
 
 def get_last_value_in_table(api, table, method='max', 
-                            ignore_errors = False): #, tref = -180*86400):
+                            ignore_errors = False,
+                            trace = False): #, tref = -180*86400):
     """
+    DEPRECATED, USE API.get_table_timestamp instead
+
     Returns a tuple containing:
     the last value stored in the given table, in epoch and date format
     """
@@ -922,28 +937,43 @@ def get_last_value_in_table(api, table, method='max',
     for i in ids:
         qi = q+' where att_conf_id=%d' % i
         #if tref and int_time: where += ('int_time <= %d'% (tref))
-        r.extend(db.Query(qi))
+        rr = db.Query(qi)
+        if trace:
+            print('%s[%s]:%s' % (table,i,rr))
+        r.extend(rr)
         
     method = {'max':max,'min':min}[method]
     r = [db.mysqlsecs2time(l[0]) if int_time else fn.date2time(l[0]) 
          for l in r if l[0] not in (0,None)]
     r = [l for l in r if l if (ignore_errors or 1e9<l<fn.now())]
 
-    last = method(r) if len(r) else 0
-    date = fn.time2str(last)
+    if len(r):
+        last = method(r) if len(r) else 0
+        date = fn.time2str(last)
+    else:
+        db.warning('No values in %s' % table)
+        last, date = None, ''
 
-    return (last, date, size, fn.now()-t0)
+    return (last, date, size, fn.now() - t0)
 
 def get_first_value_in_table(api, table, ignore_errors=False):
+    """
+    DEPRECATED, USE API.get_table_timestamp instead
+    """
     return get_last_value_in_table(api, table, method='min',ignore_errors=ignore_errors)
 
 def delete_data_older_than(api, table, timestamp, doit=False, force=False):
+    delete_data_out_of_time(api, table, timestamp, fn.END_OF_TIME, doit, force)
+
+def delete_data_out_of_time(api, table, tstart=1e9, tstop=None, doit=False, force=False):
     if not doit:
         print('doit=False, nothing to be executed')
     if 'archiving04' in api.host and not force:
         raise Exception('deleting on archiving04 is not allowed'
             ' (unless forced)')
-    
+
+    timestamp = fn.str2time(tstart) if fn.isString(tstart) else tstart
+    tstop = fn.str2time(tstop) if fn.isString(tstop) else fn.notNone(tstop,fn.now()+86400)
     query = lambda q: (api.Query(q) if doit else fn.printf(q))
     
     try:
@@ -952,21 +982,21 @@ def delete_data_older_than(api, table, timestamp, doit=False, force=False):
         partitions = sorted(api.getTablePartitions(table))
         for p in partitions[:]:
             t = api.get_partition_time_by_name(p)
-            if t > timestamp:
+            if t < timestamp:
                 query('alter table %s drop partition %s' 
                         % (table, p))
                 partitions.remove(p)
             
         cols = api.getTableCols(table)
-        if 'int_time' in cols:
-            query('delete from %s where int_time > %s' 
-                    % (table, timestamp))
-        elif 'data_time' in cols:
-            query("delete from %s where data_time > '%s'" 
-                    % (table, fn.time2str(timestamp)))
-        else:
-            query("delete from %s where time > '%s'" 
-                    % (table, fn.time2str(timestamp)))
+        col = (c for c in ('int_time','data_time','time') if c in cols).next()
+        if col != 'int_time':
+            timestamp,tstop = "'%s'" % timestamp, "'%s'"%tstop
+        q = 'delete from %s where %s < %s' % (table, col, timestamp)
+
+        if tstop != fn.END_OF_TIME:
+            q += " and %s < %s " (col, tstop)
+        query(q)
+
         if partitions:
             p = partitions[-1]
             query('alter table %s repair partition %s' % (table,p))

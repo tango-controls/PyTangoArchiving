@@ -189,13 +189,17 @@ class HDBppReader(HDBppDB):
             
         method = {'max':max,'min':min}[method]
         r = [self.mysqlsecs2time(l[0]) if int_time else fn.date2time(l[0]) 
-            for l in r if l[0] not in (0,None)]
+            for l in r if l[0] not in (None,0)]
         r = [l for l in r if l if (ignore_errors or 1e9<l<fn.now())]
 
-        last = method(r) if len(r) else 0
-        date = fn.time2str(last)
+        if len(r):
+            last = method(r) if len(r) else 0
+            date = fn.time2str(last)
+        else:
+            self.warning('No values in %s' % table)
+            last, date = None, ''
 
-        return (last, date, size, fn.now()-t0) 
+        return (last, date, size, fn.now() - t0)
       
     def get_last_attribute_values(self,attribute,n=1,
             check_attribute=False,epoch=None,period=86400):
