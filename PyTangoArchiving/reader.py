@@ -1155,8 +1155,8 @@ class Reader(Object,SingletonMap):
                     '%f seconds' % (len(fallback),fn.now()-tf))
                 
             if not len(values) or not len(values[0]) or values[0][0] > (
-                    start_time + max((600,(stop_time-start_time)/1080.))):
-                self.log.warning('No %s values at %s, checking lasts' % (
+                    start_time + 60.):
+                self.log.warning('No %s values at %s, loading previous values' % (
                     attribute, fn.time2str(start_time)))
                 lasts = self.load_last_values(attribute, epoch=start_time)
                 lasts = [v for v in lasts.values() if v is not None and len(v)]
