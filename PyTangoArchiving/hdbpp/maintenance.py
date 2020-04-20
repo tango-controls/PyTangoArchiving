@@ -5,10 +5,6 @@ from fandango.db import FriendlyDB
 import fandango.threads as ft
 from fandango import time2str, str2time
 
-def get_table_description(api,table):
-    if fn.isString(api): api = pta.api(api)
-    return api.Query('show create table %s'%table)[-1][-1]
-
 """
 
 In [1]: import PyTangoArchiving as pta
@@ -37,6 +33,8 @@ In [8]: hdbpp.Query('alter table %s optimize partition %s' % (table,partitions))
 Out[8]: [('hdbpp.att_array_devfloat_rw', 'optimize', 'status', 'OK')]
 
 """
+
+CURR_YEAR = fn.time2str().split('-')[0]
 
 def get_all_partitions(api):
     partitions = dict(((t,p),api.getPartitionSize(t,p)) 
@@ -78,6 +76,8 @@ def get_attributes_row_counts(db,attrs='*',start=0, stop=0,
 
 def decimate_value_list(values,period=None,max_period=3600,method=None,N=1080):
     """
+    used by decimate_into_new_table
+
     values must be a sorted (time,...) array
     it will be decimated in N equal time intervals 
     if method is not provided, only the first value of each interval will be kept
@@ -133,6 +133,8 @@ def decimate_table_inline(db, table, attributes = [],
                    start = 0, stop = -1, partition = '', 
                    trange = 3, fmargin = 1):
     """
+    BAD! Use decimate_into_new_db/table instead!
+
     @TODO
     This method decimates the table inline using MOD by int_time
     
@@ -330,30 +332,6 @@ def decimate_into_new_db(db_in, db_out, min_period = 1, min_array_period = 3,
             
     return done
 
-def compare_two_databases(db_in,db_out):
-    ups0, ups1 = {},{}
-    for t in sorted(db_in.get_data_tables()):
-        ups0[t] = db_in.get_table_timestamp(t)
-        ups1[t] = db_out.get_table_timestamp(t)
-        if ups0[t][0] > 100:
-            print('%s: %s:\t%s\t=>\t%s:\t%s\t:\t%s' %
-                (t,db_in.db_name,ups0[t][1],db_out.db_name,ups1[t][1],
-                 ups0[t][0]-ups1[t][0]))
-    return dict((t,(ups0[t],ups1[t])) for t in ups0)
-
-def plot_two_arrays(arr1,arr2,start=None,stop=None):
-    import matplotlib.pyplot as plt
-    plt.figure()
-    x0,x1 = min((arr1[0][0],arr2[0][0])),max((arr1[-1][0],arr2[-1][0]))
-    y0,y1 = min(t[1] for t in arr1+arr2),max(t[1] for t in arr1+arr2)
-    plt.subplot(131)
-    plt.plot([v[0] for v in arr1],[v[1] for v in arr1])
-    plt.axis([x0,x1,y0,y1])
-    plt.subplot(132)
-    plt.plot([v[0] for v in arr2],[v[1] for v in arr2])
-    plt.axis([x0,x1,y0,y1])
-    plt.show()
-        
 def decimate_into_new_table(db_in, db_out, table, start, stop, ntable='', 
         min_period=1, max_period=3600, bunch=86400/4, suffix='_dec',
         drop=False, method=None, 
@@ -723,6 +701,30 @@ def insert_into_new_table(db_out, ntable, data_all):
 
     return
 
+def compare_two_databases(db_in,db_out):
+    ups0, ups1 = {},{}
+    for t in sorted(db_in.get_data_tables()):
+        ups0[t] = db_in.get_table_timestamp(t)
+        ups1[t] = db_out.get_table_timestamp(t)
+        if ups0[t][0] > 100:
+            print('%s: %s:\t%s\t=>\t%s:\t%s\t:\t%s' %
+                (t,db_in.db_name,ups0[t][1],db_out.db_name,ups1[t][1],
+                 (ups0[t][0] or 0)-(ups1[t][0] or 0)))
+    return dict((t,(ups0[t],ups1[t])) for t in ups0)
+
+def plot_two_arrays(arr1,arr2,start=None,stop=None):
+    import matplotlib.pyplot as plt
+    plt.figure()
+    x0,x1 = min((arr1[0][0],arr2[0][0])),max((arr1[-1][0],arr2[-1][0]))
+    y0,y1 = min(t[1] for t in arr1+arr2),max(t[1] for t in arr1+arr2)
+    plt.subplot(131)
+    plt.plot([v[0] for v in arr1],[v[1] for v in arr1])
+    plt.axis([x0,x1,y0,y1])
+    plt.subplot(132)
+    plt.plot([v[0] for v in arr2],[v[1] for v in arr2])
+    plt.axis([x0,x1,y0,y1])
+    plt.show()
+
 def copy_between_tables(api, table, source, start, stop, step = 86400):
     
     t0 = fn.now()
@@ -754,111 +756,84 @@ def copy_between_tables(api, table, source, start, stop, step = 86400):
     return
     
 
-def decimate_partition_by_modtime(api, table, partition, period = 3, 
-                       min_count = 30*86400/3, 
-                       check = True,
-                       start = 0, stop = 0):
-    """
-    This method uses (data_time|int_time)%period to delete all values with
-    module >= 1 only if the remaining data will be bigger than min_count. 
-    
-    This is as destructive and unchecked method of decimation as
-    it is to do a fixed polling; so it is usable only when data length to be kept
-    is bigger than (seconds*days/period)
-    
-    A better method would be to use GROUP BY data_time DIV period; inserting
-    the data in another table, then reinserting and repartitioning. But the cost
-    in disk and time of that operation would be much bigger.
-    """
-    t0 = fn.now()
-    api = pta.api(api) if fn.isString(api) else api
-    print('%s: decimate_partition(%s, %s, %s, %s, %s), current size is %sG' % (
-        fn.time2str(), api, table, partition, period, min_count,
-        api.getPartitionSize(table, partition)/1e9))
-
-    col = 'int_time' if 'int_time' in api.getTableCols(table) else (
-            'CAST(UNIX_TIMESTAMP(data_time) AS INT)' )
-    api.Query('drop table if exists tmpdata')
-    
-    api.Query("create temporary table tmpdata (attid int(10), rcount int(20));")
-    q = ("insert into tmpdata select att_conf_id, count(*) as COUNT "
-        "from %s partition(%s) " % (table,partition))
-    q += " where "+col + "%" + str(period) + " = 0 " 
-    if start and stop:
-        q += " and %s between %s and %s " % (col, start, stop)
-    q += "group by att_conf_id order by COUNT;"
-    print(q)
-    api.Query(q)
-
-    ids = api.Query("select attid, rcount from tmpdata where rcount > %s order by rcount"
-                    % min_count)
-    print(ids)
-    print('%s: %d attributes have more than %d values' 
-          % (fn.time2str(), len(ids), min_count))
-    if not len(ids):
-        return ids
-    
-    mx = ids[-1][0]
-    print(mx)
-    try:
-        if ids:
-            print('max: %s(%s) has %d values' % (fn.tango.get_normal_name(
-                api.get_attribute_by_ID(mx)),mx,ids[-1][1]))
-    except:
-        traceback.print_exc()
-
-    ids = ','.join(str(i[0]) for i in ids)
-    q = ("delete from %s partition(%s) " % (table,partition) + 
-        "where att_conf_id in ( %s ) " % ids )
-    if start and stop:
-        q += " and %s between %s and %s " % (col, start, stop)
-    q += "and " + col + "%" + str(period) + " > 0;" 
-    print(q)
-    api.Query(q)
-    print(fn.time2str() + ': values deleted, now repairing')
-
-    api.Query("alter table %s optimize partition %s" % (table, partition))
-    nc = api.getPartitionSize(table, partition)
-    print(type(nc),nc)
-    print(fn.time2str() + ': repair done, new size is %sG' % (nc/1e9))
-
-    q = "select count(*) from %s partition(%s) " % (table,partition)
-    q += " where att_conf_id = %s " % mx
-    if start and stop:
-        q += " and %s between %s and %s " % (col, start, stop)
-    nc = api.Query(q)[0][0]
-    print('%s: %s data reduced to %s' % (fn.time2str(),mx,nc))
-    
-    api.Query('drop table if exists tmpdata')
-
-    return ids.split(',')
-
-CURR_YEAR = fn.time2str().split('-')[0]
-
-def decimate_db_by_modtime(api, period, min_count, 
-                in_tables="*(array|scalar)*",
-                ex_tables="",
-                in_partitions="",
-                ex_partitions=CURR_YEAR):
-    """
-    This method was information destructive
-    replaced by decimate_into_new_table
-    """
-    done = []
-    for t in sorted(api.getTables()):
-        print(t)
-        if ex_tables and fn.clsearch(ex_tables,t):
-            continue
-        if fn.clmatch(in_tables,t):
-            for p in sorted(api.getTablePartitions(t)):
-                print(p)
-                if not p or ex_partitions and fn.clsearch(ex_partitions,p):
-                    continue
-                if (not in_partitions or fn.clsearch(in_partitions,p)):
-                    r = decimate_partition_by_modtime(api, t, p, 
-                        period = period, min_count = min_count)
-                    done.append((t,p,r))
-    return done
+# def decimate_partition_by_modtime(api, table, partition, period = 3,
+#                        min_count = 30*86400/3,
+#                        check = True,
+#                        start = 0, stop = 0):
+#     """
+#     This method uses (data_time|int_time)%period to delete all values with
+#     module >= 1 only if the remaining data will be bigger than min_count.
+#
+#     This is as destructive and unchecked method of decimation as
+#     it is to do a fixed polling; so it is usable only when data length to be kept
+#     is bigger than (seconds*days/period)
+#
+#     A better method would be to use GROUP BY data_time DIV period; inserting
+#     the data in another table, then reinserting and repartitioning. But the cost
+#     in disk and time of that operation would be much bigger.
+#     """
+#     t0 = fn.now()
+#     api = pta.api(api) if fn.isString(api) else api
+#     print('%s: decimate_partition(%s, %s, %s, %s, %s), current size is %sG' % (
+#         fn.time2str(), api, table, partition, period, min_count,
+#         api.getPartitionSize(table, partition)/1e9))
+#
+#     col = 'int_time' if 'int_time' in api.getTableCols(table) else (
+#             'CAST(UNIX_TIMESTAMP(data_time) AS INT)' )
+#     api.Query('drop table if exists tmpdata')
+#
+#     api.Query("create temporary table tmpdata (attid int(10), rcount int(20));")
+#     q = ("insert into tmpdata select att_conf_id, count(*) as COUNT "
+#         "from %s partition(%s) " % (table,partition))
+#     q += " where "+col + "%" + str(period) + " = 0 "
+#     if start and stop:
+#         q += " and %s between %s and %s " % (col, start, stop)
+#     q += "group by att_conf_id order by COUNT;"
+#     print(q)
+#     api.Query(q)
+#
+#     ids = api.Query("select attid, rcount from tmpdata where rcount > %s order by rcount"
+#                     % min_count)
+#     print(ids)
+#     print('%s: %d attributes have more than %d values'
+#           % (fn.time2str(), len(ids), min_count))
+#     if not len(ids):
+#         return ids
+#
+#     mx = ids[-1][0]
+#     print(mx)
+#     try:
+#         if ids:
+#             print('max: %s(%s) has %d values' % (fn.tango.get_normal_name(
+#                 api.get_attribute_by_ID(mx)),mx,ids[-1][1]))
+#     except:
+#         traceback.print_exc()
+#
+#     ids = ','.join(str(i[0]) for i in ids)
+#     q = ("delete from %s partition(%s) " % (table,partition) +
+#         "where att_conf_id in ( %s ) " % ids )
+#     if start and stop:
+#         q += " and %s between %s and %s " % (col, start, stop)
+#     q += "and " + col + "%" + str(period) + " > 0;"
+#     print(q)
+#     api.Query(q)
+#     print(fn.time2str() + ': values deleted, now repairing')
+#
+#     api.Query("alter table %s optimize partition %s" % (table, partition))
+#     nc = api.getPartitionSize(table, partition)
+#     print(type(nc),nc)
+#     print(fn.time2str() + ': repair done, new size is %sG' % (nc/1e9))
+#
+#     q = "select count(*) from %s partition(%s) " % (table,partition)
+#     q += " where att_conf_id = %s " % mx
+#     if start and stop:
+#         q += " and %s between %s and %s " % (col, start, stop)
+#     nc = api.Query(q)[0][0]
+#     print('%s: %s data reduced to %s' % (fn.time2str(),mx,nc))
+#
+#     api.Query('drop table if exists tmpdata')
+#
+#     return ids.split(',')
 
 def add_int_time_column(api, table):
     # Only prefixed tables will be modified
@@ -920,41 +895,77 @@ def get_last_value_in_table(api, table, method='max',
     Returns a tuple containing:
     the last value stored in the given table, in epoch and date format
     """
-    t0,last,size = fn.now(),0,0
-    db = pta.api(api) if fn.isString(api) else api
-    #print('get_last_value_in_table(%s, %s)' % (db.db_name, table))
+    return api.get_table_timestamp(table, method, ignore_errors=ignore_errors)
 
-    int_time = any('int_time' in v for v in db.getTableIndex(table).values())
-
-    # If using UNIX_TIMESTAMP THE INDEXING FAILS!!
-    field = 'int_time' if int_time else 'data_time'
-    q = 'select %s(%s) from %s ' % (method,field,table)
-    
-    size = db.getTableSize(table)
-    ids = db.get_attributes_by_table(table,as_id=True)
-    r = []
-
-    for i in ids:
-        qi = q+' where att_conf_id=%d' % i
-        #if tref and int_time: where += ('int_time <= %d'% (tref))
-        rr = db.Query(qi)
-        if trace:
-            print('%s[%s]:%s' % (table,i,rr))
-        r.extend(rr)
-        
-    method = {'max':max,'min':min}[method]
-    r = [db.mysqlsecs2time(l[0]) if int_time else fn.date2time(l[0]) 
-         for l in r if l[0] not in (0,None)]
-    r = [l for l in r if l if (ignore_errors or 1e9<l<fn.now())]
-
-    if len(r):
-        last = method(r) if len(r) else 0
-        date = fn.time2str(last)
-    else:
-        db.warning('No values in %s' % table)
-        last, date = None, ''
-
-    return (last, date, size, fn.now() - t0)
+    # t0,last,size = fn.now(),0,0
+    # db = pta.api(api) if fn.isString(api) else api
+    # #print('get_last_value_in_table(%s, %s)' % (db.db_name, table))
+    #
+    # int_time = any('int_time' in v for v in db.getTableIndex(table).values())
+    #
+    # # If using UNIX_TIMESTAMP THE INDEXING FAILS!!
+    # field = 'int_time' if int_time else 'data_time'
+    # q = 'select %s(%s) from %s ' % (method,field,table)
+    #
+    # size = db.getTableSize(table)
+    # ids = db.get_attributes_by_table(table,as_id=True)
+    # r = []
+    #
+    # for i in ids:
+    #     qi = q+' where att_conf_id=%d' % i
+    #     #if tref and int_time: where += ('int_time <= %d'% (tref))
+    #     rr = db.Query(qi)
+    #     if trace:
+    #         print('%s[%s]:%s' % (table,i,rr))
+    #     r.extend(rr)
+    #
+    # method = {'max':max,'min':min}[method]
+    # r = [db.mysqlsecs2time(l[0]) if int_time else fn.date2time(l[0])
+    #      for l in r if l[0] not in (0,None)]
+    # r = [l for l in r if l if (ignore_errors or 1e9<l<fn.now())]
+    #
+    # if len(r):
+    #     last = method(r) if len(r) else 0
+    #     date = fn.time2str(last)
+    # else:
+    #     db.warning('No values in %s' % table)
+    #     last, date = None, ''
+    #
+    # return (last, date, size, fn.now() - t0)    t0,last,size = fn.now(),0,0
+    # db = pta.api(api) if fn.isString(api) else api
+    # #print('get_last_value_in_table(%s, %s)' % (db.db_name, table))
+    #
+    # int_time = any('int_time' in v for v in db.getTableIndex(table).values())
+    #
+    # # If using UNIX_TIMESTAMP THE INDEXING FAILS!!
+    # field = 'int_time' if int_time else 'data_time'
+    # q = 'select %s(%s) from %s ' % (method,field,table)
+    #
+    # size = db.getTableSize(table)
+    # ids = db.get_attributes_by_table(table,as_id=True)
+    # r = []
+    #
+    # for i in ids:
+    #     qi = q+' where att_conf_id=%d' % i
+    #     #if tref and int_time: where += ('int_time <= %d'% (tref))
+    #     rr = db.Query(qi)
+    #     if trace:
+    #         print('%s[%s]:%s' % (table,i,rr))
+    #     r.extend(rr)
+    #
+    # method = {'max':max,'min':min}[method]
+    # r = [db.mysqlsecs2time(l[0]) if int_time else fn.date2time(l[0])
+    #      for l in r if l[0] not in (0,None)]
+    # r = [l for l in r if l if (ignore_errors or 1e9<l<fn.now())]
+    #
+    # if len(r):
+    #     last = method(r) if len(r) else 0
+    #     date = fn.time2str(last)
+    # else:
+    #     db.warning('No values in %s' % table)
+    #     last, date = None, ''
+    #
+    # return (last, date, size, fn.now() - t0)
 
 def get_first_value_in_table(api, table, ignore_errors=False):
     """
@@ -1006,7 +1017,49 @@ def delete_data_out_of_time(api, table, tstart=1e9, tstop=None, doit=False, forc
             query('optimize table %s' % table)
     finally:
         api.setLogLevel(lg)
-        
+
+def filter_from_epoch(epoch=None):
+    t = epoch or fn.now()
+    year,month = fn.time2str(t).split('-')[:2]
+    return '%s%s' % (year,month)
+
+def check_db_partitions(api,year='',month='',max_size=128*1e9/10):
+    """
+    year and month, strings to match on existing partitions
+    e.g. '202102[0-9][0-9]' will match any partition from february
+
+    :param api:
+    :param filter:
+    :return:
+    """
+    result = fn.Struct(db_name=api.db_name)
+    nextf = '%s%s' % (year,month) if all((year,month)) else filter_from_epoch(fn.now()+365*86400)
+    filter = '%s%s' % (year,month) if all((year,month)) else filter_from_epoch()
+    tables = api.get_data_tables()
+    sizes = dict(fn.kmap(api.getTableSize,tables))
+    parts = dict(fn.kmap(api.getTablePartitions,tables))
+    bigs = dict((t,max(api.getPartitionSize(t,p) for p in parts[t])) for t in tables if parts[t])
+    match = dict((t,[p for p in parts[t] if fn.clsearch(filter,p)]) for t in tables)
+
+    result.wrong = dict((t,[p for p in parts[t]
+        if not p.startswith(pta.hdbpp.query.partition_prefixes[t])]) for t in tables)
+
+    result.sizes, result.parts, result.match, result.bigs = sizes, parts, match, bigs
+    result.miss = [t for t in tables if len(parts[t])
+                   and any(fn.clsearch(nextf,p) for p in parts[t])]
+    result.noparts = [t for t in tables if sizes[t]>max_size and not len(parts[t])]
+    result.toobigs = [t for t in tables if bigs.get(t,0)>max_size and len(match[t])<2]
+    result.nolasts = [t for t in tables if len(parts[t])
+        and not any(p.endswith('_last') for p in parts[t])]
+
+    print('%s: tables with no partitions: %s' % (result.db_name,result.noparts))
+    print('%s: tables with no %s partition: %s' % (result.db_name, nextf, result.miss))
+    print('%s: tables with too big partitions: %s' % (result.db_name, result.toobigs))
+    print('%s: tables with no _last partition: %s' % (result.db_name, result.nolasts))
+    print('%s: tables with wrong prefixes: %s' % (result.db_name,[t for t in result.wrong.items() if t[1]]))
+
+    return result
+
 def create_new_partitions(api,table,nmonths,partpermonth=1,
                           start_date=None,add_last=True,do_it=False):
     """
@@ -1137,7 +1190,7 @@ def main(*args,**opts):
     schema = args[0]
     api = pta.api(schema)
     tables = [a for a in api.getTables() if fn.clmatch('att_(scalar|array)_',a)]
-    descriptions = dict((t,get_table_description(api,t)) for t in tables)
+    descriptions = dict((t,api.getTableCreator(t)) for t in tables)
     partitioned = [t for t,v in descriptions.items() if 'partition' in str(v).lower()]
     print('%s: partitioned tables: %d/%d' % (schema,len(partitioned),len(tables)))
     

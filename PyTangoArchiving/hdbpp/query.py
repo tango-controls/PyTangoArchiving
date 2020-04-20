@@ -71,6 +71,9 @@ class HDBppReader(HDBppDB):
     THE METHODS IN THIS API SHOULD MATCH WITH PyTangoArchiving.Reader API
     """
     MIN_FILE_SIZE = MIN_FILE_SIZE
+
+    getTableSize = Cached(depth=100,expire=3600)(HDBppDB.getTableSize)
+    getPartitionSize = Cached(depth=1000, expire=3600)(HDBppDB.getPartitionSize)
     
     @Cached(depth=1000,expire=600)
     def get_mysqlsecsdiff(self,date=None):
@@ -92,7 +95,8 @@ class HDBppReader(HDBppDB):
             return d
         else:
             return fn.END_OF_TIME
-    
+
+    @Cached(expire=300)
     def get_last_partition(self, table, min_size = MIN_FILE_SIZE, 
                            add_last = True, tref = None):
         """
@@ -147,8 +151,16 @@ class HDBppReader(HDBppDB):
             parts = parts[parts.index(p1):parts.index(p2)+1]
             return parts if date2 or not len(parts) else parts[0]
         
-    get_table_partitions_for_dates = get_partitions_at_dates   
-    
+    get_table_partitions_for_dates = get_partitions_at_dates
+
+    def get_attr_timestamp(self, attr, method='max', epoch=None):
+        try:
+            return self.get_table_timestamp.execute(self,attr,method,epoch)
+        except Exception as e:
+            self.warning('get_attr_timestamp(%s) failed!' % e)
+            raise e #traceback.print_exc()
+
+    @Cached(depth=10000,expire=3600)
     def get_table_timestamp(self, table, method='max', 
             epoch = None, ignore_errors = False): #, tref = -180*86400):
         """
@@ -181,6 +193,9 @@ class HDBppReader(HDBppDB):
         q = 'select %s(%s) from %s ' % (method,field,table)      
         size = self.getTableSize(table)
         r = []
+        part = None #self.get_last_partition(table)
+        if part is not None and method == 'max':
+            q += 'partition (%s)' % part
 
         for i in ids:
             qi = q+' where att_conf_id=%d' % i
@@ -196,7 +211,7 @@ class HDBppReader(HDBppDB):
             last = method(r) if len(r) else 0
             date = fn.time2str(last)
         else:
-            self.warning('No values in %s' % table)
+            self.debug('No values in %s' % table)
             last, date = None, ''
 
         return (last, date, size, fn.now() - t0)
@@ -210,10 +225,11 @@ class HDBppReader(HDBppDB):
         returns last n values (or just one if n=1)
         """
         if epoch is None:
-            epoch = self.get_table_timestamp(attribute,method='max')[0]
+            epoch = self.get_attr_timestamp(attribute,method='max')[0]
         elif epoch < 0:
             epoch = fn.now()+epoch
-        start = epoch - abs(period)
+
+        start = (epoch or fn.now()) - abs(period)
 
         vals = self.get_attribute_values(attribute, N=n, human=True, desc=True,
                         start_date=start, stop_date=epoch)
@@ -398,7 +414,7 @@ class HDBppReader(HDBppDB):
         if N < 0 or desc: 
             query+=" desc" # or (not stop_date and N>0):
         if N: 
-            query+=' limit %s' % (abs(N)) # if 'array' not in table else N*128)
+            query+=' limit %s' % (abs(N) if 'array' not in table else N*1024)
 
         # too dangerous to remove always data by default, and bunching does not work
         #else: 
@@ -475,8 +491,7 @@ class HDBppReader(HDBppDB):
         
         t0 = time.time()
         is_array = 'array' in table
-        self.debug(query.replace('where','\nwhere').replace(
-            'group,','\ngroup'))
+
         try:
             result = []
             lasts = {}
@@ -488,9 +503,10 @@ class HDBppReader(HDBppDB):
                     break
                 span = ((v[-1][0]-v[0][0]) if len(v)>1 else 0)
                 density = len(v)/(span or 1)
-                if decimate!=RAW and (density*(stop_time-start_time))>MAX_QUERY_SIZE:
+                limit = (128 if is_array else 1) * MAX_QUERY_SIZE
+                if decimate!=RAW and (density*(stop_time-start_time))>limit:
                     if not decimate or type(decimate) not in (int,float):
-                        decimate = float(stop_time-start_time)/MAX_QUERY_SIZE
+                        decimate = float(stop_time-start_time)/limit
                         self.warning('density=%s values/s!: enforce decimate every %s seconds'
                                  % (density,decimate))
                     for l in v:

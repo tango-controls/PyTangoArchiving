@@ -306,21 +306,24 @@ class HDBppDB(ArchivingDB,SingletonMap):
         else:
             # Inactive attributes must be read from Database
             r = self.get_attribute_names(False)
-            
+
         r = sorted(set(fn.tango.get_full_name(a,fqdn=True).lower()
                           for a in r))
 
         return sorted(fn.filtersmart(r,regexp) if regexp else r)
         
     def get_attribute_names(self,active=False,regexp=''):
+        t0 = fn.now()
         if not active:
-            [self.attributes[a[0].lower()] for a 
-                in self.Query('select att_name from att_conf')]
+            attributes = [a[0].lower() for a in self.Query('select att_name from att_conf')]
+            [self.get_attr_id_type_table(a) for a in attributes if a not in self.attributes]
             r = self.attributes.keys()
         else:
             r = self.get_archived_attributes()
 
-        return sorted(fn.filtersmart(r,regexp) if regexp else r)
+        r = sorted(fn.filtersmart(r,regexp) if regexp else r)
+        self.debug('get attribute names took %d ms' % (1e3*(fn.now()-t0)))
+        return r
         
     @Cached(expire=86400)
     def get_data_types(self):
@@ -329,7 +332,8 @@ class HDBppDB(ArchivingDB,SingletonMap):
     
     def get_data_tables(self):
         return sorted('att_'+t for t in self.get_data_types())
-        
+
+    @Cached(depth=100, expire=60.)
     def get_attributes_by_table(self,table='',as_id=False):
         if table:
             table = table.replace('att_','')
@@ -389,31 +393,42 @@ class HDBppDB(ArchivingDB,SingletonMap):
       
     def get_table_name(self,attr):
         return get_attr_id_type_table(attr)[-1]
-      
+
+    @Cached(expire=600)
+    def get_att_conf_table(self):
+        t0 = fn.now()
+        #types = self.Query('select att_conf_data_type_id, data_type from att_conf_data_type')
+        #types = dict(types)
+        q = "select att_name,att_conf_id,att_conf.att_conf_data_type_id,data_type "
+        q += " from att_conf, att_conf_data_type where "
+        q += "att_conf.att_conf_data_type_id = att_conf_data_type.att_conf_data_type_id"
+        ids = self.Query(q)
+        #self.debug(str((q, ids)))
+        #ids = [list(t)+[types[t[-1]]] for t in ids]
+        for i in ids:
+            attr,aid,tid,table = i
+            self.attributes[attr].id = aid
+            self.attributes[attr].tid = tid
+            self.attributes[attr].type = table
+            self.attributes[attr].table = 'att_'+table
+            self.attributes[attr].modes = {'MODE_E':True}
+
+        return ids
+
     @Cached(depth=20000,expire=3600)
     def get_attr_id_type_table(self,attr):
-        
-        if fn.isNumber(attr):
-            where = 'att_conf_id = %s'%attr
-        else:
-            where = "att_name like '%s'"%get_search_model(attr)
-            
-        q = "select att_name,att_conf_id,att_conf_data_type_id from att_conf"\
-            " where %s"%where
-        ids = self.Query(q)
-        self.debug(str((q,ids)))
-        if not ids: 
-            return None,None,''
-        
-        attr,aid,tid = ids[0]
-        table = self.Query("select data_type from att_conf_data_type "\
-            +"where att_conf_data_type_id = %s"%tid)[0][0]
+        if fn.isString(attr):
+            attr = fn.tango.get_full_name(attr,True).lower()
 
-        self.attributes[attr].id = aid
-        self.attributes[attr].type = table
-        self.attributes[attr].table = 'att_'+table
-        self.attributes[attr].modes = {'MODE_E':True}
-        return aid,tid,'att_'+table    
+        if attr not in self.attributes:
+            self.get_att_conf_table.cache.clear()
+            self.get_att_conf_table()
+
+            if attr not in self.attributes:
+                return None,None,''
+
+        attr = self.attributes[attr]
+        return attr.id, attr.type, attr.table
     
     @Cached(depth=1000,expire=60.)
     def get_attribute_subscriber(self,attribute):
@@ -456,6 +471,13 @@ class HDBppDB(ArchivingDB,SingletonMap):
                                           for a in self.get_attributes())    
     
     def start_servers(self,host='',restart=True):
+        """
+        this method starts all servers processes
+
+        :param host:
+        :param restart:
+        :return:
+        """
         import fandango.servers
         if not self.manager: self.get_manager()
         astor = fandango.servers.Astor(self.manager)
@@ -479,6 +501,15 @@ class HDBppDB(ArchivingDB,SingletonMap):
         
     def start_devices(self,regexp = '*', force = False, 
                       do_init = False, do_restart = False):
+        """
+        this method starts servers if needed and launches command Start()
+
+        :param regexp:
+        :param force:
+        :param do_init:
+        :param do_restart:
+        :return:
+        """
         #devs = fn.tango.get_class_devices('HdbEventSubscriber')
         devs = self.get_archivers()
         if regexp:
@@ -683,7 +714,8 @@ class HDBppDB(ArchivingDB,SingletonMap):
                         traceback.print_exc()
                 
         except Exception,e:
-            print('add_attribute(%s) failed!: %s'%(a,traceback.print_exc()))
+            self.error('add_attributes(%s) failed!: %s'%(
+                attributes,traceback.print_exc()))
         return        
           
     def start_archiving(self,attribute,archiver,period=0,
