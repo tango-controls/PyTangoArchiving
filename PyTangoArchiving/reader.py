@@ -247,9 +247,8 @@ class Reader(Object,SingletonMap):
             #cls.__singleton__ = cls(*p,**k)
         #return cls.__singleton__
     
-    RetentionPeriod = 3*24*3600
-    ExportPeriod = 600
-    CacheTime = 600
+    RetentionPeriod = 3*24*3600 # for TDB compatibility
+    ExportPeriod = 600 # for TDB compatibility
     DefaultSchemas = ['hdb','tdb',] #'snap',) 
                      #'*','all') @TODO: Snap should be readable by Reader
     ValidArgs = ['db','config','servers','schema','timeout',
@@ -575,12 +574,8 @@ class Reader(Object,SingletonMap):
             active: True/False: attributes currently archived
             regexp: '' :filter for attributes to retrieve
         """
-        self.log.debug('get_attributes(%s)'%active)
+        self.log.debug('get_attributes(%s,%s)' % (active,regexp))
         t0 = now()
-
-        if self.available_attributes and self.current_attributes \
-                and time.time()<(self.updated+self.CacheTime):
-            return (self.available_attributes,self.current_attributes)[active]
 
         self.log.debug('%s: In Reader(%s).get_attributes(): '
             'last update was at %s'%(time.ctime(),self.schema,self.updated))
@@ -650,6 +645,7 @@ class Reader(Object,SingletonMap):
             % (self.schema,len(self.available_attributes),self.updated-t0))
         
         r = (self.available_attributes,self.current_attributes)[active]
+        self.log.debug('get_attributes(%s,%s)' % (len(r), regexp))
         return sorted(fn.filtersmart(r,regexp) if regexp else r)
     
     #@Cached(depth=10000,expire=86400)
