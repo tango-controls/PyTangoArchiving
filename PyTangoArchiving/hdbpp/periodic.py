@@ -180,3 +180,25 @@ class HDBppPeriodic(HDBppDB):
                 
         return done
 
+    def stop_periodic_archiving(self, attribute):
+        try:
+            attribute = parse_tango_model(attribute, fqdn=True).fullname.lower()
+            arch = self.get_periodic_attribute_archiver(attribute)
+            if not arch:
+                self.warning('%s is not archived!' % attribute)
+            else:
+                self.info('Removing %s from %s' % (attribute, arch))
+                dp = fn.get_device(archiver)
+                v = dp.AttributeRemove([attribute, str(int(float(period)))])
+                dp.UpdateAttributeList()
+                fn.wait(wait)
+                return v
+        except:
+            self.warning('stop_periodic_archiving(%s) failed!' %
+                         (attribute, traceback.format_exc()))
+
+    def clear_periodic_caches(self):
+        self.get_periodic_archiver_attributes.cache.clear()
+        self.get_periodic_archivers_attributes.cache.clear()
+        self.get_periodic_attribute_archiver.cache.clear()
+        self.get_periodic_attribute_period.cache.clear()

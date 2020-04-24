@@ -753,17 +753,24 @@ class HDBppDB(ArchivingDB,SingletonMap):
                         %(attribute,traceback.format_exc().replace('\n','')))
         return False        
     
-    def stop_archiving(self, attribute):
+    def stop_archiving(self, attribute, clear=True):
         """
         This method will remove the attribute from an existing archiver
         """
-        attribute = self.is_attribute_archived(attribute)
-        if attribute: 
-            self.warning('Stopping %s' % attribute)
-            self.get_manager().AttributeStop(attribute)
-        else:
-            self.wanring('%s is not archived!' % attribute)
-        return attribute
+        try:
+            attribute = self.is_attribute_archived(attribute)
+            if attribute:
+                arch = self.get_attribute_archiver(attribute)
+                self.warning('Removing %s from %s' % (attribute,arch))
+                self.get_manager().AttributeRemove(attribute)
+                if clear:
+                    self.clear_caches()
+            else:
+                self.warning('%s is not archived!' % attribute)
+            return attribute
+        except:
+            self.warning('stop_archiving(%s) failed!' %
+                         (attribute, traceback.format_exc()))
     
     def restart_attribute(self,attr, d=''):
         try:
@@ -803,7 +810,12 @@ class HDBppDB(ArchivingDB,SingletonMap):
             
         print('%d attributes restarted' % len(attributes))
 
-    
+    def clear_caches(self):
+        self.get_attribute_archiver.cache.clear()
+        self.get_archiver_attributes.cache.clear()
+        self.get_attribute_subscriber.cache.clear()
+        self.get_archivers_attributes.cache.clear()
+        self.dedicated = {}
     
     
     
