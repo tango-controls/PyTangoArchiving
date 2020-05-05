@@ -155,12 +155,12 @@ class HDBppReader(HDBppDB):
 
     def get_attr_timestamp(self, attr, method='max', epoch=None):
         try:
-            return self.get_table_timestamp.execute(self,attr,method,epoch)
+            return self.get_table_timestamp.func(self,attr,method,epoch)
         except Exception as e:
             self.warning('get_attr_timestamp(%s) failed!' % e)
             raise e #traceback.print_exc()
 
-    @Cached(depth=10000,expire=3600)
+    @Cached(depth=10000,expire=600)
     def get_table_timestamp(self, table, method='max', 
             epoch = None, ignore_errors = False): #, tref = -180*86400):
         """
@@ -226,7 +226,8 @@ class HDBppReader(HDBppDB):
         """
         if epoch is None:
             epoch = self.get_attr_timestamp(attribute,method='max')[0]
-        elif epoch < 0:
+            epoch += 3600
+        if epoch < 0:
             epoch = fn.now()+epoch
 
         start = (epoch or fn.now()) - abs(period)
