@@ -104,7 +104,7 @@ class HDBppPeriodic(HDBppDB):
         DONT USE Manager.AttributeSearch, it is limited to 1024 attrs!
         """
         #print('get_archived_attributes(%s)'%str(search))
-        attrs = HDBppDB.get_archived_attributes(self, search)
+        attrs = HDBppDB.get_subscribed_attributes(self, search)
         if periodic:
             attrs.extend(self.get_periodic_attributes())
         return sorted(set(fn.tango.get_full_name(a,fqdn=True).lower()

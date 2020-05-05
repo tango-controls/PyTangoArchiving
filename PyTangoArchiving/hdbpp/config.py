@@ -185,7 +185,7 @@ class HDBppDB(ArchivingDB,SingletonMap):
         return dp
     
     @Cached(expire=60.)
-    def get_archivers(self, from_db = True):
+    def get_subscribers(self, from_db = True):
         """
         If not got from_db, the manager may limit the list available
         """
@@ -198,6 +198,10 @@ class HDBppDB(ArchivingDB,SingletonMap):
             raise Exception('%s Manager not running'%self.manager)
 
         return [d for d in p if d.strip()]
+
+    def get_archivers(self, *args, **kwargs):
+        """ alias to get_subscribers """
+        return self.get_subscribers(*args,**kwargs)
     
     @Cached(expire=5.)
     def get_archiver_attributes(self, archiver, from_db=False, full=False):
@@ -257,7 +261,10 @@ class HDBppDB(ArchivingDB,SingletonMap):
         return dict((a,e) for a,e in zip(al,er) if e)
     
     def get_archiver_load(self,archiver,use_freq=True):
-
+        """
+        if use_freq=True, returns attribute record frequency
+        if false, returns attribute list size
+        """
         if use_freq:
             return fn.tango.read_attribute(archiver+'/attributerecordfreq')
         else:
@@ -350,9 +357,9 @@ class HDBppDB(ArchivingDB,SingletonMap):
                 "  where att_conf_data_type_id = %s" % (w,i))) for t,i in types)        
         
     @Cached(depth=10,expire=60.)
-    def get_archived_attributes(self,search=''):
+    def get_subscribed_attributes(self,search=''):
         """
-        It gets attributes currently assigned to archiver and updates
+        It gets attributes currently assigned to subscribers and updates
         internal attribute/archiver index.
         
         DONT USE Manager.AttributeSearch, it is limited to 1024 attrs!
@@ -360,7 +367,7 @@ class HDBppDB(ArchivingDB,SingletonMap):
         #print('get_archived_attributes(%s)'%str(search))
         attrs = []
         [self.get_archiver_attributes(d,from_db=True) 
-            for d in self.get_archivers()]
+            for d in self.get_subscribers()]
         for d,dattrs in self.dedicated.items():
             for a in dattrs:
                 self.attributes[a].archiver = d
@@ -368,6 +375,12 @@ class HDBppDB(ArchivingDB,SingletonMap):
                     attrs.append(a)
         return attrs        
     
+    def get_archived_attributes(self, *args, **kwargs):
+        """
+        alias to get_subscribed_attributes, to be overloaded in subclasses
+        """
+        return self.get_subscribed_attributes(*args, **kwargs)
+ 
     def get_attribute_ID(self,attr):
         # returns only 1 ID
         return self.get_attributes_IDs(attr,as_dict=0)[0][1]
@@ -605,7 +618,7 @@ class HDBppDB(ArchivingDB,SingletonMap):
         """
         set _event arguments to -1 to ignore them and not modify the database
         
-        
+        code_event will be set to True if no other event is setup
         """
         attribute = parse_tango_model(attribute,fqdn=True).fullname
         archiver = archiver or self.get_next_archiver(
