@@ -74,6 +74,54 @@ def get_attributes_row_counts(db,attrs='*',start=0, stop=0,
             r[a] = c
     return r
 
+def get_tables_stats(dbs=None,tables=None,period=365*86400):
+    """
+    obtains counts and frequencies stats from all data tables from all dbs
+    """
+    dbs = dbs or pta.multi.get_hdbpp_databases()
+    result = fn.defaultdict(fn.Struct)
+    date = int(fn.clsub('[^0-9]','',fn.time2str().split()[0]))
+    if period:
+        date0 = int(fn.clsub('[^0-9]','',
+                             fn.time2str(fn.now()-period).split()[0]))
+    else:
+        date0 = 0
+    print(date0,date)
+    for d in dbs:
+        api = pta.api(d)
+        dbtables = tables or api.getTables()
+        for t in dbtables:
+            result[(d,t)].db = d
+            result[(d,t)].table = t
+            result[(d,t)].partitions = [p for p in api.getTablePartitions(t)
+                if date0 < fn.str2int(p) < date]
+            result[(d,t)].attributes = (api.get_attributes_by_table(t) 
+                if t in api.get_data_tables() else [])
+            result[(d,t)].last = (api.get_last_partition(t)
+                if t in api.get_data_tables() else '')
+            if len(result[(d,t)].partitions) > 1:
+                result[(d,t)].size = sum(api.getPartitionSize(t,p)
+                                    for p in result[(d,t)].partitions)
+                result[(d,t)].rows = sum(api.getPartitionRows(t,p)
+                                    for p in result[(d,t)].partitions)
+            else:
+                result[(d,t)].size = api.getTableSize(t)
+                result[(d,t)].rows = api.getTableRows(t)
+                
+    for k,v in result.items():
+        v.partitions = len(v.partitions)
+        v.attributes = len(v.attributes)
+        v.attr_size = float(v.size)/v.attributes if v.attributes else 0
+        v.attr_rows = float(v.rows)/v.attributes if v.attributes else 0
+        v.row_size = v.size/v.rows if v.rows else 0
+        v.part_size = v.size/v.partitions if v.partitions else 0
+        v.row_freq = v.rows/float(period) if period else 0
+        v.size_freq = v.size/float(period) if period else 0
+        v.attr_freq = v.row_freq/v.attributes if v.attributes else 0
+        
+    return result
+            
+
 def decimate_value_list(values,period=None,max_period=3600,method=None,N=1080):
     """
     used by decimate_into_new_table
