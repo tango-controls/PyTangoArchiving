@@ -982,18 +982,20 @@ class Reader(Object,SingletonMap):
             self.log.info('Getting %s values in a background process ...' 
                           % attribute)
             ll = self.log.getLogLevel()
-            ints = range(int(start_time),int(stop_time),30*86400)
-            if start_time-stop_time > 30*86400:
-                self.log.setLogLevel(DEBUG)
+            split = 5*86400
+            ints = range(int(start_time),int(stop_time),split)
+            if stop_time-start_time > split and ll!=fn.log.DEBUG:
+                self.log.setLogLevel('DEBUG')
             ints.append(stop_time)
             ints = zip(ints,ints[1:])
             values = []
             for i0,i1 in ints:
                 d0,d1 = fn.time2str(i0),fn.time2str(i1)
                 self.log.info('%s - %s' % (d0,d1))
+                # decimation done in sub-readers
                 args = (attribute, d0, d1, i0, i1,
                         asHistoryBuffer, decimate, notNone, N, cache, 
-                        fallback, schemas)         
+                        fallback, schemas)
                 if subprocess:
                     values.extend(SubprocessMethod(
                         self.get_attribute_values_from_any,
@@ -1001,6 +1003,10 @@ class Reader(Object,SingletonMap):
                         timeout = 3600, callback = None))
                 else:
                     values.extend(self.get_attribute_values_from_any(*args))
+                    
+            v0 = values and values[0]
+            if v0:
+                self.log.debug('%s(%s)' % (type(v0[1]),v0))
             self.log.setLogLevel(ll)
           
         #######################################################################
@@ -1033,33 +1039,9 @@ class Reader(Object,SingletonMap):
                 values = self.get_attribute_values_from_hdb(attribute, db,
                             start_date, stop_date, decimate, 
                             asHistoryBuffer, N, notNone, GET_LAST)
-                
-        #######################################################################
-        #DECIMATION IS DONE HERE
-        
-        l0,t1 = len(values),time.time()
-        
-        if l0 > 128 and decimate: 
-            decimate,window = decimate if isSequence(decimate) \
-                                        else (decimate,'0')
-            if isString(decimate):
-                try: 
-                    decimate = eval(decimate)
-                except:
-                    self.log.info('Decimation(%s)?: %s'
-                        % (decimate, traceback.format_exc()))
-                        
-            ## Removal of None values is always done
-            ## Decimation by data_has_changed is done always
-            ## Decmation on window is only done if decimate is callable
-            values = utils.decimation(values, decimate, window=window, 
-                                logger_obj=self.log)
-                
-            #@debug
-            self.log.debug('\tDecimated %s[%d > %d] in %s s'
-                    % (attribute,l0,len(values),time.time()-t1))
-            t1 = time.time()
-                    
+            
+            values = self.decimate_values(values, decimate)
+
         #Simulating DeviceAttributeHistory structs
         if asHistoryBuffer:
             values = [FakeAttributeHistory(*v[:3]) for v in values]                
@@ -1078,6 +1060,9 @@ class Reader(Object,SingletonMap):
         self.log.debug('Out of get_attribute_values(): %d values' %
                          len(values))
 
+        v0 = values and values[0]
+        if v0:
+            self.log.debug('%s(%s)' % (type(v0[1]),v0))
         return values
     
     def get_attribute_values_from_any(self, attribute, start_date, 
@@ -1161,16 +1146,26 @@ class Reader(Object,SingletonMap):
                 values = sorted(values+fallback)
                 self.log.debug('Adding %d values from fallback took '
                     '%f seconds' % (len(fallback),fn.now()-tf))
+            
+            # Loading last values to fill initial gap
+            if decimate:
+                gap = start_time + (decimate if fn.isNumber(decimate) 
+                   else (stop_date-start_date)/utils.MAX_RESOLUTION)
+            else:
+                gap = start_time + 60.
                 
-            if not len(values) or not len(values[0]) or values[0][0] > (
-                    start_time + 60.):
+            if not len(values) or not len(values[0]) or values[0][0] > gap:
                 self.log.warning('No %s values at %s, loading previous values' % (
                     attribute, fn.time2str(start_time)))
                 lasts = self.load_last_values(attribute, epoch=start_time)
-                lasts = [v for v in lasts.values() if v is not None and len(v)]
+                lasts = [v for k,v in lasts.values() if 
+                        k not in ('hdb','tdb') and v is not None and len(v)]
                 lasts = sorted(t for t in lasts if t and len(t))
                 if len(lasts): values.insert(0,lasts[-1][:3])
-                
+
+        self.log.debug('r0: %s' % (values and type(values[0][1])))
+        values = self.decimate_values(values, decimate)
+        self.log.debug('r1: %s' % (values and type(values[0][1])))
         return values
     
     def get_attribute_values_from_hdb(self, attribute, db, 
@@ -1290,6 +1285,30 @@ class Reader(Object,SingletonMap):
         #@debug
         self.log.info('\tParsed [%d] in %s s'%(len(values),time.time()-t1))
         return values       
+    
+    def decimate_values(self, values, decimate):
+        """ 
+        proxy method to parse arguments for utils.decimation 
+        Removal of None values is always done
+        Decimation by data_has_changed is done always
+        Decimation on window is only done if decimate is callable (pickfirst)
+        """
+        l0 = len(values)
+        if len(values) > 128 and decimate: 
+            decimate,window = decimate if isSequence(decimate) \
+                                        else (decimate,'0')
+            if isString(decimate):
+                try: 
+                    decimate = eval(decimate)
+                except:
+                    self.log.info('Decimation(%s)?: %s'
+                        % (decimate, traceback.format_exc()))
+            
+            values = utils.decimation(values, decimate, window=window, 
+                                logger_obj=self.log)
+            self.log.debug('decimate([%d],%s):[%d]' % (l0,decimate,len(values)))
+            
+        return values
     
     def get_attributes_values(self,attributes,start_date,stop_date=None,
             asHistoryBuffer=False,decimate=False,notNone=False,N=0,

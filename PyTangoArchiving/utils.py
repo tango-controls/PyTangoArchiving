@@ -466,12 +466,15 @@ def decimation(history,method,window='0',logger_obj=None, N=MAX_RESOLUTION):
               %(l0-len(history),t1-t0))
         history = nv   
         
-    if (method and isCallable(method) #and method!=data_has_changed 
-        and len(history) and type(history[0][-1]) in (int,float,bool)): #type(None)):
+    if (method and isCallable(method) and len(history)):
         # Data is filtered applying an averaging at every "window" interval.
         # As range() only accept integers the minimum window is 1 second.
         # It means that filtering 3 hours will implicitly prune millis data.        
-        #DATA FROM EVAL IS ALREADY FILTERED; SHOULD NOT PASS THROUGH HERE        
+        #DATA FROM EVAL IS ALREADY FILTERED; SHOULD NOT PASS THROUGH HERE
+        
+        if type(history[0][-1]) not in (int,float,bool):
+            method = fandango.arrays.pickfirst
+            trace('Decimation forced to %s' % method)
         
         wmin = max(1.,(stop_date-start_date)/(2*MAX_RESOLUTION))
         wauto = max(1.,(stop_date-start_date)/(10*N))
@@ -486,7 +489,7 @@ def decimation(history,method,window='0',logger_obj=None, N=MAX_RESOLUTION):
                   '(%s,%s)'
                   %(l0,len(history),t2-t1,method,window))
     else:
-        trace('Decimation is not callable')
+        trace('Decimation(%s) is not callable' % method)
             
     return history
 

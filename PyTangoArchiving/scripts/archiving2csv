@@ -224,7 +224,8 @@ def main():
             if a == '--nosep':
                 sep = arrsep = ' '
                 
-        raws = rd.get_attributes_values(attrs,start,stop,text=False,correlate=False)
+        raws = rd.get_attributes_values(attrs,start,stop,text=False,
+                                        decimate=correlate,correlate=False)
         values = fn.SortedDict()
         for a in attrs: 
             values[a] = raws[a]
