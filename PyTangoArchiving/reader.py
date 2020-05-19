@@ -923,12 +923,12 @@ class Reader(Object,SingletonMap):
                 
             margin = max((60.,.01*abs(l2-l1)))
             nearest = [(a,s1,s2,h,d) for a,s1,s2,h,d in self.cache 
-                if a==attr and h==asHistoryBuffer and d==bool(decimate) 
+                if a==attr and h==asHistoryBuffer and d==str(decimate or '') 
                 and (s1-margin<=l1 and l2<=s2+margin)]
             if nearest: 
                 attr,l1,l2,asHistoryBuffer,decimate = nearest[0]
                 
-            ckey = (attr,l1,l2,asHistoryBuffer,bool(decimate))
+            ckey = (attr,l1,l2,asHistoryBuffer,str(decimate or ''))
             values = cache.get(ckey,False)
             
             #any(len(v)>1e7 for v in self.cache.values()) or 
@@ -980,16 +980,23 @@ class Reader(Object,SingletonMap):
         elif self.db_name=='*':
             self.log.info('Getting %s values in a background process ...' 
                           % attribute)
-            args = (attribute, start_date,stop_date, start_time, stop_time,
-                    asHistoryBuffer, decimate, notNone, N, cache, 
-                    fallback, schemas)         
-            if subprocess:
-                values = SubprocessMethod(
-                    self.get_attribute_values_from_any,
-                    *args,
-                    timeout = 3600, callback = None)
-            else:
-                values = self.get_attribute_values_from_any(*args)
+            ints = range(int(start_time),int(stop_time),30*86400)
+            ints.append(stop_time)
+            ints = zip(ints,ints[1:])
+            values = []
+            for i0,i1 in ints:
+                d0,d1 = fn.time2str(i0),fn.time2str(i1)
+            
+                args = (attribute, d0, d1, i0, i1,
+                        asHistoryBuffer, decimate, notNone, N, cache, 
+                        fallback, schemas)         
+                if subprocess:
+                    values.extend(SubprocessMethod(
+                        self.get_attribute_values_from_any,
+                        *args,
+                        timeout = 3600, callback = None))
+                else:
+                    values.extend(self.get_attribute_values_from_any(*args))
           
         #######################################################################
         # HDB/TDB Specific Code
