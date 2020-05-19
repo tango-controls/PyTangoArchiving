@@ -164,6 +164,9 @@ class HDBppReader(HDBppDB):
     def get_table_timestamp(self, table, method='max', 
             epoch = None, ignore_errors = False): #, tref = -180*86400):
         """
+        def get_table_timestamp(self, table, method='max', 
+            epoch = None, ignore_errors = False):
+            
         method should be min() for first value and max() for last
         this query goes directly to table indexes
         this doesn't access values (but it is much faster)
@@ -226,7 +229,7 @@ class HDBppReader(HDBppDB):
         """
         if epoch is None:
             epoch = self.get_attr_timestamp(attribute,method='max')[0]
-            epoch += 3600
+            epoch = (int(epoch)+3600) if epoch else 0
         if epoch < 0:
             epoch = fn.now()+epoch
 
@@ -640,11 +643,10 @@ class HDBppReader(HDBppDB):
         r['archiver'] = self.get_attribute_archiver(attr)
         return r        
     
-    def get_attribute_errors_ids(self, attribute, start, end):
+    def get_attribute_errors_from_db(self, attribute, start, end):
         what = 'data_time, att_error_desc_id'
         return self.get_attribute_values(attribute, start, end,
             what = what, where = 'att_error_desc_id is not NULL')
-        
     
     def get_error_description(self, error_id):
         return str(hdbct.Query('select error_desc from att_error_desc '
