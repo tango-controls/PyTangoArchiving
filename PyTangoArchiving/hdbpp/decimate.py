@@ -6,6 +6,8 @@ import PyTangoArchiving.utils as ptau
 args = sys.argv[1:]
 tt0 = time.time()
 
+raise Exception('Deprecated, use maintenance.py instead')
+
 __doc__ = """
 Usage:
 
