@@ -203,9 +203,11 @@ class HDBppDB(ArchivingDB,SingletonMap):
         """ alias to get_subscribers """
         return self.get_subscribers(*args,**kwargs)
     
-    @Cached(expire=5.)
+    @Cached(expire=10.)
     def get_archiver_attributes(self, archiver, from_db=False, full=False):
         """
+        get_archiver_attributes(self, archiver, from_db=False, full=False):
+        
         Obtain archiver AttributeList, either from TangoDB or a running device
         if from_db = True or full = True; the full config is returned
         """
@@ -232,6 +234,8 @@ class HDBppDB(ArchivingDB,SingletonMap):
     @Cached(expire=60.)
     def get_archivers_attributes(self,archs=None,from_db=True,full=False):
         """
+        get_archivers_attributes(self,archs=None,from_db=True,full=False):
+        
         If not got from_db, the manager may limit the list available
         """        
         archs = archs or self.get_archivers()
@@ -259,6 +263,14 @@ class HDBppDB(ArchivingDB,SingletonMap):
         al = dp.AttributeList
         er = dp.AttributeErrorList
         return dict((a,e) for a,e in zip(al,er) if e)
+    
+    def get_attribute_errors(self,attribute):
+        """
+        This method get attribute errors from its current archiver
+        """
+        archiver = self.get_attribute_archiver(attribute)
+        errors = self.get_archiver_errors(archiver)
+        return errors.get(attribute,None)
     
     def get_archiver_load(self,archiver,use_freq=True):
         """
@@ -374,6 +386,22 @@ class HDBppDB(ArchivingDB,SingletonMap):
                 if not search or fn.clsearch(search,a):
                     attrs.append(a)
         return attrs        
+    
+    def get_stopped_attributes(self, errors=False):
+        r = []
+        for d in self.get_subscribers():
+            try:
+                dp = fn.get_device(d,keep=True)
+                l = dp.AttributeStoppedList
+                if l:
+                    r.extend(l)
+                if errors:
+                    self.debug('adding %s error list' % d)
+                    r.extend(self.get_archiver_errors(d).keys())
+            except:
+                self.warning('%s not running!' % d)
+                r.extend(self.get_archiver_attributes(d,from_db=True))
+        return r
     
     def get_archived_attributes(self, *args, **kwargs):
         """
@@ -782,7 +810,7 @@ class HDBppDB(ArchivingDB,SingletonMap):
                 self.warning('%s is not archived!' % attribute)
             return attribute
         except:
-            self.warning('stop_archiving(%s) failed!' %
+            self.warning('stop_archiving(%s) failed!: %s' %
                          (attribute, traceback.format_exc()))
     
     def restart_attribute(self,attr, d=''):
