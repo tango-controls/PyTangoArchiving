@@ -981,17 +981,14 @@ class Reader(Object,SingletonMap):
         elif self.db_name=='*':
             self.log.info('Getting %s values in a background process ...' 
                           % attribute)
-            ll = self.log.getLogLevel()
             split = 5*86400
             ints = range(int(start_time),int(stop_time),split)
-            if stop_time-start_time > split and ll!=fn.log.DEBUG:
-                self.log.setLogLevel('DEBUG')
             ints.append(stop_time)
             ints = zip(ints,ints[1:])
             values = []
             for i0,i1 in ints:
                 d0,d1 = fn.time2str(i0),fn.time2str(i1)
-                self.log.info('%s - %s' % (d0,d1))
+                self.log.warning('%s - %s' % (d0,d1))
                 # decimation done in sub-readers
                 args = (attribute, d0, d1, i0, i1,
                         asHistoryBuffer, decimate, notNone, N, cache, 
@@ -1003,11 +1000,6 @@ class Reader(Object,SingletonMap):
                         timeout = 3600, callback = None))
                 else:
                     values.extend(self.get_attribute_values_from_any(*args))
-                    
-            v0 = values and values[0]
-            if v0:
-                self.log.debug('%s(%s)' % (type(v0[1]),v0))
-            self.log.setLogLevel(ll)
           
         #######################################################################
         # HDB/TDB Specific Code
@@ -1015,7 +1007,6 @@ class Reader(Object,SingletonMap):
             alias = self.get_attribute_alias(attribute).lower()
             #Needed to record last read values for both alias and real name
             attribute,alias = alias,attribute 
-            #@debug
             self.log.debug('In PyTangoArchiving.Reader.get_attribute_values'
                 '(%s,%s,%s,%s)'%(self.db_name,attribute,start_date,stop_date))
             
@@ -1060,9 +1051,6 @@ class Reader(Object,SingletonMap):
         self.log.debug('Out of get_attribute_values(): %d values' %
                          len(values))
 
-        v0 = values and values[0]
-        if v0:
-            self.log.debug('%s(%s)' % (type(v0[1]),v0))
         return values
     
     def get_attribute_values_from_any(self, attribute, start_date, 
@@ -1163,9 +1151,7 @@ class Reader(Object,SingletonMap):
                 lasts = sorted(t for t in lasts if t and len(t))
                 if len(lasts): values.insert(0,lasts[-1][:3])
 
-        self.log.debug('r0: %s' % (values and type(values[0][1])))
         values = self.decimate_values(values, decimate)
-        self.log.debug('r1: %s' % (values and type(values[0][1])))
         return values
     
     def get_attribute_values_from_hdb(self, attribute, db, 
