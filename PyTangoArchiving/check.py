@@ -468,8 +468,22 @@ CheckState = fn.Struct(
     UNK = 7, # value cannot be evaluated
     )
 
+def check_attribute_exists(model):
+    model = fn.tango.parse_tango_model(model)
+    alldevs = fn.tango.get_all_devices()
+    device = fn.tango.get_normal_name(model.device)
+    if device not in alldevs:
+        return False
+    #alldevs = fn.tango.get_all_devices(exported=True)
+    #if not device in alldevs:
+        #return True
+    if not fn.tango.check_device(device):
+        return True
+    return bool(fn.find_attributes(model.normalname))
+
 def check_db_schema(schema, attributes = None, values = None,
-                    tref = -12*3600, n = 1, filters = '*', export = 'json'):
+                    tref = -12*3600, n = 1, filters = '*', export = 'json',
+                    restart = False):
     """
     tref is the time that is considered updated (e.g. now()-86400)
     n is used to consider multiple values
@@ -489,8 +503,12 @@ def check_db_schema(schema, attributes = None, values = None,
     """
     
     t0 = fn.now()
-    r = fn.Struct()
-    r.api = api = pta.api(schema)
+    if hasattr(schema,'schema'):
+        api,schema = schema,api.schema
+    else:
+        api = pta.api(schema)
+
+    r = fn.Struct(api=api,schema=schema)    
     if isString(tref): 
         tref = fn.str2time(tref)
     r.tref = fn.now()+tref if tref < 0 else tref
@@ -498,6 +516,17 @@ def check_db_schema(schema, attributes = None, values = None,
                 if fn.clmatch(filters,a)]
     print('check_db_schema(%s,attrs[%s],tref="%s",export as %s)' 
           % (schema,len(r.attrs),fn.time2str(r.tref),export))
+    
+    if restart and schema!='hdbpc':
+        archs = [a for a in api.get_archivers() if not fn.check_device(a)]
+        if archs:
+            try:
+                print('Restarting archivers: %s' % str(archs))
+                astor = fn.Astor(archs)
+                astor.stop_servers()
+                astor.start_servers()
+            except:
+                traceback.print_exc()
     
     r.on = [a for a in api.get_archived_attributes() if a in r.attrs]
     r.off = [a for a in r.attrs if a not in r.on]
@@ -534,12 +563,13 @@ def check_db_schema(schema, attributes = None, values = None,
     r.check = dict((a,fn.check_attribute(a)
                     ) for a in r.on if a not in r.ok)
     #r.novals = [a for a,v in r.values.items() if not v]
-    r.nok, r.stall, r.noev, r.lost, r.novals, r.evs = [],[],[],[],[],{}
+    r.nok, r.stall, r.noev, r.lost, r.novals, r.evs, r.rem = [],[],[],[],[],{},[]
     # Method to compare numpy values
     
     for a,v in r.check.items():
         state = check_archived_attribute(a, v, default=CheckState.LOST, 
-                    cache=r, tref=r.tref)
+            cache=r, tref=r.tref, 
+            check_events = not api.is_periodic_archived(a))
         {
             #CheckState.ON : r.on,
             #CheckState.OFF : r.off,
@@ -563,6 +593,14 @@ def check_db_schema(schema, attributes = None, values = None,
         
     r.summary += '\nfinished in %d seconds\n\n'%(fn.now()-t0)
     print(r.summary)
+    
+    if restart:
+        try:
+            retries = r.lost+r.novals+r.nok
+            print('restarting %d attributes' % len(retries))
+            api.restart_attributes(retries)
+        except:
+            traceback.print_exc()
     
     if export is not None:
         if export is True:
@@ -588,13 +626,20 @@ def check_db_schema(schema, attributes = None, values = None,
     return r
 
 def check_archived_attribute(attribute, value = False, state = CheckState.OK, 
-        default = CheckState.UNK, cache = None, tref = None):
+        default = CheckState.LOST, cache = None, tref = None, 
+        check_events = True):
     """
     generic method to check the state of an attribute (readability/events)
+    
+    value = AttrValue object returned by check_attribute
+    cache = result from check_db_schema containing archived values
     
     this method will not query the database; database values should be 
     given using the chache dictionary argument
     """
+    # readable and/or no reason known for archiving failure
+    state = default # do not remove this line
+    
     # Get current value/timestamp
     if cache:
         stored = cache.values[attribute]
@@ -622,17 +667,14 @@ def check_archived_attribute(attribute, value = False, state = CheckState.OK,
     elif cache and stored and fbool(vv == stored[1]):
         # attribute value doesnt change
         state = CheckState.STALL
-    else:
-        # NOT STORED WILL ARRIVE HERE
+    elif check_events:
+        # READABLE NOT STORED WILL ARRIVE HERE
         evs = fn.tango.check_attribute_events(attribute)
         if cache:
             cache.evs[attribute] = evs
         if not evs:
             # attribute doesnt send events
             state = CheckState.NO_EVENTS
-        else:
-            # no values and/or no reason known for archiving failure
-            state = default
 
     return state
 
