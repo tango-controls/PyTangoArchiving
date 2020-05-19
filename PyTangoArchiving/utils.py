@@ -287,7 +287,7 @@ isNaN = lambda f: 'nan' in str(f).lower()
 RULE_LAST = lambda v,w: sorted([v,w])[-1]
 RULE_MAX = lambda v,w: (max((v[0],w[0])),max((v[1],w[1])))
 START_OF_TIME = time.time()-10*365*24*3600 #Archiving reading limited to last 10 years.
-MAX_RESOLUTION = 10*1080.
+MAX_RESOLUTION = 2*1080.
 
 def overlap(int1,int2):
     """
@@ -413,12 +413,12 @@ def data_has_changed(val,prv,nxt=None,t=300):
                     or (nxt is not None and nxt[1]!=prv[1]) 
                     or val[0]>(prv[0]+t))
 
-def decimation(history,method,window='0',logger_obj=None, N=1080):
+def decimation(history,method,window='0',logger_obj=None, N=MAX_RESOLUTION):
     """
     Nones and NaNs are always removed if this method is called
     
     history: array of data
-    method: method or callable
+    method: method, callable or interval, from fandango.arrays
     window: string for time
     logger_obj: ArchivedTrendLogger or similar
     N: max array size to return
@@ -434,6 +434,9 @@ def decimation(history,method,window='0',logger_obj=None, N=1080):
             window = str2time(window or '0') 
     except: 
         window = 0
+
+    if isNumber(method) and not window:
+        method, window = fandango.arrays.pickfirst, float(method)
         
     start_date,stop_date = float(history[0][0]),float(history[-1][0])
 
@@ -470,7 +473,7 @@ def decimation(history,method,window='0',logger_obj=None, N=1080):
         # It means that filtering 3 hours will implicitly prune millis data.        
         #DATA FROM EVAL IS ALREADY FILTERED; SHOULD NOT PASS THROUGH HERE        
         
-        wmin = max(1.,(stop_date-start_date)/(10*1080.))
+        wmin = max(1.,(stop_date-start_date)/(2*MAX_RESOLUTION))
         wauto = max(1.,(stop_date-start_date)/(10*N))
         trace('WMIN,WUSER,WAUTO = %s,%s,%s'%(wmin,window,wauto))
         window = wauto if not window else max((wmin,window))
@@ -593,7 +596,12 @@ def mysql2bool(v):
 
         
 def extract_array_index(values,array_index,decimate=False,asHistoryBuffer=False):
-    # Applying array_index to the obtained results, it has to be applied after attribute loading to allow reusing cache in array-indexed attributes
+    """
+    Applying array_index to the obtained results, it has to be applied after 
+    attribute loading to allow reusing cache in array-indexed attributes
+    
+    decimate is just evaluated as True/False
+    """
     last,l0 = (0,None),len(values)
     
     # Check if it has been already parsed

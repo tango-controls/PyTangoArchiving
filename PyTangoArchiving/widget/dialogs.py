@@ -218,14 +218,14 @@ class QReloadWidget(Qt.QWidget):
         self._nonescheck = Qt.QCheckBox('Remove Nones')
         self._nonescheck.setChecked(True)
         self._nonescheck.connect(self._nonescheck,Qt.SIGNAL('toggled(bool)'),self.toggle_nones)
-        self._windowedit = Qt.QLineEdit()
-        self._windowedit.setText('0')
+        self._period = Qt.QLineEdit()
+        self._period.setText('AUTO')
 
         dl = Qt.QGridLayout()
         dl.addWidget(Qt.QLabel('Decimation method:'),0,0,1,2)
         dl.addWidget(self._decimatecombo,0,3,1,2)
         dl.addWidget(Qt.QLabel('Fixed Period (0=AUTO)'),1,0,1,1)
-        dl.addWidget(self._windowedit,1,1,1,1)
+        dl.addWidget(self._period,1,1,1,1)
         dl.addWidget(self._nonescheck,1,2,1,2)
         self.layout().addLayout(dl)
         
@@ -237,6 +237,8 @@ class QReloadWidget(Qt.QWidget):
         try:
             t = str(self._decimatecombo.currentText())
             m = dict(DECIMATION_MODES)[t]
+            if m is True:
+                m = str(self._period.text()).strip()
             self.logger.info('Decimation mode: %s,%s'%(m,t))
             return m
         except:
@@ -244,7 +246,7 @@ class QReloadWidget(Qt.QWidget):
             return None
         
     def getPeriod(self):
-        return float(self._windowedit.text())
+        return float(self._period.text())
         
     def getNonesCheck(self):
         return self._nonescheck.isChecked()

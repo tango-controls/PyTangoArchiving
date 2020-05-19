@@ -67,7 +67,8 @@ def getArchivedTrendValues(*args,**kwargs):
 
 DECIMATION_MODES = [
     #('Hide Nones',fn.arrays.notnone),
-    ('Pick One',fn.arrays.pickfirst), # <<< DEFAULT
+    ('Period',True), # <<< DEFAULT
+    ('Pick One',fn.arrays.pickfirst), 
     ('Minimize Noise',fn.arrays.mindiff),
     ('Maximize Peaks',fn.arrays.maxdiff),
     ('Average Values',fn.arrays.average),
@@ -980,13 +981,16 @@ class Reader(Object,SingletonMap):
         elif self.db_name=='*':
             self.log.info('Getting %s values in a background process ...' 
                           % attribute)
+            ll = self.log.getLogLevel()
             ints = range(int(start_time),int(stop_time),30*86400)
+            if start_time-stop_time > 30*86400:
+                self.log.setLogLevel(DEBUG)
             ints.append(stop_time)
             ints = zip(ints,ints[1:])
             values = []
             for i0,i1 in ints:
                 d0,d1 = fn.time2str(i0),fn.time2str(i1)
-            
+                self.log.info('%s - %s' % (d0,d1))
                 args = (attribute, d0, d1, i0, i1,
                         asHistoryBuffer, decimate, notNone, N, cache, 
                         fallback, schemas)         
@@ -997,6 +1001,7 @@ class Reader(Object,SingletonMap):
                         timeout = 3600, callback = None))
                 else:
                     values.extend(self.get_attribute_values_from_any(*args))
+            self.log.setLogLevel(ll)
           
         #######################################################################
         # HDB/TDB Specific Code
