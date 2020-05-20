@@ -1146,7 +1146,7 @@ class Reader(Object,SingletonMap):
                 self.log.warning('No %s values at %s, loading previous values' % (
                     attribute, fn.time2str(start_time)))
                 lasts = self.load_last_values(attribute, epoch=start_time)
-                lasts = [v for k,v in lasts.values() if 
+                lasts = [v for k,v in lasts.items() if 
                         k not in ('hdb','tdb') and v is not None and len(v)]
                 lasts = sorted(t for t in lasts if t and len(t))
                 if len(lasts): values.insert(0,lasts[-1][:3])
