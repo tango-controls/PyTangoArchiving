@@ -197,6 +197,9 @@ class Schemas(object):
     
     @classmethod
     def getSchema(k,schema,tango='',prop='',logger=None, write=False):
+        """
+        Get schema specs as defined in Tango.FreePropertis.DbSchemas
+        """
 
         if schema.startswith('#') and EXPERT_MODE:
             schema = schema.strip('#')
@@ -246,6 +249,7 @@ class Schemas(object):
         """
         returns a fallback schema chain for the given dates
         """
+        #print('getSchemasForAttribute(%s)' % attr)
         return [s for s in k.SCHEMAS if k.checkSchema(s,attr,start,stop)]
         
     
@@ -303,7 +307,10 @@ class Schemas(object):
   
     @classmethod
     def getApi(k,schema):
-        if fn.isString(schema):
+        if schema == '*':
+            import PyTangoArchiving.reader
+            return PyTangoArchiving.reader.Reader()
+        elif fn.isString(schema):
             schema = k.getSchema(schema)
             if schema is not None:
                 api = schema.get('api','PyTangoArchiving.ArchivingAPI')
