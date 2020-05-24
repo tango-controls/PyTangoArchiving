@@ -147,6 +147,7 @@ def getArchivingReader(attr_list=None,start_date=0,stop_date=0,
     #By default, it iterates over sorted Schemas.SCHEMAS
     for name in schemas:
       try:
+        self.log.info('getSchema(%s)' % name)
         data = Schemas.getSchema(name,tango=tango,logger=log)
         if data is None: continue #Unreached schema
       
@@ -731,9 +732,9 @@ class Reader(Object,SingletonMap):
 
         self.get_attributes() #Updated cached lists
         attr = self.get_attribute_alias(attribute)
-        self.log.info('%s => %s' % (attribute, attr))
+        if attr!=attribute:
+            self.log.info('%s => %s' % (attribute, attr))
         attr = self.get_attribute_model(attr)
-        self.log.info('%s => %s' % (attribute, attr))
         
         if self.db_name=='*':
             # Universal reader
@@ -988,11 +989,11 @@ class Reader(Object,SingletonMap):
             values = []
             for i0,i1 in ints:
                 d0,d1 = fn.time2str(i0),fn.time2str(i1)
-                self.log.warning('%s - %s' % (d0,d1))
+                self.log.info('getting %s - %s' % (d0,d1))
                 # decimation done in sub-readers
                 args = (attribute, d0, d1, i0, i1,
                         asHistoryBuffer, decimate, notNone, N, cache, 
-                        fallback, schemas)
+                        fallback, schemas, not(len(values)))
                 if subprocess:
                     values.extend(SubprocessMethod(
                         self.get_attribute_values_from_any,
@@ -1000,6 +1001,8 @@ class Reader(Object,SingletonMap):
                         timeout = 3600, callback = None))
                 else:
                     values.extend(self.get_attribute_values_from_any(*args))
+                fn.wait(.1)
+            self.log.info('obtained %d values in %d steps' % (len(values),len(ints)))
           
         #######################################################################
         # HDB/TDB Specific Code
@@ -1056,7 +1059,7 @@ class Reader(Object,SingletonMap):
     def get_attribute_values_from_any(self, attribute, start_date, 
         stop_date, start_time, stop_time, asHistoryBuffer=False, 
         decimate=False, notNone=False, N=0, cache=True, fallback=True,
-        schemas = None):
+        schemas = None, lasts = True):
     
         sch = [s for s in self.is_attribute_archived(
             attribute, preferent = True, start = start_time, stop = stop_time) 
@@ -1138,11 +1141,11 @@ class Reader(Object,SingletonMap):
             # Loading last values to fill initial gap
             if decimate:
                 gap = start_time + (decimate if fn.isNumber(decimate) 
-                   else (stop_date-start_date)/utils.MAX_RESOLUTION)
+                   else (stop_time-start_time)/utils.MAX_RESOLUTION)
             else:
                 gap = start_time + 60.
                 
-            if not len(values) or not len(values[0]) or values[0][0] > gap:
+            if lasts and (not len(values) or not len(values[0]) or values[0][0] > gap):
                 self.log.warning('No %s values at %s, loading previous values' % (
                     attribute, fn.time2str(start_time)))
                 lasts = self.load_last_values(attribute, epoch=start_time)
