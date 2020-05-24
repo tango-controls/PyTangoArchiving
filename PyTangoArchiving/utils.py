@@ -451,7 +451,8 @@ def decimation(history,method,window='0',logger_obj=None, N=MAX_RESOLUTION):
                     ):
                 nv.append(v)
         t1 = time.time()
-        trace('Removed %d (None,NaN, Rep) values in %fs'
+        if l0!=len(nv):
+            trace('Removed %d repeated values in %fs'
               %(l0-len(nv),t1-t0))
 
         t0,i,c,lh = t1,0,0,len(history)
@@ -462,7 +463,8 @@ def decimation(history,method,window='0',logger_obj=None, N=MAX_RESOLUTION):
                 c+=1
             i+=1
         t1 = time.time()
-        trace('Removed %d (None,NaN, Rep) values in %fs'
+        if l0!=len(history):
+            trace('Removed %d (None,NaN) values in %fs'
               %(l0-len(history),t1-t0))
         history = nv   
         
@@ -489,7 +491,8 @@ def decimation(history,method,window='0',logger_obj=None, N=MAX_RESOLUTION):
                   '(%s,%s)'
                   %(l0,len(history),t2-t1,method,window))
     else:
-        trace('Decimation(%s) is not callable' % method)
+        #trace('Decimation(%s) is not callable' % method)
+        pass
             
     return history
 
