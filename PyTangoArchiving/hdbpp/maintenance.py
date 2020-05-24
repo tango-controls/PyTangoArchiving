@@ -120,7 +120,23 @@ def get_tables_stats(dbs=None,tables=None,period=365*86400):
         v.attr_freq = v.row_freq/v.attributes if v.attributes else 0
         
     return result
-            
+
+def get_tables_ranges(db,tables=None):
+    if fn.isString(db):
+        db = pta.api(db)
+    tables = tables or db.get_data_tables()
+    r = []
+    for t in db.get_data_tables():
+        tt = db.get_table_timestamp(t,method='max')
+        if tt[0] is not None:
+            mt = db.get_table_timestamp(t,method='min')
+            ps = db.get_partitions_at_dates(t,mt[0],tt[0])
+            if ps:
+                s = fn.avg([db.getPartitionRows(t,p) for p in ps])
+            else:
+                s = db.getTableRows(t)
+            r.append((t,mt[1].split()[0],tt[1].split()[0],s,ps[-1] if ps else None))
+    return r
 
 def decimate_value_list(values,period=None,max_period=3600,method=None,N=1080):
     """
