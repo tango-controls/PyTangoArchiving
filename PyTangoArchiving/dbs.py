@@ -331,6 +331,7 @@ def mysqldump_by_date(schema, user, passwd, folder, start, stop, options = '',
     filenames = []
     
     for t in sorted(tables):
+        currops = options
         filename = ('%s/%s-%s-%s-%s.dmp' 
             % (folder,schema,t,start.split()[0],stop.split()[0]))
         cols = db.getTableCols(t)
@@ -343,10 +344,10 @@ def mysqldump_by_date(schema, user, passwd, folder, start, stop, options = '',
         else:
             where = ""
         if t in CONFIG_TABLES:
-            options += " --add-drop-table "
+            currops += " --add-drop-table "
         else:
-            options += ""
-        mysqldump(schema,user,passwd,filename,t,where,options=options)
+            currops += ""
+        mysqldump(schema,user,passwd,filename,t,where,options=currops)
         filenames.append(filename)
         
     t1 = fn.now()
