@@ -38,7 +38,7 @@ import fandango.functional as fun
 
 from fandango.functional import ( isString,isSequence,isCallable,
     str2time, str2epoch, clmatch, time2str, epoch2str, now,
-    ctime2time, mysql2time, NaN ) # Mandatory imports!!!
+    ctime2time, mysql2time, NaN, first, last ) # Mandatory imports!!!
 
 from fandango.functional import ( date2time,date2str,mysql2time,ctime2time,
     time2str,isNumber,clmatch,isCallable ) # Mandatory imports!!!
@@ -288,6 +288,7 @@ RULE_LAST = lambda v,w: sorted([v,w])[-1]
 RULE_MAX = lambda v,w: (max((v[0],w[0])),max((v[1],w[1])))
 START_OF_TIME = time.time()-10*365*24*3600 #Archiving reading limited to last 10 years.
 MAX_RESOLUTION = 2*1080.
+MAX_QUERY_ROWS = 10e6
 
 def overlap(int1,int2):
     """
@@ -386,6 +387,21 @@ def get_gaps(values, min_gap=5*24*3600, start=None, stop=None):
         gaps.append((values[-1][0],stop))
     
     return gaps
+
+def get_density(values):
+    """
+    returns the number of values/second (expanding arrays)
+    """
+    if not len(values):
+        return 0
+    t0 = values[0][0]
+    t1 = values[-1][0]
+    if t0==t1:
+        return 1
+    v = fun.first((v[1] for v in values if v[1] is not None),default=None)
+    if fun.isSequence(v):
+        return len(values)*len(v)/(t1-t0)
+    return len(values)/(t1-t0)
 
 def get_failed(values):
     i,failed = 0,[]

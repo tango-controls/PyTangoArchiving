@@ -408,7 +408,7 @@ class HDBppReader(HDBppDB):
                 if 'array' in table:
                     group_by += ',idx'
 
-            query += " group by %s" % group_by
+            query += " and value_r is not NULL group by %s" % group_by
             
         query += ' order by %s' % ('int_time' #, DTS' # much slower!
                             if int_time else 'data_time')

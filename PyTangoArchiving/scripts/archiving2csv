@@ -87,6 +87,7 @@ def main():
             if ext:
                 [attrs.remove(e) for e in ext]
                 rd = pta.Reader()
+                rd.log.setLogLevel('INFO')
                 for a in rd.get_attributes():
                     if any(fn.clmatch(e,a) for e in ext):
                         attrs.append(a)
@@ -198,6 +199,7 @@ def main():
     else:
         # Getting the right Reader object
         rd = pta.Reader(schema)
+        rd.log.setLogLevel('INFO')
         print('Using %s db schema' % schema)
             
         print('archiving2csv: The list of attributes is: %s'%attrs)

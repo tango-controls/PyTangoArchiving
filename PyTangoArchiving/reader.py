@@ -982,14 +982,17 @@ class Reader(Object,SingletonMap):
         elif self.db_name=='*':
             self.log.info('Getting %s values in a background process ...' 
                           % attribute)
-            split = 5*86400
-            ints = range(int(start_time),int(stop_time),split)
-            ints.append(stop_time)
-            ints = zip(ints,ints[1:])
-            values = []
-            for i0,i1 in ints:
+            values,ints = [],[]
+            density = 100. # avg thermocouple array density
+            i0 = start_time
+            while True:
+                end_time = start_time + MAX_QUERY_ROWS/density
+                v0 = len(values)
+                i1 = min((end_time,stop_time))
                 d0,d1 = fn.time2str(i0),fn.time2str(i1)
-                self.log.info('getting %s - %s' % (d0,d1))
+                self.log.info('getting %s - %s (%f vals/sec)' % (d0,d1,density))
+                ints.append((i0,i1))
+
                 # decimation done in sub-readers
                 args = (attribute, d0, d1, i0, i1,
                         asHistoryBuffer, decimate, notNone, N, cache, 
@@ -1001,7 +1004,35 @@ class Reader(Object,SingletonMap):
                         timeout = 3600, callback = None))
                 else:
                     values.extend(self.get_attribute_values_from_any(*args))
-                fn.wait(.1)
+                
+                density = get_density(values) or 10. #safer calcullation         
+                
+                if end_time > stop_time:
+                    break
+                else:
+                    fn.wait(.1)
+            
+            #split = 5*86400
+            #ints = range(int(start_time),int(stop_time),split)
+            #ints.append(stop_time)
+            #ints = zip(ints,ints[1:])
+            #for i0,i1 in ints:
+                #d0,d1 = fn.time2str(i0),fn.time2str(i1)
+                #self.log.info('getting %s - %s' % (d0,d1))
+                ## decimation done in sub-readers
+                #args = (attribute, d0, d1, i0, i1,
+                        #asHistoryBuffer, decimate, notNone, N, cache, 
+                        #fallback, schemas, not(len(values)))
+                #if subprocess:
+                    #values.extend(SubprocessMethod(
+                        #self.get_attribute_values_from_any,
+                        #*args,
+                        #timeout = 3600, callback = None))
+                #else:
+                    #values.extend(self.get_attribute_values_from_any(*args))
+
+                #fn.wait(.1)
+
             self.log.info('obtained %d values in %d steps' % (len(values),len(ints)))
           
         #######################################################################
@@ -1073,10 +1104,11 @@ class Reader(Object,SingletonMap):
                 'No valid schema at %s'%(attribute,start_date))
             return []
         
+        self.log.info('In get_attribute_values_from_any(%s, %s, %s, %s)' % (
+            attribute, sch, start_date, stop_date))
         rd = Schemas.getReader(sch.pop(0))
         #@debug
-        self.log.debug('In get_attribute_values_from_any(%s): '
-            'Using %s schema at %s'%(attribute,rd.schema,start_date))
+        self.log.debug('Using %s schema at %s'%(rd.schema,start_date))
         
         if not rd.is_attribute_archived(attribute):
             # Stored in preferred schema via alias
@@ -1118,10 +1150,10 @@ class Reader(Object,SingletonMap):
                 gapvals = []
 
                 while not len(gapvals) and len(sch):
-                    self.log.info('In get_attribute_values(%s,%s,%s)(%s): '
+                    self.log.info(#'In get_attribute_values(%s,%s,%s)(%s): '
                     'fallback to %s as %s returned no data in (%s,%s)'%(
-                        attribute,gap0,gap1,prev,sch[0],
-                        rd.schema,time2str(gap0),time2str(gap1)))
+                        #attribute,gap0,gap1,prev,
+                        sch[0],rd.schema,time2str(gap0),time2str(gap1)))
                     
                     gapvals = self.configs[sch[0]
                         ].get_attribute_values(attribute,gap0,gap1,N=N,
@@ -1190,10 +1222,11 @@ class Reader(Object,SingletonMap):
         # QUERYING THE DATABASE 
         #@TODO: This retrying should be moved down to ArchivingDB class instead
         retries,t0,s0,s1 = 0,time.time(),start_date,stop_date
-        while retries<2 and t0>(time.time()-10):
+        MAX_RETRIES = 2
+        while retries<MAX_RETRIES and t0>(time.time()-10):
             if retries: 
                 #(reshape/retry to avoid empty query bug in python-mysql)
-                self.log.warning('\tQuery (%s,%s,%s) returned 0 values, '
+                self.log.debug('\tHDB/TDB Query (%s,%s,%s) returned 0 values, '
                                  'retrying ...' % (attribute,s0,s1))
                 s0,s1 = epoch2str(str2epoch(s0)-30),epoch2str(str2epoch(s1)+30) 
             result = method(table,s0,s1 if not GET_LAST else None,
@@ -1205,7 +1238,7 @@ class Reader(Object,SingletonMap):
             retries+=1
 
         if not result: 
-            self.log.warning('Empty query after %d retries? (%s) = [0] in %ss'
+            self.log.warning('Empty HDB/TDB query after %d retries? (%s) = [0] in %ss'
                 % (retries,str((table,start_date,stop_date,GET_LAST,N,0)),
                    time.time()-t0))
             return []
