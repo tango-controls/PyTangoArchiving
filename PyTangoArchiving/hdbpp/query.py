@@ -220,7 +220,7 @@ class HDBppReader(HDBppDB):
         return (last, date, size, fn.now() - t0)
       
     def get_last_attribute_values(self,attribute,n=1,
-            check_attribute=False,epoch=None,period=86400):
+            check_attribute=False,epoch=None,period=90*86400):
         """
         load_last_values provided to comply with Reader API
         get_last_attribute_values provided to comply with CommonAPI
@@ -242,7 +242,7 @@ class HDBppReader(HDBppDB):
         else: 
             return vals
     
-    def load_last_values(self,attributes=None,n=1,epoch=None,tref=86400):
+    def load_last_values(self,attributes=None,n=1,epoch=None,tref=90*86400):
         """
         load_last_values provided to comply with Reader API
         get_last_attribute_values provided to comply with CommonAPI 

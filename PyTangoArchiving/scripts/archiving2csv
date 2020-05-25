@@ -31,7 +31,7 @@ To extract attribute values:
   --linesep : character between lines
   --resolution=X(s) : force periodicity of values to a fix period
   --list : list available schemas for attributes
-  --fill : try to fill gaps using fallback schemas
+  --nofill : do not fill gaps using last values
   --noheader : do not include headers
   --nodate : do not include datetime
   --noepoch : do not include epochs
@@ -49,6 +49,7 @@ def main():
     lines = []
     attrs = []
     filename = ''
+    nofill = False
     print arrsep*80
 
     # PARSING ARGS ###########################################################
@@ -225,6 +226,8 @@ def main():
                 linesep = codecs.escape_decode(linesep)[0]
             if a == '--nosep':
                 sep = arrsep = ' '
+            if a == '--nofill':
+                nofill = True
                 
         raws = rd.get_attributes_values(attrs,start,stop,text=False,
                                         decimate=correlate,correlate=False)
@@ -238,6 +241,8 @@ def main():
 
         if correlate:
             print('archiving2csv: Filtering %d arrays (1/%dT)'%(len(values),correlate))
+            if nofill:
+                print('--nofill')
             import fandango
             for a,v in values.items():
                 try:
@@ -263,7 +268,9 @@ def main():
                             if int(t) == int(values[a][-1][0])+correlate:
                                 values[a].append((t,vv))
                     else:
-                        values[a] = fandango.arrays.filter_array(v,window=correlate)
+                        values[a] = fandango.arrays.filter_array(
+                            v,window=correlate,
+                            filling=fandango.arrays.F_ZERO if nofill else fandango.arrays.F_LAST)
                         
                 except Exception as e:
                     print(e)

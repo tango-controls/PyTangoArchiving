@@ -986,17 +986,16 @@ class Reader(Object,SingletonMap):
             density = 100. # avg thermocouple array density
             i0 = start_time
             while True:
-                end_time = start_time + MAX_QUERY_ROWS/density
+                end_time = i0 + MAX_QUERY_ROWS/density
                 v0 = len(values)
                 i1 = min((end_time,stop_time))
                 d0,d1 = fn.time2str(i0),fn.time2str(i1)
                 self.log.info('getting %s - %s (%f vals/sec)' % (d0,d1,density))
-                ints.append((i0,i1))
 
                 # decimation done in sub-readers
                 args = (attribute, d0, d1, i0, i1,
                         asHistoryBuffer, decimate, notNone, N, cache, 
-                        fallback, schemas, not(len(values)))
+                        fallback, schemas, not(len(ints)))
                 if subprocess:
                     values.extend(SubprocessMethod(
                         self.get_attribute_values_from_any,
@@ -1005,7 +1004,9 @@ class Reader(Object,SingletonMap):
                 else:
                     values.extend(self.get_attribute_values_from_any(*args))
                 
-                density = get_density(values) or 10. #safer calcullation         
+                density = get_density(values) or 10. #safer calcullation
+                ints.append((i0,i1))
+                i0 = i1
                 
                 if end_time > stop_time:
                     break

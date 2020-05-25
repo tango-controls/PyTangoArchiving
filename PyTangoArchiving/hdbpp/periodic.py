@@ -148,7 +148,8 @@ class HDBppPeriodic(HDBppDB):
             self.add_attribute(attribute,code_event=True)
 
         self.info('%s.AttributeAdd(%s,%s)' % (archiver,attribute,period))            
-        dp = fn.get_device(archiver)
+        dp = fn.get_device(archiver,keep=True)
+        dp.set_timeout_millis(30000)
         v = dp.AttributeAdd([attribute,str(int(float(period)))])
         fn.wait(wait)
         return v
