@@ -285,7 +285,7 @@ class Reader(Object,SingletonMap):
         return key
             
     def __init__(self,db='*',config='',servers = None, schema = None,
-                 timeout=300000,log='WARNING',logger=None,tango_host=None,
+                 timeout=300000,log='INFO',logger=None,tango_host=None,
                  multihost=False,alias_file=''):
         '''@param config must be an string like user:passwd@host'''
         if not logger:
@@ -868,7 +868,8 @@ class Reader(Object,SingletonMap):
         
     def get_attribute_values(self,attribute,start_date,stop_date=None,
             asHistoryBuffer=False,decimate=False,notNone=False,N=0,
-            cache=True,fallback=True,schemas=None, subprocess=True):
+            cache=True,fallback=True,schemas=None, subprocess=True,
+            lasts=False):
         '''         
         This method reads values for an attribute between specified dates.
         This method may use MySQL queries or an H/TdbExtractor DeviceServer to 
@@ -995,7 +996,7 @@ class Reader(Object,SingletonMap):
                 # decimation done in sub-readers
                 args = (attribute, d0, d1, i0, i1,
                         asHistoryBuffer, decimate, notNone, N, cache, 
-                        fallback, schemas, not(len(ints)))
+                        fallback, schemas, lasts if not(len(ints)) else False)
                 if subprocess:
                     values.extend(SubprocessMethod(
                         self.get_attribute_values_from_any,
@@ -1336,7 +1337,7 @@ class Reader(Object,SingletonMap):
     def get_attributes_values(self,attributes,start_date,stop_date=None,
             asHistoryBuffer=False,decimate=False,notNone=False,N=0,
             cache=True,fallback=True,schemas=None,
-            correlate=False, trace = False, text = False):
+            correlate=False, trace = False, text = False, lasts=False):
         """ 
         This method reads values for a list of attributes between specified dates.
         
@@ -1363,7 +1364,7 @@ class Reader(Object,SingletonMap):
         values = dict([(attr,
             self.get_attribute_values(attr, start_date, stop_date,
                         asHistoryBuffer, decimate, notNone, N,
-                        cache, fallback, schemas))
+                        cache, fallback, schemas, lasts=lasts))
                         for attr in attributes])
         self.log.debug('Query finished in %d milliseconds'%(1000*(time.time()-start)))
         if correlate or text:

@@ -230,7 +230,7 @@ def main():
                 nofill = True
                 
         raws = rd.get_attributes_values(attrs,start,stop,text=False,
-                                        decimate=correlate,correlate=False)
+                    decimate=correlate,correlate=False,lasts=True)
         values = fn.SortedDict()
         for a in attrs: 
             values[a] = raws[a]
