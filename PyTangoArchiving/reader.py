@@ -285,7 +285,7 @@ class Reader(Object,SingletonMap):
         return key
             
     def __init__(self,db='*',config='',servers = None, schema = None,
-                 timeout=300000,log='INFO',logger=None,tango_host=None,
+                 timeout=300000,log='WARNING',logger=None,tango_host=None,
                  multihost=False,alias_file=''):
         '''@param config must be an string like user:passwd@host'''
         if not logger:
@@ -445,7 +445,7 @@ class Reader(Object,SingletonMap):
         self.current_attributes = []
         self.failed_attributes = []
         self.attr_schemas = fandango.defaultdict(list)
-        self.cache.clear()
+        self.clear_cache()
         if self.extractors or self.dbs or self.configs:
             self.state = PyTango.DevState.INIT
         else:
@@ -568,7 +568,7 @@ class Reader(Object,SingletonMap):
         self.state = PyTango.DevState.ON if extractor else PyTango.DevState.FAULT
         return extractor    
         
-    @Cached(depth=10,expire=15.)
+    @Cached(depth=20,expire=60.,log=False)
     def get_attributes(self,active=False,regexp=''):
         """ 
         Queries the database for the current list of archived attributes.
@@ -576,11 +576,9 @@ class Reader(Object,SingletonMap):
             active: True/False: attributes currently archived
             regexp: '' :filter for attributes to retrieve
         """
-        self.log.debug('get_attributes(%s,%s)' % (active,regexp))
         t0 = now()
-
-        self.log.debug('%s: In Reader(%s).get_attributes(): '
-            'last update was at %s'%(time.ctime(),self.schema,self.updated))
+        self.log.debug('%s In Reader(%s).get_attributes(%s,%s): last update was at %s'
+            %(self,self.schema,active,regexp,self.updated))
         self.log.debug('multihost = %s' % self.multihost)
         
         get_model = self.get_attribute_model
@@ -642,12 +640,12 @@ class Reader(Object,SingletonMap):
         self.available_attributes = sorted(set(self.available_attributes))
         self.current_attributes = sorted(set(self.current_attributes))
         self.updated = now()
-        self.log.debug('In Reader(%s).get_attributes(): '
+        self.log.debug('Out of Reader(%s).get_attributes(): '
             '%s attributes available in the database (+%ds)'
             % (self.schema,len(self.available_attributes),self.updated-t0))
         
         r = (self.available_attributes,self.current_attributes)[active]
-        self.log.debug('get_attributes(%s,%s)' % (len(r), regexp))
+        #self.log.debug('get_attributes(%s,%s)' % (len(r), regexp))
         return sorted(fn.filtersmart(r,regexp) if regexp else r)
     
     #@Cached(depth=10000,expire=86400)
@@ -671,7 +669,7 @@ class Reader(Object,SingletonMap):
         try:
             attribute = str(model)
             attribute = (expandEvalAttribute(attribute) or [attribute])[0]
-            self.get_attributes()
+            self.get_attributes(False,'')
             attribute = attribute.lower()
             if attribute in self.current_attributes:
                 return attribute
@@ -730,7 +728,7 @@ class Reader(Object,SingletonMap):
             return all(self.is_attribute_archived(a,active) 
                        for a in expandEvalAttribute(attribute))
 
-        self.get_attributes() #Updated cached lists
+        self.get_attributes(False,'') #Updated cached lists
         attr = self.get_attribute_alias(attribute)
         if attr!=attribute:
             self.log.info('%s => %s' % (attribute, attr))
@@ -801,8 +799,8 @@ class Reader(Object,SingletonMap):
             schemas = self.is_attribute_archived(attribute, active=active)
             if fn.isNumber(schema):
                 schemas = schemas[:schema]
-        else:
-            schemas = fandango.toList(schema)
+        
+        schemas = fandango.toList(schema)
         
         for s in schemas:
             api = Schemas.getApi(s)
@@ -981,13 +979,17 @@ class Reader(Object,SingletonMap):
         # Generic Reader, using PyTangoArchiving.Schemas properties
         
         elif self.db_name=='*':
-            self.log.info('Getting %s values in a background process ...' 
+            if subprocess:
+                self.log.info('Getting %s values in a background process ...' 
                           % attribute)
+                #load caches before spawning processes
+                [self.is_attribute_archived(a) for a in (alias,attribute)]
+                
             values,ints = [],[]
             density = 100. # avg thermocouple array density
             i0 = start_time
             while True:
-                end_time = i0 + MAX_QUERY_ROWS/density
+                end_time = (stop_time,i0 + MAX_QUERY_ROWS/density)[subprocess]
                 v0 = len(values)
                 i1 = min((end_time,stop_time))
                 d0,d1 = fn.time2str(i0),fn.time2str(i1)
@@ -1009,7 +1011,7 @@ class Reader(Object,SingletonMap):
                 ints.append((i0,i1))
                 i0 = i1
                 
-                if end_time > stop_time:
+                if end_time >= stop_time:
                     break
                 else:
                     fn.wait(.1)
@@ -1337,7 +1339,8 @@ class Reader(Object,SingletonMap):
     def get_attributes_values(self,attributes,start_date,stop_date=None,
             asHistoryBuffer=False,decimate=False,notNone=False,N=0,
             cache=True,fallback=True,schemas=None,
-            correlate=False, trace = False, text = False, lasts=False):
+            correlate=False, trace = False, text = False, subprocess=True,
+            lasts=False):
         """ 
         This method reads values for a list of attributes between specified dates.
         
@@ -1364,7 +1367,8 @@ class Reader(Object,SingletonMap):
         values = dict([(attr,
             self.get_attribute_values(attr, start_date, stop_date,
                         asHistoryBuffer, decimate, notNone, N,
-                        cache, fallback, schemas, lasts=lasts))
+                        cache, fallback, schemas, subprocess=subprocess,
+                        lasts=lasts))
                         for attr in attributes])
         self.log.debug('Query finished in %d milliseconds'%(1000*(time.time()-start)))
         if correlate or text:
@@ -1525,6 +1529,16 @@ class Reader(Object,SingletonMap):
             self.last_reads = history and (ctime2time(history[0].value.time),ctime2time(history[-1].value.time)) or (1e10,1e10)
 
         return values
+    
+    def clear_cache(self):
+        self.cache.clear()
+        for m in dir(self):
+            try:
+                m = getattr(self,m)
+                if fn.isCallable(m) and hasattr(m,'cache'):
+                    m.cache.clear()
+            except:
+                traceback.print_exc()
         
     def clean_extractor(self,extractor,vattr=None):
         ''' removing dynamic attributes from extractor devices ...'''

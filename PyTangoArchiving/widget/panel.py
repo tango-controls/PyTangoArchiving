@@ -27,9 +27,10 @@
 
 import PyTango
 import re,sys,os,time,traceback,threading
-import fandango,fandango as F
+import fandango,fandango as fn
 import fandango.qt as fqt
 from fandango.qt import Qt
+from fandango.tango import AttrQuality
 import fandango.functional as fun
 from threading import Thread
 import PyTangoArchiving as pta
@@ -42,7 +43,7 @@ def showTestDevice(device=None):
 
 def showDeviceInfo(device,parent=None):
     device = device or str(self.current_item._model.rsplit('/',1)[0])
-    info = F.tango.get_device_info(device).items()
+    info = fn.tango.get_device_info(device).items()
     Qt.QMessageBox.warning(parent, "%s Info"%device , '\n'.join('%s : %s'%i for i in info))
     
 def showArchivingModes(model,parent=None,schemas=('HDB','TDB')):
@@ -62,6 +63,108 @@ def showArchivingModes(model,parent=None,schemas=('HDB','TDB')):
     w.exec_()
     #w.show()
     return w
+
+class TaurusSingleValue(Qt.QWidget):
+    
+    def __init__(self,parent=None):
+        Qt.QWidget.__init__(self,parent)
+        self.setLayout(Qt.QHBoxLayout())
+        self.model = ''
+        self.label = Qt.QLabel()
+        self.label.setFixedWidth(150)
+        self.value = Qt.QLabel()
+        self.value.setFixedWidth(200)
+        self.units = Qt.QLabel()
+        self.units.setFixedWidth(50)
+        self.setWindowTitle('TaurusSingleValue')
+        map(self.layout().addWidget,(self.label,self.value,self.units))
+        
+    def setColor(self,color):
+        #pLabel->setStyleSheet("QLabel { background-color : red; color : blue; }");
+        self.value.setStyleSheet("QLabel { background-color: %s; "
+                                 "qproperty-alignment: AlignRight; }" % str(color))
+        
+    def setModel(self, model):
+        try:
+            self.model = str(model)
+            print('TaurusSingleValue.setModel(%s)' % self.model)
+            self.setWindowTitle(self.model)
+            self.rvalue = fn.tango.check_attribute(model)
+            if isinstance(self.value,Exception):
+                raise self.rvalue
+            self.config = fn.tango.get_attribute_config(model)
+            self.label.setText(self.config.label)
+            self.label.setToolTip(self.model)
+            self.units.setText(self.config.unit)
+            svalue = self.config.format or '%s'
+            if fn.isSequence(self.rvalue.value) or '%' not in svalue:
+                svalue = str(self.rvalue.value)[:25]
+            else:
+                svalue = (svalue % self.rvalue.value)[:25]
+            self.value.setText(svalue)
+            self.value.setToolTip(str(self.rvalue.value))
+            self.setColor({
+                AttrQuality.ATTR_VALID: 'lightgreen',
+                AttrQuality.ATTR_INVALID: 'lightgrey',
+                AttrQuality.ATTR_ALARM: 'lightred',
+                AttrQuality.ATTR_WARNING: 'lightorange',
+                AttrQuality.ATTR_CHANGING: 'lightblue',
+                }[self.rvalue.quality])
+            
+        except Exception as e:
+            print(self.model,self.config.format,self.rvalue)
+            traceback.print_exc()
+            self.setColor('grey')
+            self.label.setText(str(model))
+            self.value.setText(str(e)[:25])
+            self.value.setToolTip(str(e))
+            self.units.setText('')
+            
+class TaurusSingleValueForm(Qt.QScrollArea):
+    
+    def __init__(self,parent=None):
+        Qt.QScrollArea.__init__(self,parent)  
+        #Qt.QWidget.__init__(self,parent)
+        self.main = Qt.QWidget(self)
+        self.main.setLayout(Qt.QVBoxLayout())        
+        #self.setWidget(self.main)
+        self.resize(500,600)
+        self.setWindowTitle('TaurusSingleValue')
+        self.models = []
+        self.widgets = []
+        #self.show()
+
+        
+    def clear(self):
+        while len(self.widgets):
+            w = self.widgets.pop()
+            self.layout().removeWidget(w)
+        
+    def setModels(self, args):
+        #self.clear()
+        if fn.isString(args):
+            args = fn.find_attributes(args)
+        print('setModels(%s)' % args)
+        for m in args:
+            w = TaurusSingleValue()
+            w.setModel(m)
+            self.main.layout().addWidget(w)
+            self.widgets.append(w)
+        #self.main.show()
+        self.setWidget(self.main)
+        #self.resize(400,600)        
+        self.show()
+            
+    @staticmethod
+    def main(args):
+        import fandango.qt as fqt
+        #args = fn.toList(args)
+        app = fqt.getApplication()
+        form = TaurusSingleValueForm()
+        form.setModels(args)
+        form.show()
+        app.exec_()
+        
 
 class QArchivingMode(fqt.Dropable(Qt.QFrame)):
   __help__ = """
@@ -264,7 +367,7 @@ class QArchivingMode(fqt.Dropable(Qt.QFrame)):
     #Qt.QApplication.instance().setOverrideCursor(Qt.QCursor(Qt.Qt.WaitCursor))
     try:
       attr = self.getModel()
-      v = F.check_attribute(attr,brief=True)
+      v = fn.check_attribute(attr,brief=True)
       if isinstance(v,(type(None),Exception)): 
         Qt.QMessageBox.warning(self,"Warning","%s is not readable nor archivable"%attr)
         self.logger().hide()
@@ -342,7 +445,7 @@ class QArchivingMode(fqt.Dropable(Qt.QFrame)):
     if multirow is None:
       w = QArchivingMode()
     else:
-      w = QArchivingMode(multirow=F.str2bool(multirow))
+      w = QArchivingMode(multirow=fn.str2bool(multirow))
     if schema:
       w.setSchema(schema)
     if model:
@@ -382,14 +485,14 @@ class QLoggerDialog(fqt.QTextBuffer):
         if self.logger:
             try:
                 if severity not in self.log_objs: self.log_objs[severity] = \
-                    getattr(self.logger,severity,(lambda m,s=severity:'%s:%s: %s'%(s.upper(),F.time2str(),m)))
+                    getattr(self.logger,severity,(lambda m,s=severity:'%s:%s: %s'%(s.upper(),fn.time2str(),m)))
                 self.log_objs[severity](msg)
             except: pass
     if self.dialog():
         if msg!='+1': 
-            msg = '%s:%s: %s'%(severity.upper(),F.time2str(),msg)
+            msg = '%s:%s: %s'%(severity.upper(),fn.time2str(),msg)
         if self.filters:
-            msg = (F.filtersmart(msg,self.filters) or [''])[0]
+            msg = (fn.filtersmart(msg,self.filters) or [''])[0]
         if msg:
             self.dialog().append(msg)
               
