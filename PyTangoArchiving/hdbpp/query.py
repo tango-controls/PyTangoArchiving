@@ -509,7 +509,7 @@ class HDBppReader(HDBppDB):
                 span = ((v[-1][0]-v[0][0]) if len(v)>1 else 0)
                 density = len(v)/(span or 1)
                 limit = (128 if is_array else 1) * MAX_QUERY_SIZE
-                if decimate!=RAW and (density*(stop_time-start_time))>limit:
+                if decimate!=RAW and span and (density*(stop_time-start_time))>limit:
                     if not decimate or type(decimate) not in (int,float):
                         decimate = float(stop_time-start_time)/limit
                         self.warning('density=%s values/s!: enforce decimate every %s seconds'

@@ -794,13 +794,14 @@ class Reader(Object,SingletonMap):
             result.update((a,self.load_last_values(a, n=n, active=active, 
                 schema = schema, epoch = epoch, brief=brief)) for a in attribute)
             return result
-        
         elif schema is None or fn.isNumber(schema):
             schemas = self.is_attribute_archived(attribute, active=active)
             if fn.isNumber(schema):
-                schemas = schemas[:schema]
-        
-        schemas = fandango.toList(schema)
+                schemas = schemas[:schema]    
+        else:
+            schemas = fandango.toList(schema)
+            
+        self.log.debug('load_last_values(%s,%s)' % (attribute,schemas))
         
         for s in schemas:
             api = Schemas.getApi(s)
@@ -983,6 +984,7 @@ class Reader(Object,SingletonMap):
                 self.log.info('Getting %s values in a background process ...' 
                           % attribute)
                 #load caches before spawning processes
+                alias = self.get_attribute_alias(attribute)
                 [self.is_attribute_archived(a) for a in (alias,attribute)]
                 
             values,ints = [],[]
