@@ -1116,6 +1116,9 @@ class Reader(Object,SingletonMap):
         #@debug
         self.log.debug('Using %s schema at %s'%(rd.schema,start_date))
         
+        ## @TODO, this if is True if attribute is archived on alias only
+        # all this double-checks are slowing down queries, a solution
+        # must be found (is_attribute_archived on list?)
         if not rd.is_attribute_archived(attribute):
             # Stored in preferred schema via alias
             attr = self.get_attribute_alias(attribute)
@@ -1232,8 +1235,8 @@ class Reader(Object,SingletonMap):
         while retries<MAX_RETRIES and t0>(time.time()-10):
             if retries: 
                 #(reshape/retry to avoid empty query bug in python-mysql)
-                self.log.debug('\tHDB/TDB Query (%s,%s,%s) returned 0 values, '
-                                 'retrying ...' % (attribute,s0,s1))
+                self.log.debug('\t%s Query (%s,%s,%s) returned 0 values, '
+                                 'retrying ...' % (self.schema,attribute,s0,s1))
                 s0,s1 = epoch2str(str2epoch(s0)-30),epoch2str(str2epoch(s1)+30) 
             result = method(table,s0,s1 if not GET_LAST else None,
                             N=N,unixtime=True)
@@ -1244,8 +1247,8 @@ class Reader(Object,SingletonMap):
             retries+=1
 
         if not result: 
-            self.log.warning('Empty HDB/TDB query after %d retries? (%s) = [0] in %ss'
-                % (retries,str((table,start_date,stop_date,GET_LAST,N,0)),
+            self.log.warning('Empty %s query after %d retries? (%s) = [0] in %ss'
+                % (self.schema,retries,str((table,start_date,stop_date,GET_LAST,N,0)),
                    time.time()-t0))
             return []
         
