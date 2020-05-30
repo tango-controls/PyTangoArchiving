@@ -166,20 +166,16 @@ class HDBppDB(ArchivingDB,SingletonMap):
         return get_class_devices('HdbEventSubscriber')
       
     def get_manager(self, db_name='', prop=''):
-        
+        """ Returns manager proxy, initializes from Tango DB if missing"""
         if not getattr(self,'manager',None):
-            db_name = db_name or getattr(self,'db_name','')
-            self.manager = ''
-            managers = self.get_all_managers()
-            for m in managers:
-                if db_name:
-                    prop = get_device_property(m,'DbName')
-                    if not prop:
-                        prop = str(get_device_property(m,'LibConfiguration'))
-                    prop += str(get_device_property(m,'DbHost'))
+            self.manager,db_name = '',db_name or getattr(self,'db_name','')
+
+            for m in self.get_all_managers():
+                prop = str(get_device_property(m,'LibConfiguration'))
+                prop += str(get_device_property(m,'DbHost'))
+
                 if (not db_name or db_name in prop) and self.host in prop:
                     self.manager = m
-                    break
                     
         dp = get_device(self.manager,keep=True) if self.manager else None
         return dp

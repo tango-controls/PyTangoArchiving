@@ -126,28 +126,35 @@ class Schemas(object):
         return k.SCHEMAS.get(key,default)
     
     @classmethod
-    @fn.Catched
     @fn.Cached(expire=60.)
     def load(k,tango='',prop='',logger=None):
+        try:
+            tangodb = fn.tango.get_database(tango)
+            schemas = prop or tangodb.get_property('PyTangoArchiving',
+                        ['DbSchemas','Schemas'])
 
-        tangodb = fn.tango.get_database(tango)
-        schemas = prop or tangodb.get_property('PyTangoArchiving',
-                    ['DbSchemas','Schemas'])
+            try:
+                schemas = schemas.get('DbSchemas',[])
+            except:
+                print('PyTangoArchiving.DbSchemas not initialized')
+                schemas = []
+            if not schemas:
+                schemas = schemas.get('Schemas', []) or []
 
-        schemas = schemas.get('DbSchemas',[])
-        if not schemas:
-            schemas = schemas.get('Schemas', []) or []
+            if not schemas:
+                schemas = ['hdbpp']
+                tangodb.put_property('PyTangoArchiving',{'DbSchemas':schemas})
 
-        if not schemas:
-            schemas = ['hdbpp']
-            tangodb.put_property('PyTangoArchiving',{'DbSchemas':schemas})
+            #print('Loading %s from tango@%s ... ' % (pname, tangodb.get_db_host()))
 
-        #print('Loading %s from tango@%s ... ' % (pname, tangodb.get_db_host()))
+            [k.getSchema(schema,tango,write=True,logger=logger) 
+                for schema in schemas]
 
-        [k.getSchema(schema,tango,write=True,logger=logger) 
-            for schema in schemas]
+            return k.SCHEMAS
 
-        return k.SCHEMAS
+        except:
+            traceback.print_exc()
+            return []
     
     @classmethod
     def pop(k,key):

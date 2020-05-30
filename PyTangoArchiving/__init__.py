@@ -90,7 +90,7 @@ try:
    import hdbpp
    from hdbpp import HDBpp, multi
    from hdbpp.multi import start_archiving_for_attributes, \
-       get_last_values_for_attributes
+       get_last_values_for_attributes, get_hdbpp_databases
   
 except:
    print('Unable to import hdbpp') 
