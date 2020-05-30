@@ -588,7 +588,7 @@ def check_db_schema(schema, attributes = None, values = None,
         if k == 'ok':
             s += ' (ok+stall: %2.1f %%)' % (
                 (100.*(len(r.get('ok'))+len(r.get('stall')))
-                 )/len(r.get('on')) )
+                 )/(len(r.get('on') or 1e12)) )
         r.summary += s+'\n'
         
     r.summary += '\nfinished in %d seconds\n\n'%(fn.now()-t0)

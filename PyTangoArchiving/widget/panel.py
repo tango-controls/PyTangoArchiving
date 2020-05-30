@@ -70,8 +70,9 @@ class TaurusSingleValue(Qt.QWidget):
         Qt.QWidget.__init__(self,parent)
         self.setLayout(Qt.QHBoxLayout())
         self.model = ''
+        self.device = ''
         self.label = Qt.QLabel()
-        self.label.setFixedWidth(150)
+        self.label.setFixedWidth(250)
         self.value = Qt.QLabel()
         self.value.setFixedWidth(200)
         self.units = Qt.QLabel()
@@ -92,8 +93,11 @@ class TaurusSingleValue(Qt.QWidget):
             self.rvalue = fn.tango.check_attribute(model)
             if isinstance(self.value,Exception):
                 raise self.rvalue
+            mp = fn.tango.parse_tango_model(model)
+            self.device = mp.devicename
             self.config = fn.tango.get_attribute_config(model)
-            self.label.setText(self.config.label)
+            self.label.setText(self.device+'/'+(
+                self.config.label or mp.attrname))
             self.label.setToolTip(self.model)
             self.units.setText(self.config.unit)
             svalue = self.config.format or '%s'
@@ -142,6 +146,8 @@ class TaurusSingleValueForm(Qt.QScrollArea):
         
     def setModels(self, args):
         #self.clear()
+        if len(args)==1:
+            args = args[0]
         if fn.isString(args):
             args = fn.find_attributes(args)
         print('setModels(%s)' % args)
@@ -507,11 +513,12 @@ class QLoggerDialog(fqt.QTextBuffer):
    
 if __name__ == '__main__':
   import sys
-  app = fqt.getApplication()
-  m = Qt.QWidget()
-  m.setLayout(Qt.QVBoxLayout())
-  w = QArchivingMode._test(*sys.argv[1:])
-  m.layout().addWidget(Qt.QLabel(str(sys.argv)))
-  m.layout().addWidget(w)
-  m.show()
-  app.exec_()
+  TaurusSingleValueForm.main(sys.argv[1:])
+  #app = fqt.getApplication()
+  #m = Qt.QWidget()
+  #m.setLayout(Qt.QVBoxLayout())
+  #w = QArchivingMode._test(*sys.argv[1:])
+  #m.layout().addWidget(Qt.QLabel(str(sys.argv)))
+  #m.layout().addWidget(w)
+  #m.show()
+  #app.exec_()

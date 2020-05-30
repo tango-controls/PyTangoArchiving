@@ -169,13 +169,17 @@ class HDBppDB(ArchivingDB,SingletonMap):
         """ Returns manager proxy, initializes from Tango DB if missing"""
         if not getattr(self,'manager',None):
             self.manager,db_name = '',db_name or getattr(self,'db_name','')
+            managers = self.get_all_managers()
+            if len(managers) == 1:
+                # needed hook for beamlines
+                self.manager = managers[0]
+            else:
+                for m in self.get_all_managers():
+                    prop = str(get_device_property(m,'LibConfiguration'))
+                    prop += str(get_device_property(m,'DbHost'))
 
-            for m in self.get_all_managers():
-                prop = str(get_device_property(m,'LibConfiguration'))
-                prop += str(get_device_property(m,'DbHost'))
-
-                if (not db_name or db_name in prop) and self.host in prop:
-                    self.manager = m
+                    if (not db_name or db_name in prop) and self.host in prop:
+                        self.manager = m
                     
         dp = get_device(self.manager,keep=True) if self.manager else None
         return dp
