@@ -365,7 +365,7 @@ def decimate_into_new_db(db_in, db_out, min_period = 1, min_array_period = 3,
         if end is not None:
             tend = min((end,tend,fn.now())) #Query may finish earlier
 
-        if tend-tbegin < 600:
+        if tend and tbegin and tend-tbegin < 600:
             db_out.warning('%s Tables already synchronized' % table)
             continue
 
@@ -687,7 +687,7 @@ def insert_into_csv_file(data, columns, table, filename):
 def load_from_csv_file(api, table, columns, filename):
     if fn.isSequence(columns):
         columns = ','.join(columns)
-    api.Query("LOAD DATA INFILE '%s' INTO TABLE %s FIELDS TERMINATED BY ',' "
+    api.Query("LOAD DATA LOCAL INFILE '%s' INTO TABLE %s FIELDS TERMINATED BY ',' "
               "ENCLOSED BY '\"' (%s);" % (filename,table,columns))
     return filename
     
