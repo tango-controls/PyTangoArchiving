@@ -308,11 +308,10 @@ class HDBppDB(ArchivingDB,SingletonMap):
             attrs = [a for a in self.get_attributes(True) 
                      if fn.clmatch(attrexp,a)]
             archs = [self.get_attribute_archiver(a) for a in attrs]
-            if archs:
+            if any(a in loads for a in archs):
                 loads = dict((k,v) for k,v in loads.items() if k in archs)
 
         loads = sorted((v,k) for k,v in loads.items())
-
         return loads[0][-1]
 
     @Cached(depth=2,expire=60.)
@@ -461,15 +460,18 @@ class HDBppDB(ArchivingDB,SingletonMap):
         if fn.isString(attr):
             attr = fn.tango.get_full_name(attr,True).lower()
 
-        if attr not in self.attributes:
+        try:
+            s = self.attributes[attr]
+            return s.id, s.type, s.table
+        except:
             self.get_att_conf_table.cache.clear()
             self.get_att_conf_table()
 
             if attr not in self.attributes:
                 return None,None,''
-
-        attr = self.attributes[attr]
-        return attr.id, attr.type, attr.table
+            else:
+                s = self.attributes[attr]
+                return s.id, s.type, s.table
     
     @Cached(depth=1000,expire=60.)
     def get_attribute_subscriber(self,attribute):
@@ -508,8 +510,12 @@ class HDBppDB(ArchivingDB,SingletonMap):
             else:
                 return False
         else:
-            return any(a.lower().endswith('/'+attribute.lower())
-                                          for a in self.get_attributes())    
+            print('db')
+            for a in self.get_attributes():
+                index = '['+attribute.split('[',1)[-1] if '[' in attribute else ''
+                if a.endswith('/'+attribute.split('[')[0].lower()):
+                    return a+index
+            return False
     
     def start_servers(self,host='',restart=True):
         """
@@ -814,7 +820,14 @@ class HDBppDB(ArchivingDB,SingletonMap):
                          (attribute, traceback.format_exc()))
     
     def restart_attribute(self,attr, d=''):
+        """
+        execute AttributeStop/Start on subscriber device
+        """
         try:
+            a = self.is_attribute_archived(attr)
+            if not a:
+                raise Exception('%s is not archived!' % attr)
+            attr = a
             d = self.get_attribute_archiver(attr)
             print('%s.restart_attribute(%s)' % (d,attr))
             dp = fn.get_device(d, keep=True)
@@ -831,8 +844,16 @@ class HDBppDB(ArchivingDB,SingletonMap):
     def restart_attributes(self,attributes=None,timewait=0.5):
         if attributes is None:
             attributes = self.get_attributes_not_updated()
+        
+        todo = []
+        for a in attributes:
+            a = self.is_attribute_archived(a)
+            if a:
+                todo.append(a)
+            else:
+                self.warning('%s is not archived!' % a)
             
-        devs = dict(fn.kmap(self.get_attribute_archiver,attributes))
+        devs = dict(fn.kmap(self.get_attribute_archiver,todo))
 
         for a,d in fn.randomize(sorted(devs.items())):
             if not fn.check_device(d):
