@@ -358,12 +358,20 @@ def decimate_into_new_db(db_in, db_out, min_period = 1, min_array_period = 3,
         tbegin = get_last_value_in_table(db_out,table,ignore_errors=True)[0]
         if not tbegin:
             tbegin = get_first_value_in_table(db_in,table,ignore_errors=True)[0]
+        print(begin,tbegin)
         if begin is not None:
             tbegin = max((begin,tbegin)) #Query may start later
 
         tend = get_last_value_in_table(db_in,table,ignore_errors=True)[0]
+        print(end,tend)
         if end is not None:
-            tend = min((end,tend,fn.now())) #Query may finish earlier
+            tend = min((end,tend)) #Query may finish earlier
+        if tend is None:
+            tend = tbegin
+        print(end,tend)
+            
+        print('%s, syncing %s,%s to %s,%s' % (table,
+            tbegin,fn.time2str(tbegin),tend,fn.time2str(tend)))
 
         if tend and tbegin and tend-tbegin < 600:
             db_out.warning('%s Tables already synchronized' % table)
@@ -442,6 +450,8 @@ def decimate_into_new_table(db_in, db_out, table, start, stop, ntable='',
         
     # BUNCHING PROCEDURE!
     if stop-start > bunch:
+        # Decimation done in separate processes to not overload memory
+        # at the end, it returns values
         i = 0
         rs = (0,0,0,0,0) if insert else [] #tquery, tdec, tinsert, len(data), len(dec)
         while start+i*bunch < stop:
@@ -463,7 +473,12 @@ def decimate_into_new_table(db_in, db_out, table, start, stop, ntable='',
             print('%s.%s[%s] => %s.%s[%s] (tquery=%s,tdec=%s,tinsert=%s)' % (
                 db_in.db_name,table,ldata,db_out.db_name,ntable,ldec,
                     tquery,tdec,tinsert))        
-        return rs
+
+        return rs  
+    
+    ###########################################################################
+    # PROCESS OF DECIMATION FOR EACH INDIVIDUAL BUNCH:
+    ###########################################################################
     
     tables = db_out.getTables()
     
