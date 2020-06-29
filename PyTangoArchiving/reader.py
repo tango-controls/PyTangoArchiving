@@ -584,7 +584,8 @@ class Reader(Object,SingletonMap):
         get_model = self.get_attribute_model
         get_models = lambda l: sorted(set(map(get_model,l)))
         
-        self.available_attributes, self.current_attributes = [],[]
+        self.available_attributes = []
+        self.current_attributes = []
         
         #Try Unified Reader
         if self.db_name=='*':    
@@ -672,8 +673,9 @@ class Reader(Object,SingletonMap):
             self.get_attributes(False,'')
             attribute = attribute.lower()
             if attribute in self.current_attributes:
+                # if archived, alias is never returned!
                 return attribute
-            elif attribute in self.alias:
+            if attribute in self.alias:
                 attribute = self.alias.get(attribute)
             elif attribute:
                 attribute = utils.translate_attribute_alias(attribute)
@@ -730,9 +732,9 @@ class Reader(Object,SingletonMap):
 
         self.get_attributes(False,'') #Updated cached lists
         attr = self.get_attribute_alias(attribute)
+        attr = self.get_attribute_model(attr)
         if attr!=attribute:
             self.log.info('%s => %s' % (attribute, attr))
-        attr = self.get_attribute_model(attr)
         
         if self.db_name=='*':
             # Universal reader
@@ -741,7 +743,7 @@ class Reader(Object,SingletonMap):
                 return [pref]
             elif not any((active, start, stop)) \
                     and len(self.attr_schemas[attr]):
-                return self.attr_schemas[attr]
+                return self.attr_schemas[attr]       
             else:
                 sch = []
                 for a,c in self.configs.items():
@@ -749,9 +751,9 @@ class Reader(Object,SingletonMap):
                     try:
                         if (c and (a not in Schemas.keys() or
                                 Schemas.checkSchema(a, attr,
-                                    start=start, stop=stop)) 
-                            and c.is_attribute_archived(attr,active)):
-                            sch.append(a)
+                                    start=start, stop=stop))):
+                            if c.is_attribute_archived(attr,active):
+                                sch.append(a)
                     except: 
                         self.log.warning('%s archiving not available'%a)
                         self.log.warning(traceback.format_exc())
@@ -761,7 +763,7 @@ class Reader(Object,SingletonMap):
                 #and (a not in Schemas.keys() or Schemas.checkSchema(a,attribute))
                 #and self.configs[a].is_attribute_archived(attribute,active))
         else:
-            # Schema reader
+            # Schema reader, alias takes precedence
             # first remove array indexes
             if (attr in (self.current_attributes if active 
                     else self.available_attributes)):
