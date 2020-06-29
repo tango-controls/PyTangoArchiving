@@ -227,19 +227,33 @@ class HDBppReader(HDBppDB):
         
         returns last n values (or just one if n=1)
         """
-        if epoch is None:
-            epoch = self.get_attr_timestamp(attribute,method='max')[0]
-            epoch = (int(epoch)+3600) if epoch else 0
-        if epoch < 0:
-            epoch = fn.now()+epoch
+        vals = []
+        try:
+            if self.is_attribute_archived(attribute):
+                
+                if epoch is None:
+                    epoch = self.get_attr_timestamp(attribute,method='max')[0]
+                    epoch = (int(epoch)+3600) if epoch else 0
+                if epoch < 0:
+                    epoch = fn.now()+epoch
 
-        start = (epoch or fn.now()) - abs(period)
+                start = (epoch or fn.now()) - abs(period)
 
-        vals = self.get_attribute_values(attribute, N=n, human=True, desc=True,
-                        start_date=start, stop_date=epoch)
-        if len(vals):
-            return vals[0] if abs(n)==1 else vals
-        else: 
+                vals = self.get_attribute_values(attribute, N=n, human=True, 
+                    desc=True, start_date=start, stop_date=epoch)
+                    
+                v = vals and vals[0]
+                self.attributes[attribute].last_date = v and v[0]
+                self.attributes[attribute].last_value = v and v[1]
+
+                if len(vals):
+                    vals = vals[0] if abs(n)==1 else vals                
+            else:
+                self.warning('%s is not archived'%attribute)
+        except:
+            self.error('get_last_attribute_values(%s) failed!'%attribute)
+            self.error(traceback.format_exc())
+        finally:
             return vals
     
     def load_last_values(self,attributes=None,n=1,epoch=None,tref=90*86400):
@@ -266,12 +280,6 @@ class HDBppReader(HDBppDB):
         vals = dict((a,self.get_last_attribute_values(a,n=n,**kwargs)) 
                     for a in fn.toList(attributes))
 
-        for a,v in vals.items():
-            if n!=1:
-                v = v and v[0]
-            self.attributes[a].last_date = v and v[0]
-            self.attributes[a].last_value = v and v[1]
-            
         return vals
 
     __test__['get_last_attribute_values'] = \
