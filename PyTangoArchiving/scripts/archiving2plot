@@ -150,6 +150,13 @@ options = [a for a in args if a.startswith('--')]
 files = [a for a in args if a.endswith('.pck') or a.endswith('.csv')]
 args = [a for a in args if a not in files and '--' not in a]
 folder = '/tmp/'
+schemas = [o for o in options if o.startswith('--schemas=')] or None
+if schemas:
+    schemas = schemas[0].split('=')[-1].split(',')
+    
+decimate = [d for d in options if d.startswith('--decimate=')] or None
+if decimate:
+    decimate = int(decimate[0].split('=')[-1])
 
 ats = args[:-2]
 if len(args)>=2:    
@@ -157,7 +164,8 @@ if len(args)>=2:
 if ats:
     print 'Getting %s values'%ats
     reader = PyTangoArchiving.Reader() #reader.getArchivingReader(ats,t[0])
-    vals.update(reader.get_attributes_values(ats,t[0],t[1]))
+    reader.log.setLogLevel('info')
+    vals.update(reader.get_attributes_values(ats,t[0],t[1],schemas=schemas,decimate=decimate))
     for k in ats:
         v = vals[k]
         if not v: 
