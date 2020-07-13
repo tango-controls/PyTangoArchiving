@@ -1052,6 +1052,17 @@ def get_first_value_in_table(api, table, ignore_errors=False):
     """
     return get_last_value_in_table(api, table, method='min',ignore_errors=ignore_errors)
 
+def delete_att_parameter_entries(api,timestamp=None):
+    """
+    att_parameter table tends to grow and slow down startup of archivers
+    """
+    api = pta.api(api) if fn.isString(api) else api
+    timestamp = timestamp or fn.now()-3*30*86400
+    api.Query("delete from att_parameter where insert_time < '%s'" 
+              % fn.time2str(timestamp))
+    api.Query("optimize table att_parameter")
+    return api.getTableSize('att_parameter')
+
 def delete_data_older_than(api, table, timestamp, doit=False, force=False):
     delete_data_out_of_time(api, table, timestamp, fn.END_OF_TIME, doit, force)
 
