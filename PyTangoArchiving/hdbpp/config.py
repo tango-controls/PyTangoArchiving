@@ -96,7 +96,7 @@ class HDBppDB(ArchivingDB,SingletonMap):
 
         self.port = port
         self.archivers = []
-        self.attributes = fn.defaultdict(fn.Struct)
+        self.attributes = {}
         self.dedicated = {}
         self.status = fn.defaultdict(list)
         try:
@@ -377,10 +377,13 @@ class HDBppDB(ArchivingDB,SingletonMap):
         """
         #print('get_archived_attributes(%s)'%str(search))
         attrs = []
+        self.get_att_conf_table()
         [self.get_archiver_attributes(d,from_db=True) 
             for d in self.get_subscribers()]
         for d,dattrs in self.dedicated.items():
             for a in dattrs:
+                if a not in self.attributes:
+                    self.get_attr_id_type_table(a)
                 self.attributes[a].archiver = d
                 if not search or fn.clsearch(search,a):
                     attrs.append(a)
@@ -406,6 +409,7 @@ class HDBppDB(ArchivingDB,SingletonMap):
         """
         alias to get_subscribed_attributes, to be overloaded in subclasses
         """
+        self.get_att_conf_table()
         return self.get_subscribed_attributes(*args, **kwargs)
  
     def get_attribute_ID(self,attr):
@@ -447,6 +451,7 @@ class HDBppDB(ArchivingDB,SingletonMap):
         #ids = [list(t)+[types[t[-1]]] for t in ids]
         for i in ids:
             attr,aid,tid,table = i
+            self.attributes[attr] = fn.Struct()            
             self.attributes[attr].id = aid
             self.attributes[attr].tid = tid
             self.attributes[attr].type = table
@@ -610,13 +615,19 @@ class HDBppDB(ArchivingDB,SingletonMap):
         return dev
 
     def add_event_subscriber(self,srv,dev,libname=''):
+        
         if not fn.check_device(self.manager):
             raise Exception('%s not running!' % self.manager)
-        if '/' not in srv: srv = 'hdb++es-srv/'+srv
+        
+        if '/' not in srv: 
+            srv = 'hdb++es-srv/'+srv
         libname = libname or self.get_hdbpp_libname()
+        
+        dev = parse_tango_model(dev,fqdn=True).fullname        
         add_new_device(srv,'HdbEventSubscriber',dev)
         manager,dp = self.manager,self.get_manager()
         props = Struct(get_matching_device_properties(manager,'*'))
+        
         prev = get_device_property(dev,'AttributeList') or ''
         put_device_property(dev,'AttributeList',prev)
         put_device_property(dev,'DbHost',self.host)
@@ -638,7 +649,6 @@ class HDBppDB(ArchivingDB,SingletonMap):
         if 'ArchiverList' not in props:
             props.ArchiverList = []
             
-        dev = parse_tango_model(dev,fqdn=True).fullname
         #put_device_property(manager,'ArchiverList',
                             #list(set(list(props.ArchiverList)+[dev])))
         print(dev)
@@ -648,13 +658,15 @@ class HDBppDB(ArchivingDB,SingletonMap):
     def add_attribute(self,attribute,archiver=None,period=0,
                       rel_event=None,per_event=None,abs_event=None,
                       code_event=False, ttl=None, start=False,
-                      use_freq=True):
+                      use_freq=True,clear=False):
         """
         set _event arguments to -1 to ignore them and not modify the database
         
         code_event will be set to True if no other event is setup
         """
         attribute = parse_tango_model(attribute,fqdn=True).fullname
+        if archiver:
+            archiver = fn.tango.get_full_name(archiver,fqdn=True)
         archiver = archiver or self.get_next_archiver(
             use_freq=use_freq,attrexp=fn.tango.get_dev_name(attribute)+'/*')
         self.warning('add_attribute(%s, %s) to %s' 
@@ -707,6 +719,9 @@ class HDBppDB(ArchivingDB,SingletonMap):
                     fn.get_device(arch, keep=True).Start()
                 except:
                     traceback.print_exc()
+                    
+            if clear:
+                self.clear_caches()
               
         except Exception,e:
             
@@ -741,28 +756,30 @@ class HDBppDB(ArchivingDB,SingletonMap):
                 for a in attrs:
                     kwargs['start'] = False #Avoid recursive start
                     try:
+                        kwargs['clear'] = False
                         self.add_attribute(a,archiver=arch,*args,**kwargs)
                     except:
                         self.warning('add_attribute(%s) failed!\n%s' % 
                                     (a,traceback.format_exc()))
                     time.sleep(3.)
-                
+
+            self.clear_caches()
+            
             if start:
-                self.get_archiver_attributes.cache.clear()
-                self.get_archivers_attributes.cache.clear()
-                self.get_attribute_archiver.cache.clear()
                 self.get_archivers_attributes();
                 archs = set(map(self.get_attribute_archiver,attributes))
                 for h in archs:
                     try:
-                        self.info('%s.Start()' % h)
-                        fn.get_device(h, keep=True).Start()
+                        if h:
+                            self.info('%s.Start()' % h)
+                            fn.get_device(h, keep=True).Start()
                     except:
                         traceback.print_exc()
                 
         except Exception,e:
             self.error('add_attributes(%s) failed!: %s'%(
                 attributes,traceback.print_exc()))
+
         return        
           
     def start_archiving(self,attribute,archiver,period=0,
@@ -783,17 +800,22 @@ class HDBppDB(ArchivingDB,SingletonMap):
                 self.info('start_archiving(%s)'%attribute)
                 d = self.get_manager()
                 fullname = parse_tango_model(attribute,fqdn=True).fullname
-                if not self.is_attribute_archived(attribute):
+                archiver = fn.tango.get_full_name(archiver,fqdn=True)
+                
+                if not self.get_attribute_archiver(attribute):
+                    
                     self.add_attribute(fullname,archiver=archiver,
                         period=period, rel_event=rel_event, 
                         per_event=per_event, abs_event=abs_event,
                         code_event=code_event, ttl=ttl, 
-                        start=start)
+                        start=start,clear=True)
+                    
                     if start:
                         time.sleep(5.)
                         fullname = self.is_attribute_archived(attribute,cached=0)
                 if start:
                     d.AttributeStart(fullname)
+                    
                 return True
         except Exception,e:
             self.error('start_archiving(%s): %s'
@@ -872,12 +894,20 @@ class HDBppDB(ArchivingDB,SingletonMap):
             
         print('%d attributes restarted' % len(attributes))
 
-    def clear_caches(self):
-        self.get_attribute_archiver.cache.clear()
-        self.get_archiver_attributes.cache.clear()
-        self.get_attribute_subscriber.cache.clear()
-        self.get_archivers_attributes.cache.clear()
+    def clear_caches(self,regexp='get*'):
+        self.info('Clear attribute lists caches ...')
+        for m in dir(self):
+            if fn.clmatch(regexp,m) and hasattr(m,'cache'):
+                getattr(self,m).cache.clear()
+        #self.get_att_conf_table.cache.clear()
+        #self.get_subscribed_attributes.cache.clear()
+        #self.get_attributes_by_table.cache.clear()
+        #self.get_attribute_archiver.cache.clear()
+        #self.get_archiver_attributes.cache.clear()
+        #self.get_attribute_subscriber.cache.clear()
+        #self.get_archivers_attributes.cache.clear()
         self.dedicated = {}
+        self.attributes = {}
     
     
     

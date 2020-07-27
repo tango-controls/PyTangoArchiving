@@ -229,7 +229,8 @@ class HDBppReader(HDBppDB):
         """
         vals = []
         try:
-            if self.is_attribute_archived(attribute):
+            attribute,name = self.is_attribute_archived(attribute),attribute
+            if attribute:
                 
                 if epoch is None:
                     epoch = self.get_attr_timestamp(attribute,method='max')[0]
@@ -249,7 +250,7 @@ class HDBppReader(HDBppDB):
                 if len(vals):
                     vals = vals[0] if abs(n)==1 else vals                
             else:
-                self.warning('%s is not archived'%attribute)
+                self.warning('%s is not archived'%name)
         except:
             self.error('get_last_attribute_values(%s) failed!'%attribute)
             self.error(traceback.format_exc())
