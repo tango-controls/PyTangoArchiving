@@ -214,7 +214,7 @@ class HDBppDB(ArchivingDB,SingletonMap):
         if full or from_db or not check_device_cached(archiver):
             self.debug('getting %s attributes from database' % archiver)
             attrs = [str(l) for l in 
-                get_device_property(archiver,'AttributeList')]
+                fn.toList(get_device_property(archiver,'AttributeList'))]
             if not full:
                 attrs = [str(l).split(';')[0] for l in 
                     attrs]

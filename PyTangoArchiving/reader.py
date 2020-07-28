@@ -1195,7 +1195,9 @@ class Reader(Object,SingletonMap):
                 lasts = [v for k,v in lasts.items() if 
                         k not in ('hdb','tdb') and v is not None and len(v)]
                 lasts = sorted(t for t in lasts if t and len(t))
-                if len(lasts): values.insert(0,lasts[-1][:3])
+                if len(lasts): 
+                    values.insert(0,tuple(lasts[-1][
+                        :len(values[0]) if values else 2]))
 
         values = self.decimate_values(values, decimate)
         return values
@@ -1412,17 +1414,30 @@ class Reader(Object,SingletonMap):
         linesep = kwargs.get('linesep','\n')
         
         start = time.time()
-        if not hasattr(table,'keys'): table = {'attribute':table}
-        if not order or not all(k in order for k in table): keys = list(sorted(table.keys()))
-        else: keys = sorted(table.keys(),key=order.index)
+        if not hasattr(table,'keys'): 
+            table = {'attribute':table}
+        if not order or not all(k in order for k in table): 
+            keys = list(sorted(table.keys()))
+        else: 
+            keys = sorted(table.keys(),key=order.index)
+
         csv = sep.join(['date','time']+keys)+linesep
+
         def value_to_text(s):
-          v = (str(s) if not fandango.isSequence(s) else arrsep.join(map(str,s))).replace('None','')
+          v = (str(s) if not fandango.isSequence(s) 
+                    else arrsep.join(map(str,s))).replace('None','')
           return v
-        time_to_text = lambda t: time2str(t,cad='%Y-%m-%d_%H:%M:%S')+('%0.3f'%(t%1)).lstrip('0') #taurustrend timestamp format
-        for i in range(len(table.values()[0])):
-            csv+=sep.join([time_to_text(table.values()[0][i][0]),str(table.values()[0][i][0])]+[value_to_text(table[k][i][1]) for k in keys])
+
+        time_to_text = lambda t: (time2str(t,cad='%Y-%m-%d_%H:%M:%S')
+            +('%0.3f'%(t%1)).lstrip('0')) #taurustrend timestamp format
+        
+        ml = min(len(v) for v in table.values())
+        for i in range(ml): #len(table.values()[0])):
+            csv+=sep.join([time_to_text(table.values()[0][i][0]),
+                    str(table.values()[0][i][0])]
+                +[value_to_text(table[k][i][1]) for k in keys])
             csv+=linesep
+            
         print('Text file generated in %d milliseconds'%(1000*(time.time()-start)))
         return csv
 

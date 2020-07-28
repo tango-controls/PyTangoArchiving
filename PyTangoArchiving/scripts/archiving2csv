@@ -41,6 +41,12 @@ def is_filename(a):
     return (not pta.utils.is_regexp(a) 
             and ('/' not in a or os.path.exists(a.rsplit('/',1)[0])))
 
+def report_values(values):
+    print(' \n'.join(sorted('%s: %d values between %s and %s '
+            %(a,len(v),fn.time2str(v[0][0]),fn.time2str(v[-1][0]))
+                            for a,v in values.items() if v)))
+
+
 def main():
     
     sep = '\t'
@@ -229,14 +235,15 @@ def main():
             if a == '--nofill':
                 nofill = True
                 
+        Ts = fn.str2time(start),fn.str2time(stop)
         raws = rd.get_attributes_values(attrs,start,stop,text=False,
                     decimate=correlate,correlate=False,lasts=True)
         values = fn.SortedDict()
         for a in attrs: 
             values[a] = raws[a]
         
-        print('archiving2csv: Obtained data from database:')
-        print(' \n'.join(sorted('%s: %d values'%(a,len(v)) for a,v in values.items())))
+        print('archiving2csv(%s,%s): Obtained data from database:'%(start,stop))
+        report_values(values)
         ll = max(len(v) for v in values.values())-1
 
         if correlate:
@@ -244,6 +251,8 @@ def main():
             if nofill:
                 print('--nofill')
             import fandango
+            for a,v in values.items():
+                print(a,v[0],v[-1])
             for a,v in values.items():
                 try:
                     is_array = False
@@ -253,7 +262,9 @@ def main():
                                 is_array = True
                             else:
                                 break
-
+                    tt = (Ts[-1]+(correlate or 1),v[-1][1])
+                    tt = type(v[-1])(tt) #Type matters when sorting!
+                    v.append(tt) 
                     if is_array:
                         values[a] = []
                         for t,vv in v:
@@ -270,27 +281,42 @@ def main():
                     else:
                         values[a] = fandango.arrays.filter_array(
                             v,window=correlate,
-                            filling=fandango.arrays.F_ZERO if nofill else fandango.arrays.F_LAST)
+                            filling=fandango.arrays.F_ZERO if nofill 
+                            else fandango.arrays.F_LAST,
+                            #begin=int(Ts[0]),
+                            #end=int(Ts[1]),
+                            trace=True,
+                            )
+                        print(a,values[a][0],values[a][-1])
                         
                 except Exception as e:
-                    print(e)
+                    traceback.print_exc()
                     print('Unable to correlate %s data, please try to export it '
                         'to a separate file' % a)
                     values.pop(a);
-
+                    
             if not values:
                 print('archiving2csv: Unable to export data ...')
                 sys.exit()
                 
-            if len(attrs)>1:
-                try:
-                    Ts = (max(v[0][0] for v in values.values()),
-                        min(v[-1][0] for v in values.values()))
-                    #print('interval: %s : %s' % (str(Ts), map(fandango.time2str,Ts)))
-                    for a,v in values.items():
-                        values[a]=[t for t in v if Ts[0]<=t[0]<=Ts[-1]]
-                    print sorted((a,len(v)) for a,v in values.items())
-                except: traceback.print_exc()
+            report_values(values)
+                
+            #if len(attrs)>1:
+            try:
+                #Ts = (max(v[0][0] for v in values.values()),
+                    #min(v[-1][0] for v in values.values()))
+                print('interval: %s : %s' % (str(Ts), map(fandango.time2str,Ts)))
+                for a,v in values.items():
+                    l = len(v)
+                    values[a]=[t for t in v if Ts[0]<=t[0]<=Ts[-1]]
+                    dl = l-len(values[a])
+                    if dl:
+                        print('%s: removed %d values out of interval' 
+                                % (a,dl))
+
+            except: traceback.print_exc()
+
+            report_values(values)        
         
         options = {'arrsep':arrsep,'sep':sep,'linesep':linesep}
         print('archiving2csv: Options: %s'%options)
@@ -305,7 +331,7 @@ def main():
             if lines[i] == lines[i-1]:
                 lines.pop(i-1)
             i-=1
-        #print 'data reduction: %s -> %s' % (ll,len(lines))        
+        #print('data reduction: %s -> %s' % (ll,len(lines)))
         
         skip = 0 if '--nodate' in args else (1 if '--noepoch' in args else None)
         if skip is not None:
