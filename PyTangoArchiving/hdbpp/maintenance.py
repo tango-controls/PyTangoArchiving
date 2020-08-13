@@ -337,7 +337,7 @@ def decimate_table_inline(db, table, attributes = [],
     db.setLogLevel(l)
     return
 
-def decimate_into_new_db(db_in, db_out, min_period = 1, min_array_period = 3,
+def decimate_into_new_db(db_in, db_out, min_period = 3, min_array_period = 10,
                          max_period = 3600, begin=None, end=None,
                          tables = None, method=None, 
                          remove_nones=True,
@@ -946,7 +946,7 @@ def add_idx_index(api, table):
         it = 'int_time' if 'int_time' in api.getTableCols(table) else 'data_time'
         #q = ('create index ii%s on %s(att_conf_id, idx, %s)' % (pref,table,it))
         # old index (aid/time) should go first!
-        q = ('create index ii%s on %s(att_conf_id, %s, it)' % (pref,table,it))
+        q = ('create index ii%s on %s(att_conf_id, idx, %s)' % (pref,table,it))
         print(api.db_name,q)
         api.Query(q)
         return 1

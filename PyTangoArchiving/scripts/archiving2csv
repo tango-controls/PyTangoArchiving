@@ -299,7 +299,7 @@ def main():
                 print('archiving2csv: Unable to export data ...')
                 sys.exit()
                 
-            report_values(values)
+            ##report_values(values)
                 
             #if len(attrs)>1:
             try:
