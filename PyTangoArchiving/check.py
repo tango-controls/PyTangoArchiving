@@ -527,6 +527,10 @@ def check_db_schema(schema, attributes = None, values = None,
                 astor.start_servers()
             except:
                 traceback.print_exc()
+        
+        stopped = api.get_stopped_attributes()
+        print('Restarting %d stopped attributes' % len(stopped))
+        api.restart_attributes(stopped)
     
     r.on = [a for a in api.get_archived_attributes() if a in r.attrs]
     r.off = [a for a in r.attrs if a not in r.on]
