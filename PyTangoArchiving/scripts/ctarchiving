@@ -1,5 +1,7 @@
 #!/bin/bash
 
+export QT_API=pyqt
+
 if [ "$(which alba_blissrc 2>/dev/null)" ] ; then
   echo "loading .rc file ..."
   . alba_blissrc
