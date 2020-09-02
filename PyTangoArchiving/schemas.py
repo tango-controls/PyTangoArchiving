@@ -130,16 +130,17 @@ class Schemas(object):
     def load(k,tango='',prop='',logger=None):
         try:
             tangodb = fn.tango.get_database(tango)
-            schemas = prop or tangodb.get_property('PyTangoArchiving',
+            props = prop or tangodb.get_property('PyTangoArchiving',
                         ['DbSchemas','Schemas'])
 
             try:
-                schemas = schemas.get('DbSchemas',[])
+                schemas = props.get('DbSchemas',[])
             except:
                 print('PyTangoArchiving.DbSchemas not initialized')
                 schemas = []
+                
             if not schemas:
-                schemas = schemas.get('Schemas', []) or []
+                schemas = props.get('Schemas', []) or []
 
             if not schemas:
                 schemas = ['hdbpp']
