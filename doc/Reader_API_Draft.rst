@@ -1,5 +1,6 @@
+.. code::
 
-class Reader(Object,SingletonMap):
+  class Reader(Object,SingletonMap):
 
     def __init__(self,config='',...):
         '''
@@ -21,7 +22,7 @@ class Reader(Object,SingletonMap):
 
     def is_attribute_archived(self,attribute):
         """
-        Returns if an attribute has values in DB
+        Returns if an attribute has values in DB.
         If active=True, only returns for value currently adding new values
         """
 
