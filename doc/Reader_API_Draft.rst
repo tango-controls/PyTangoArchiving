@@ -42,16 +42,15 @@ class Reader(Object,SingletonMap):
         """
 
     def get_attributes_values(self,attribute,start_date,stop_date=None,
-        decimate=False,correlate=False):
+        decimate=False, correlate=False):
         """
         Returns attribute values between dates in the format:
             [(epoch0, (r_value,w_value,quality)), 
             (epoch1, (r_value,w_value,quality)),
             (epoch2, (Exception, None, ATTR_INVALID)),
             ... ]
-        decimate may be False, True or an aggregation method
+        decimate may be False, True, an aggregation method or just an interval in seconds
 
-        if correlate is a number of seconds, values will be correlated to be
-        returned in fixed timestamp states
+        if correlate is True, attributes with no value in the interval will be correlated
         """
 
