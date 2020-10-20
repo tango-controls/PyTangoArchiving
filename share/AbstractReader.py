@@ -1,78 +1,123 @@
 
+class Aggregate(Enum):
+    """
+    Enum to describe aggregation method to use.
+    Note that this aggregation functions should
+    be supported at the backend level.
+    """
+    COUNT
+    COUNT_ERRORS
+    COUNT_NAN
+    MIN
+    MAX
+    AVG
+    STD_DEV
 
 
-import time
-  
 class AbstractReader(object):
     """
     Subclass this class to create a PyTangoArchiving Reader for your specific DB
-    
+
     e.g. TimeDBReader(AbstractReader)
     """
 
-    def __init__(self,config='',...):
+    def __init__(self, config='',...):
         '''
-        config must be an string like user:passwd@host 
+        Config can be an string like user:passwd@host
         or a json-like dictionary "{'user':'...','passwd':'...'}"
         '''
         self.db = YourDb(config)
         return
 
-    def get_database(self,epoch=-1):
+    def get_attributes(self, active=False, regexp=''):
         """
-        This method should provide the current connection object to DB
-        
-        
-        """
-        return self.db
-
-    def get_attributes(self,active=False,regexp=''):
-        """ 
         Queries the database for the current list of archived attributes.
         arguments:
-            active: True/False: attributes currently archived
+            active: True: only attributes currently archived
+                    False: all attributes, even the one not archiving anymore
             regexp: '' :filter for attributes to retrieve
         """
         return list()
 
-    def is_attribute_archived(self,attribute):
+    def is_attribute_archived(self, attribute, active=False):
         """
         Returns if an attribute has values in DB.
-        If active=True, only returns for value currently adding new values
+
+        arguments:
+            attribute: fqdn for the attribute.
+            active: if true, only check for active attributes,
+                    otherwise check all.
         """
         return True
 
-    def load_last_values(self,attribute):
+    def get_last_attribute_value(self, attribute):
         """
         Returns last value inserted in DB for an attribute
-        
-        (epoch, r_value, w_value, quality)
-        """
-        return (time.time(), 0., 0., 0)
 
-    def get_attribute_values(self,attribute,start_date,stop_date=None,
-        decimate=False):
+        arguments:
+            attribute: fqdn for the attribute.
+        returns:
+            (epoch, r_value, w_value, quality, error_desc)
         """
-        Returns attribute values between dates in the format:
-            [(epoch0, r_value, w_value, quality), 
-            (epoch1, r_value, w_value, quality),
-            (epoch2, Exception, None, ATTR_INVALID),
+
+        return get_last_attributes_values((attribute))[attribute]
+
+    def get_last_attributes_values(self, attributes):
+        """
+        Returns last values inserted in DB for a list of attributes
+
+        arguments:
+            attribute: fqdn for the attribute.
+        returns:
+            {'att1':(epoch, r_value, w_value, quality, error_desc),
+             'att2':(epoch, r_value, w_value, quality, error_desc),
+             ...
+            }
+        """
+
+        return {attributes[0]: (time.time(), 0., 0., 0, "")}
+
+    def get_attribute_values(self, attribute,
+            start_date, stop_date=None,
+            decimate=None):
+        """
+        Returns attribute values between start and stop dates.
+
+        arguments:
+            attribute: fqdn for the attribute.
+            start_date: datetime, beginning of the period to query.
+            stop_date: datetime, end of the period to query.
+                       if None, now() is used.
+            decimate: aggregation function to use in the form:
+                      {'timedelta0':(MIN, MAX, …)
+                      , 'timedelta1':(AVG, COUNT, …)
+                      , …}
+                      if None, returns raw data.
+        returns:
+            [(epoch0, r_value, w_value, quality, error_desc),
+            (epoch1, r_value, w_value, quality, error_desc),
             ... ]
-        decimate may be False, True or an aggregation method
-        w_value and quality are optional, while r_value is mandatory
         """
-        return [(time.time(), 0., 0., 0)]
+        attributes[attribute] = {'start': start_date
+                , 'stop': stop_date
+                , 'decimation': decimate}
+        return get_attributes_values(attributes)[attribute]
 
-    def get_attributes_values(self,attribute,start_date,stop_date=None,
-        decimate=False, correlate=False):
+    def get_attributes_values(self, attributes):
         """
-        Returns attribute values between dates in the format:
-            [(epoch0, (r_value,w_value,quality)), 
-            (epoch1, (r_value,w_value,quality)),
-            (epoch2, (Exception, None, ATTR_INVALID)),
-            ... ]
-        decimate may be False, True, an aggregation method or just an interval in seconds
+        Returns attributes values between start and stop dates
+        , using decimation or not.
 
-        if correlate is True, attributes with no value in the interval will be correlated
+        arguments:
+            attributes: a dict from the fqdn for the attributes
+                        to the data to extract.
+                        See get_attribute_values for the format to be used.
+
+        returns:
+            {'attr0':[(epoch0, r_value, w_value, quality, error_desc),
+            (epoch1, r_value, w_value, quality, error_desc),
+            ... ],
+            'attr1':[(…),(…)]}
         """
-        return {'attr0':[(time.time(), 0., 0., 0)], 'attr1':[(time.time(), 0., 0., 0)]}
+        return {'attr0': [(time.time(), 0., 0., 0, '')]
+                , 'attr1': [(time.time(), 0., 0., 0, '')]}
