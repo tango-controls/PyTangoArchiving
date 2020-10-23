@@ -175,11 +175,17 @@ class HDBppDB(ArchivingDB,SingletonMap):
                 self.manager = managers[0]
             else:
                 for m in self.get_all_managers():
-                    prop = str(get_device_property(m,'LibConfiguration'))
-                    prop += str(get_device_property(m,'DbHost'))
-
-                    if (not db_name or db_name in prop) and self.host in prop:
+                    prophost = str(get_device_property(m,'DbHost'))
+                    propdb = str(get_device_property(m,'DbName'))
+                    if (prophost,propdb) == (self.host,db_name):
                         self.manager = m
+
+                if not self.manager:
+                    for m in self.get_all_managers():
+                        propconf = get_device_property(m,'LibConfiguration')
+                        if ('dbname=%s'%db_name in propconf and 
+                            'host=%s'%self.host in propconf):
+                            self.manager = m
                     
         dp = get_device(self.manager,keep=True) if self.manager else None
         return dp
@@ -515,7 +521,6 @@ class HDBppDB(ArchivingDB,SingletonMap):
             else:
                 return False
         else:
-            print('db')
             for a in self.get_attributes():
                 index = '['+attribute.split('[',1)[-1] if '[' in attribute else ''
                 if a.endswith('/'+attribute.split('[')[0].lower()):
