@@ -132,9 +132,9 @@ class HDBppPeriodic(HDBppDB):
         
         arch = self.get_periodic_attribute_archiver(attribute)
         if arch:
+            print('%s is already archived by %s!' % (attribute,arch))
             p = self.get_periodic_attribute_period(attribute)
             if p == period:
-                print('%s is already archived by %s!' % (attribute,arch))
                 return False
             else:
                 archiver = arch
@@ -174,7 +174,10 @@ class HDBppPeriodic(HDBppDB):
             for attribute in attrs:
                 try:
                     period = periods[attribute]
-                    self.add_periodic_attribute(attribute,period,archiver,wait)
+                    self.info('add_periodic_attribute(%s,%s,%s)'
+                              % (attribute,period,archiver))
+                    self.add_periodic_attribute(attribute,period=period,
+                                            archiver=archiver,wait=wait)
                     done.append((attribute,period,archiver))
                 except:
                     self.warning(fn.except2str())
@@ -197,6 +200,24 @@ class HDBppPeriodic(HDBppDB):
         except:
             self.warning('stop_periodic_archiving(%s) failed!' %
                          (attribute, traceback.format_exc()))
+            
+    def restart_periodic_archiving(self, attribute):
+        try:
+            attribute = parse_tango_model(attribute, fqdn=True).fullname.lower()
+            arch = self.get_periodic_attribute_archiver(attribute)
+            if not arch:
+                self.warning('%s is not archived!' % attribute)
+            else:
+                self.info('Restarting %s at %s' % (attribute, arch))
+                dp = fn.get_device(archiver)
+                v = dp.AttributeStop(attribute)
+                dp.ResetErrorAttributes()
+                fn.wait(wait)
+                v = dp.AttributeStart(attribute)
+                return v
+        except:
+            self.warning('restart_periodic_archiving(%s) failed!' %
+                         (attribute, traceback.format_exc()))        
 
     def clear_periodic_caches(self):
         self.get_periodic_archiver_attributes.cache.clear()
