@@ -454,14 +454,20 @@ class Reader(Object,SingletonMap):
                 'PyTangoArchiving.Reader disabled')
                 
     def get_database(self,epoch=-1):
-        #self.log.info('%s.get_database(%s)' % (self.schema,epoch))
+        """
+        This method should provide the current connection object to DB
+        """
+        self.log.info('%s.get_database(%s)' % (self.schema,epoch))
         try:
             if epoch<-1: 
                 epoch = time.time()-epoch
-            else:
+            elif epoch==-1 or epoch is None:
                 epoch = time.time()
+            
             config = sorted((e,c) for e,c in self.configs.items() 
-                            if e<=epoch)[-1]
+                            if e<=epoch)
+            config = (config if len(config) 
+                    else sorted(self.configs.items()))[-1]
             if fn.isSequence(config):
                 config = config[-1]            
             #self.log.info('config: %s' % str(config))
@@ -529,44 +535,44 @@ class Reader(Object,SingletonMap):
     #################################################################################################
     #################################################################################################
                 
-    def get_extractor(self,check=True,attribute=''):
-        """ Gets a random extractor device."""
-        #Try Unified Reader
-        if self.db_name=='*':
-            return self.configs[
-                ('tdb' if self.configs['tdb'].is_attribute_archived(attribute) 
-                 else 'hdb')].get_extractor(check,attribute)
+    #def get_extractor(self,check=True,attribute=''):
+        #""" Gets a random extractor device."""
+        ##Try Unified Reader
+        #if self.db_name=='*':
+            #return self.configs[
+                #('tdb' if self.configs['tdb'].is_attribute_archived(attribute) 
+                 #else 'hdb')].get_extractor(check,attribute)
         
-        extractor = None
-        if (check and not self.check_state()) or not self.extractors:
-            self.log.warning('get_extractor(): Archiving seems not available')
-            return None
+        #extractor = None
+        #if (check and not self.check_state()) or not self.extractors:
+            #self.log.warning('get_extractor(): Archiving seems not available')
+            #return None
         
-        # First tries to get the previously used extractor, if it 
-        # is not available then searches for a new one ....
-        if attribute and attribute in self.attr_extracted:
-            extractor = self.servers.proxies[self.attr_extracted[attribute]]
-            try:
-                extractor.ping()
-                extractor.set_timeout_millis(self.timeout)
-            except Exception,e: extractor = None
+        ## First tries to get the previously used extractor, if it 
+        ## is not available then searches for a new one ....
+        #if attribute and attribute in self.attr_extracted:
+            #extractor = self.servers.proxies[self.attr_extracted[attribute]]
+            #try:
+                #extractor.ping()
+                #extractor.set_timeout_millis(self.timeout)
+            #except Exception,e: extractor = None
             
-        if not extractor:
-            remaining = self.extractors[:]
-            while remaining: #for i in range(len(self.extractors)):
-                next = randrange(len(remaining))
-                devname = remaining.pop(next)
-                if ':' not in devname: devname = self.tango_host +'/' +devname
-                extractor = self.servers.proxies[devname]
-                try:
-                    extractor.ping()
-                    extractor.set_timeout_millis(self.timeout)
-                    break
-                except Exception,e: 
-                    self.log.debug(traceback.format_exc())
+        #if not extractor:
+            #remaining = self.extractors[:]
+            #while remaining: #for i in range(len(self.extractors)):
+                #next = randrange(len(remaining))
+                #devname = remaining.pop(next)
+                #if ':' not in devname: devname = self.tango_host +'/' +devname
+                #extractor = self.servers.proxies[devname]
+                #try:
+                    #extractor.ping()
+                    #extractor.set_timeout_millis(self.timeout)
+                    #break
+                #except Exception,e: 
+                    #self.log.debug(traceback.format_exc())
                     
-        self.state = PyTango.DevState.ON if extractor else PyTango.DevState.FAULT
-        return extractor    
+        #self.state = PyTango.DevState.ON if extractor else PyTango.DevState.FAULT
+        #return extractor    
         
     @Cached(depth=20,expire=60.,log=False)
     def get_attributes(self,active=False,regexp=''):
@@ -610,18 +616,18 @@ class Reader(Object,SingletonMap):
             self.available_attributes = sorted(set(self.available_attributes))
             self.current_attributes = sorted(set(self.current_attributes))                
         else:
-            if self.get_database(): #Using a database Query
+            if 1: #self.get_database(): #Using a database Query
                 t1 = now()
                 avs = self.get_database().get_attribute_names(active=False)
                 currs = self.get_database().get_attribute_names(active=True)
                 self.available_attributes = map(get_model,avs)
                 self.current_attributes = map(get_model,currs)
 
-            elif self.extractors: #Using extractors
-                attrs = self.__extractorCommand(self.get_extractor(), 
-                                            'GetCurrentArchivedAtt')
-                self.current_attributes = map(get_model,attrs)
-                self.available_attributes = self.current_attributes
+            #elif self.extractors: #Using extractors
+                #attrs = self.__extractorCommand(self.get_extractor(), 
+                                            #'GetCurrentArchivedAtt')
+                #self.current_attributes = map(get_model,attrs)
+                #self.available_attributes = self.current_attributes
                 
             for a in self.available_attributes:
                 self.attr_schemas[a] = [self.schema]
@@ -1064,14 +1070,13 @@ class Reader(Object,SingletonMap):
             
             ###################################################################
             # QUERYING NEW HDB/TDB VALUES
-            if not db:
-                ##USING JAVA EXTRACTORS
-                values = self.get_extractor_values(attribute, start_date, 
-                                        stop_date, decimate, asHistoryBuffer)
-            else:
-                values = self.get_attribute_values_from_hdb(attribute, db,
-                            start_date, stop_date, decimate, 
-                            asHistoryBuffer, N, notNone, GET_LAST)
+            #if not db:
+                ###USING JAVA EXTRACTORS
+                #values = self.get_extractor_values(attribute, start_date, 
+                                        #stop_date, decimate, asHistoryBuffer)
+            values = self.get_attribute_values_from_hdb(attribute, db,
+                        start_date, stop_date, decimate, 
+                        asHistoryBuffer, N, notNone, GET_LAST)
             
             values = self.decimate_values(values, decimate)
 
@@ -1210,6 +1215,8 @@ class Reader(Object,SingletonMap):
         """
         # CHOOSING DATABASE METHODS
         if not self.is_hdbpp:
+            self.log.debug('get_attribute_values_from_hdb(%s,%s)' % 
+                (attribute, db))
             try:
                 full_name,ID,data_type,data_format,writable = \
                     db.get_attribute_descriptions(attribute)[0]
