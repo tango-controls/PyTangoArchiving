@@ -483,7 +483,7 @@ def check_attribute_exists(model):
 
 def check_db_schema(schema, attributes = None, values = None,
                     tref = -12*3600, n = 1, filters = '*', export = 'json',
-                    restart = False):
+                    restart = False, subscribe = False):
     """
     tref is the time that is considered updated (e.g. now()-86400)
     n is used to consider multiple values
@@ -573,7 +573,7 @@ def check_db_schema(schema, attributes = None, values = None,
     for a,v in r.check.items():
         state = check_archived_attribute(a, v, default=CheckState.LOST, 
             cache=r, tref=r.tref, 
-            check_events = not api.is_periodic_archived(a))
+            check_events = subscribe and not api.is_periodic_archived(a))
         {
             #CheckState.ON : r.on,
             #CheckState.OFF : r.off,
@@ -586,14 +586,62 @@ def check_db_schema(schema, attributes = None, values = None,
          }[state].append(a)
                 
     # SUMMARY
-    r.summary = schema + '\n\n'
-    for k in 'attrs on off ok nok noev stall lost novals'.split():
-        s = ('\t%s:\t:%d' % (k,len(r.get(k))))
-        if k == 'ok':
-            s += ' (ok+stall: %2.1f %%)' % (
-                (100.*(len(r.get('ok'))+len(r.get('stall')))
-                 )/(len(r.get('on') or 1e12)) )
-        r.summary += s+'\n'
+    r.summary = schema +'\n'
+    r.summary += ','.join(
+        """on: archived
+        off: not archived
+        ok: updated   
+        nok: not readable
+        noevs: no events
+        novals: no values
+        stall: not changing
+        lost: not updated
+        """.split('\n'))+'\n'
+    
+    getline = lambda k,v,l: '\t%s:\t:%d\t(%s)' % (k,len(v),l)
+    
+    r.summary += '\n\t%s:\t:%d\tok+stall: %2.1f %%' % (
+        'attrs',len(r.attrs),
+        (100.*(len(r.ok)+len(r.stall))/(len(r.on) or 1e12)))
+    r.summary += '\n\t%s/%s:\t:%d/%d' % (
+        'on','off',len(r.on),len(r.off))
+    #if r.off > 20: r.summary+=' !!!'
+    r.summary += '\n\t%s/%s:\t:%d/%d' % (
+        'ok','nok',len(r.ok),len(r.nok))
+    if len(r.nok) > 10: 
+        r.summary+=' !!!'
+    r.summary += '\n\t%s/%s:\t:%d/%d' % (
+        'noevs','novals',len(r.noevs),len(r.novals))
+    if len(r.novals) > 1: 
+        r.summary+=' !!!'
+    r.summary += '\n\t%s/%s:\t:%d/%d' % (
+        'lost','stall',len(r.lost),len(r.stall))
+    if len(r.lost) > 1: 
+        r.summary+=' !!!'
+    r.summary += '\n'
+        
+    r.archivers = dict.fromkeys(api.get_archivers())
+    for d in r.archivers:
+        r.archivers[d] = api.get_archiver_attributes(d)
+        novals = [a for a in r.archivers[d] if a in r.novals]
+        lost = [a for a in r.archivers[d] if a in r.lost]
+        if len(novals)+len(lost) > 2:
+            r.summary('\n%s (novals/lost): %s/%s' % 
+                (d,len(novals),len(lost)))
+            
+    if hasattr(api,'get_periodic_archivers'):
+        r.periodics = dict.fromkeys(api.get_periodic_archivers())
+        for d in r.periodics:
+            r.periodics[d] = api.get_periodic_archiver_attributes(d)
+            novals = [a for a in r.periodics[d] if a in r.novals]
+            lost = [a for a in r.periodics[d] if a in r.lost]
+            if len(novals)+len(lost) > 2:
+                r.summary('\n%s (novals/lost): %s/%s' % 
+                    (d,len(novals),len(lost)))
+        
+        r.perattrs = [a for a in r.on if a in api.get_periodic_attributes()]
+        r.notper = [a for a in r.on if a not in perattrs]
+        
         
     r.summary += '\nfinished in %d seconds\n\n'%(fn.now()-t0)
     print(r.summary)
