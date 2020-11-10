@@ -567,7 +567,7 @@ def check_db_schema(schema, attributes = None, values = None,
     r.check = dict((a,fn.check_attribute(a)
                     ) for a in r.on if a not in r.ok)
     #r.novals = [a for a,v in r.values.items() if not v]
-    r.nok, r.stall, r.noev, r.lost, r.novals, r.evs, r.rem = [],[],[],[],[],{},[]
+    r.nok, r.stall, r.noevs, r.lost, r.novals, r.evs, r.rem = [],[],[],[],[],{},[]
     # Method to compare numpy values
     
     for a,v in r.check.items():
@@ -580,7 +580,7 @@ def check_db_schema(schema, attributes = None, values = None,
             CheckState.OK : r.ok, #Shouldn't be any ok in check list               
             CheckState.NO_READ : r.nok,
             CheckState.STALL : r.stall,
-            CheckState.NO_EVENTS : r.noev,
+            CheckState.NO_EVENTS : r.noevs,
             CheckState.LOST : r.lost,
             CheckState.UNK : r.novals,
          }[state].append(a)
@@ -621,26 +621,26 @@ def check_db_schema(schema, attributes = None, values = None,
     r.summary += '\n'
         
     r.archivers = dict.fromkeys(api.get_archivers())
-    for d in r.archivers:
+    for d in sorted(r.archivers):
         r.archivers[d] = api.get_archiver_attributes(d)
-        novals = [a for a in r.archivers[d] if a in r.novals]
+        novals = [a for a in r.archivers[d] if a in r.novals]   
         lost = [a for a in r.archivers[d] if a in r.lost]
-        if len(novals)+len(lost) > 2:
-            r.summary('\n%s (novals/lost): %s/%s' % 
-                (d,len(novals),len(lost)))
+        if (len(novals)+len(lost)) > 2:
+            r.summary += ('\n%s (all/novals/lost): %s/%s/%s' 
+                % (d,len(r.archivers[d]),len(novals),len(lost)))
             
     if hasattr(api,'get_periodic_archivers'):
         r.periodics = dict.fromkeys(api.get_periodic_archivers())
-        for d in r.periodics:
+        for d in sorted(r.periodics):
             r.periodics[d] = api.get_periodic_archiver_attributes(d)
             novals = [a for a in r.periodics[d] if a in r.novals]
             lost = [a for a in r.periodics[d] if a in r.lost]
             if len(novals)+len(lost) > 2:
-                r.summary('\n%s (novals/lost): %s/%s' % 
-                    (d,len(novals),len(lost)))
+                r.summary += ('\n%s (all/novals/lost): %s/%s/%s' % 
+                    (d,len(r.periodics[d]),len(novals),len(lost)))
         
         r.perattrs = [a for a in r.on if a in api.get_periodic_attributes()]
-        r.notper = [a for a in r.on if a not in perattrs]
+        r.notper = [a for a in r.on if a not in r.perattrs]
         
         
     r.summary += '\nfinished in %d seconds\n\n'%(fn.now()-t0)

@@ -343,7 +343,8 @@ def decimate_into_new_db(db_in, db_out, min_period = 3, min_array_period = 10,
                          remove_nones=True,
                          server_dec = True, 
                          bunch=86400/4,
-                         use_files=True):
+                         use_files=True,
+                         force_interval=False):
     if tables is None:
         tables = db_in.get_data_tables() #pta.hdbpp.query.partition_prefixes.keys()
 
@@ -359,12 +360,16 @@ def decimate_into_new_db(db_in, db_out, min_period = 3, min_array_period = 10,
         if not tbegin:
             tbegin = get_first_value_in_table(db_in,table,ignore_errors=True)[0]
         print(begin,tbegin)
-        if begin is not None:
+        if force_interval:
+            tbegin = begin
+        elif begin is not None:
             tbegin = max((begin,tbegin)) #Query may start later
 
         tend = get_last_value_in_table(db_in,table,ignore_errors=True)[0]
         print(end,tend)
-        if end is not None:
+        if force_interval:
+            tend = end
+        elif end is not None:
             tend = min((end,tend)) #Query may finish earlier
         if tend is None:
             tend = tbegin
@@ -1245,7 +1250,8 @@ def create_new_partitions(api,table,nmonths,partpermonth=1,
             l = line%(pref,jdate,jend)
             if counter<(npartitions-1):
                 l+=','
-            if (pref+jdate) not in eparts:
+            if not eparts or (
+                (pref+jdate) not in eparts and (pref+jdate) not < eparts[0]):
                 lines.append(l)
             counter+=1
 
