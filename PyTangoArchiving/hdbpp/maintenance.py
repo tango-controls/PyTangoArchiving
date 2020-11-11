@@ -1247,11 +1247,11 @@ def create_new_partitions(api,table,nmonths,partpermonth=1,
             
         for jdate,jend in dates:
             jdate = jdate.replace('-','')
+            pname = (pref+jdate)
             l = line%(pref,jdate,jend)
             if counter<(npartitions-1):
                 l+=','
-            if not eparts or (
-                (pref+jdate) not in eparts and (pref+jdate) not < eparts[0]):
+            if not eparts or (pname not in eparts and not pname < eparts[0]):
                 lines.append(l)
             counter+=1
 

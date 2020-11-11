@@ -23,7 +23,7 @@ def get_search_model(model):
 
 RAW = None
 
-partition_prefixes = {
+PARTITION_TABLES = partition_prefixes = {
 ### BUT, NOT ALL TABLES ARE IN THIS LIST!
 # I'm partitioning only the big ones, and ignoring the others
 # boolean, encoded, enum, long64 uchar ulong64, ulong, ushort
