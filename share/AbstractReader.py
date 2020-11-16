@@ -8,6 +8,8 @@ class Aggregate(Enum):
     COUNT
     COUNT_ERRORS
     COUNT_NAN
+    FIRST
+    LAST
     MIN
     MAX
     AVG
@@ -28,6 +30,14 @@ class AbstractReader(object):
         '''
         self.db = YourDb(config)
         return
+
+    def get_connection():
+        """
+        Return the connection object to avoid a client
+        to open one for custom queries.
+        The returned object will be implementation specific.
+        """
+        return self.db
 
     def get_attributes(self, active=False, regexp=''):
         """
@@ -79,7 +89,8 @@ class AbstractReader(object):
 
     def get_attribute_values(self, attribute,
             start_date, stop_date=None,
-            decimate=None):
+            decimate=None,
+            **params):
         """
         Returns attribute values between start and stop dates.
 
@@ -101,9 +112,10 @@ class AbstractReader(object):
         attributes[attribute] = {'start': start_date
                 , 'stop': stop_date
                 , 'decimation': decimate}
-        return get_attributes_values(attributes)[attribute]
+        return get_attributes_values(attributes, params)[attribute]
 
-    def get_attributes_values(self, attributes):
+    def get_attributes_values(self, attributes,
+            correlate = False, **params):
         """
         Returns attributes values between start and stop dates
         , using decimation or not.
@@ -112,6 +124,9 @@ class AbstractReader(object):
             attributes: a dict from the fqdn for the attributes
                         to the data to extract.
                         See get_attribute_values for the format to be used.
+            correlate: if True, data is generated so that
+                       there is available data for each timestamp of
+                       each attribute.
 
         returns:
             {'attr0':[(epoch0, r_value, w_value, quality, error_desc),
