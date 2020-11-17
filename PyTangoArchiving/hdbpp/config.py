@@ -120,10 +120,16 @@ class HDBppDB(ArchivingDB,SingletonMap):
         else:
             return method()
             
-    @staticmethod
-    def get_hdbpp_libname():
-        r = fn.shell_command('locate libhdb++mysql.so')
-        #libname=/homelocal/sicilia/src/hdbpp.git/lib/libhdb++mysql.so
+    #@staticmethod
+    def get_hdbpp_libname(self):
+        self.get_manager()
+        conf = get_device_property(self.manager,'LibConfiguration')
+        try:
+            conf = dict(t.split('=',1) for t in conf)
+            r = conf['libname']
+        except:
+            print('Unable to parse %s.LibConfiguration' % self.manager)
+            r = fn.shell_command('locate libhdb++mysql.so')
         return r.split()[0]
     
     @staticmethod
@@ -263,12 +269,15 @@ class HDBppDB(ArchivingDB,SingletonMap):
         self.dedicated.update(dedicated)
         return dedicated    
         
-    @Cached(expire=10.)
     def get_archiver_errors(self,archiver):
-        dp = fn.get_device(archiver,keep=True)
-        al = dp.AttributeList
-        er = dp.AttributeErrorList
-        return dict((a,e) for a,e in zip(al,er) if e)
+        try:
+            dp = fn.get_device(archiver,keep=True)
+            al = dp.AttributeList or []
+            er = dp.AttributeErrorList or []
+            return dict((a,e) for a,e in zip(al,er) if e)
+        except:
+            print('Unable to get %s errors' % archiver)
+            return {}
     
     def get_attribute_errors(self,attribute):
         """
@@ -277,6 +286,10 @@ class HDBppDB(ArchivingDB,SingletonMap):
         archiver = self.get_attribute_archiver(attribute)
         errors = self.get_archiver_errors(archiver)
         return errors.get(attribute,None)
+    
+    def get_loads(self, use_freq=False):
+        return dict((d,self.get_archiver_load(d,use_freq))
+            for d in self.get_subscribers())
     
     def get_archiver_load(self,archiver,use_freq=True):
         """
@@ -663,7 +676,7 @@ class HDBppDB(ArchivingDB,SingletonMap):
     def add_attribute(self,attribute,archiver=None,period=0,
                       rel_event=None,per_event=None,abs_event=None,
                       code_event=False, ttl=None, start=False,
-                      use_freq=True,clear=False):
+                      use_freq=True,clear=False,context='ALWAYS'):
         """
         set _event arguments to -1 to ignore them and not modify the database
         
@@ -712,6 +725,8 @@ class HDBppDB(ArchivingDB,SingletonMap):
                 d.write_attribute('SetTTL',ttl)
                 
             d.write_attribute('SetCodePushedEvent',code_event)
+            
+            d.write_attribute('SetStrategy',context)
 
             d.write_attribute('SetArchiver',archiver)
             time.sleep(.2)

@@ -1268,6 +1268,113 @@ def create_new_partitions(api,table,nmonths,partpermonth=1,
     
     return r
 
+def get_archiving_loads(schema,maxload=250):
+    r = fn.Struct()
+    if isinstance(schema,pta.hdbpp.HDBpp):
+        api,r.schema = schema,schema.db_name
+    else:
+        api,r.schema = pta.api(schema),schema
+    r.attrs = api.get_attributes()
+    r.subs = api.get_subscribers()
+    r.pers = api.get_periodic_archivers()
+    r.evsubs = [d for d in api.get_subscribers() if 'null' not in d]
+    r.nulls = [d for d in r.subs if 'null' in d]
+    r.subsloads = dict((d,api.get_archiver_attributes(d)) for d in r.subs)
+    r.subserrors = dict((d,api.get_archiver_errors(d)) for d in r.evsubs) 
+    r.persloads = dict((d,api.get_periodic_archiver_attributes(d)) for d in r.pers)
+    r.perserrors = dict((d,api.get_periodic_archiver_errors(d)) for d in r.pers)
+    r.perattrs = api.get_periodic_attributes()
+    r.pernoevs = [a for a in r.perattrs if not fn.tango.check_attribute_events(a)]
+    r.perevs = [a for a in r.perattrs if a not in r.pernoevs]
+    r.attrlists = dict((d,fn.get_device_property(d,'AttributeList'))
+                                   for d in r.subs)
+    r.subattrs = [a.split(';')[0] for v in r.attrlists.values() for a in v]
+    r.evattrs = [a.split(';')[0] for v in r.subattrs if v not in r.pernoevs]
+    r.miss = [a for a in r.attrs if a not in r.subattrs]
+    r.dubs = len(r.subattrs)-len(list(set(r.subattrs)))
+    r.both = r.perevs
+    print('%d attributes in %s schema' % (len(r.attrs),schema))
+    dbsize = api.getDbSize()
+    print('DbSize: %f' % (dbsize/1e9))
+    tspan = api.get_timespan()
+    print('%s - %s ; %2.1f G/day' % (fn.time2str(tspan[0]),fn.time2str(tspan[1]),
+        (dbsize/1e9)/((tspan[1]-tspan[0])/86400)))
+    print('%d repeated attributes in archiver lists' % r.dubs)
+    print('%d not on any archiver' % len(r.miss))
+    print('%d on event archiving' % len(r.evattrs))
+    print('%d on periodic archiving' % len(r.perattrs))
+    print('%d(%d) have both' % (len(r.perattrs)-len(r.pernoevs),len(r.both)))
+    print('')
+    for k,v in sorted(r.subsloads.items()):
+        print('%s: %d (%d errors)' % (k,len(v),len(r.subserrors.get(k,[]))))
+    for k,v in sorted(r.persloads.items()):
+        print('%s: %d (%d errors)' % (k,len(v),len(r.perserrors.get(k,[]))))
+    return r
+        
+    
+
+def redistribute_loads(schema,maxload=300,do_it=True):
+    """
+    It moves periodic attributes to a /null subscriber
+    Then tries to balance load between archivers
+    """
+    if isinstance(schema,pta.hdbpp.HDBpp):
+        api,schema = schema,schema.db_name
+    else:
+        api,schema = pta.api(schema),schema
+    subs = api.get_subscribers()
+    nulls = [d for d in subs if 'null' in d]
+    if not nulls:
+        api.add_event_subscriber('hdb++es-srv/%s-null'%api.db_name,
+                                 'archiving/%s/null'%api.db_name)
+    r = get_archiving_loads(schema)
+    
+    #subsloads = dict((d,api.get_archiver_attributes(d)) for d in subs)
+    #pers = api.get_periodic_archivers()
+    #persloads = dict((d,api.get_periodic_archiver_attributes(d)) for d in pers)
+    #perattrs = api.get_periodic_attributes()
+    #pernoevs = [a for a in perattrs if not fn.tango.check_attribute_events(a)]
+    #subattrs = [a for a in api.get_attributes() if a not in perattrs]
+    #attrlists = sorted(set(fn.join(fn.get_device_property(d,'AttributeList') 
+                                   #for d in subs)))
+    #evsubs = [d for d in api.get_subscribers() if 'null' not in d]
+    
+    #print('%d attributes, %d subscribed, %d periodic, %d subscribers, %d pollers' % 
+          #(len(attrlists),len(subattrs),len(perattrs),len(evsubs),len(pers)))
+    #print('Current loads')
+    #print([(k,len(v)) for k,v in subsloads.items()])
+
+
+    sublist = []
+    # get generic archivers only
+    for d in r.subs:
+        if fn.clmatch('*([0-9]|null)$',d):
+            sublist.extend(fn.get_device_property(d,'AttributeList'))
+        
+    nulllist = [a for a in sublist if a.split(';')[0] in r.pernoevs]
+    sublist = [a for a in sublist if a.split(';')[0] not in r.pernoevs]
+    
+    print('Moving %d periodics to /null' % len(nulllist))
+    if do_it:
+        fn.tango.put_device_property('archiving/%s/null'%api.db_name,
+            'AttributeList',nulllist)
+    
+    evsubs = [d for d in r.subs if fn.clmatch('*[0-9]$',d)]
+    avgload = 1+len(sublist)/(len(evsubs))
+    print('Subscriber load = %d' % avgload)
+    if avgload>maxload:
+        raise Exception('Load too high!, create archivers!')
+    
+    for i,d in enumerate(evsubs):
+        attrs = sublist[i*avgload:(i+1)*avgload]
+        print(d,len(attrs))
+        if do_it:
+            fn.tango.put_device_property(d,'AttributeList',attrs)
+    
+    r.nulllist = nulllist
+    r.sublist = sublist
+    return r
+
 """
 cd $FOLDER
 FILENAME=$SCHEMA.full.$(date +%F).dmp

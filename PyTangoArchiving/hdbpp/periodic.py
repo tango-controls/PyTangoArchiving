@@ -83,6 +83,18 @@ class HDBppPeriodic(HDBppDB):
     
     is_periodic_archived = get_periodic_attribute_archiver
     
+    def get_periodic_archiver_errors(self,archiver):
+        try:
+            dp = fn.get_device(archiver,keep=True)
+            #al = dp.AttributeList
+            er = dp.AttributesErrorList
+            return er or []#dict((a,e) for a,e in zip(al,er) if e)
+        except:
+            print('Unable to get %s errors' % archiver)
+            traceback.print_exc()
+            return {}
+
+    
     @Cached(expire=10.)
     def get_periodic_attributes(self):
         self.periodic_attributes = {}
@@ -126,7 +138,11 @@ class HDBppPeriodic(HDBppDB):
         loads = sorted((len(v),k) for k,v in loads.items())
         return loads[0][-1]    
     
-    def add_periodic_attribute(self,attribute,period,archiver=None,wait=3.):
+    def add_periodic_attribute(self,attribute,period,archiver=None,wait=3.
+                               ,force=False):
+        
+        if not force and period<500:
+            raise Exception('periods below 500 ms are not allowed!')
         
         attribute = parse_tango_model(attribute,fqdn=True).fullname.lower()
         
@@ -145,7 +161,9 @@ class HDBppPeriodic(HDBppDB):
         if not self.is_attribute_archived(attribute):
             self.info('Attribute %s does not exist in %s database, adding it'
                       % (attribute, self.db_name))
-            self.add_attribute(attribute,code_event=True)
+            subs = [d for d in self.get_subscribers() if 'null' in d.lower()]
+            self.add_attribute(attribute,archiver=(subs[0] if subs else None),
+                code_event=True,context='SERVICE')
 
         self.info('%s.AttributeAdd(%s,%s)' % (archiver,attribute,period))            
         dp = fn.get_device(archiver,keep=True)

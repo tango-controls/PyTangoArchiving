@@ -25,7 +25,7 @@ RAW = None
 
 PARTITION_TABLES = partition_prefixes = {
 ### BUT, NOT ALL TABLES ARE IN THIS LIST!
-# I'm partitioning only the big ones, and ignoring the others
+# I'm partitioning only the big ones, and ignoring the others 
 # boolean, encoded, enum, long64 uchar ulong64, ulong, ushort
 # b, e, n, l64, ul6, ul, us, uc
 
@@ -164,9 +164,6 @@ class HDBppReader(HDBppDB):
     def get_table_timestamp(self, table, method='max', 
             epoch = None, ignore_errors = False): #, tref = -180*86400):
         """
-        def get_table_timestamp(self, table, method='max', 
-            epoch = None, ignore_errors = False):
-            
         method should be min() for first value and max() for last
         this query goes directly to table indexes
         this doesn't access values (but it is much faster)
@@ -218,6 +215,11 @@ class HDBppReader(HDBppDB):
             last, date = None, ''
 
         return (last, date, size, fn.now() - t0)
+    
+    def get_timespan(self,table='att_scalar_devdouble_ro'):
+        """ returns table timespan (end-begin) in seconds """
+        return (self.get_table_timestamp(table,'min')[0],
+                self.get_table_timestamp(table,'max')[0])
       
     def get_last_attribute_values(self,attribute,n=1,
             check_attribute=False,epoch=None,period=90*86400):
