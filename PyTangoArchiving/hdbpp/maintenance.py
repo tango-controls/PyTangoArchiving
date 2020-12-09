@@ -1288,6 +1288,8 @@ def get_archiving_loads(schema,maxload=250):
     r.perevs = [a for a in r.perattrs if a not in r.pernoevs]
     r.attrlists = dict((d,fn.get_device_property(d,'AttributeList'))
                                    for d in r.subs)
+    r.perlists = dict((d,fn.get_device_property(d,'AttributeList'))
+                                   for d in r.pers)
     r.subattrs = [a.split(';')[0] for v in r.attrlists.values() for a in v]
     r.evattrs = [a.split(';')[0] for v in r.subattrs if v not in r.pernoevs]
     r.miss = [a for a in r.attrs if a not in r.subattrs]
@@ -1313,7 +1315,8 @@ def get_archiving_loads(schema,maxload=250):
         
     
 
-def redistribute_loads(schema,maxload=300,do_it=True):
+def redistribute_loads(schema,maxload=300,subscribers=True,periodics=True,
+                       do_it=True):
     """
     It moves periodic attributes to a /null subscriber
     Then tries to balance load between archivers
@@ -1354,25 +1357,44 @@ def redistribute_loads(schema,maxload=300,do_it=True):
     nulllist = [a for a in sublist if a.split(';')[0] in r.pernoevs]
     sublist = [a for a in sublist if a.split(';')[0] not in r.pernoevs]
     
-    print('Moving %d periodics to /null' % len(nulllist))
-    if do_it:
-        fn.tango.put_device_property('archiving/%s/null'%api.db_name,
-            'AttributeList',nulllist)
-    
-    evsubs = [d for d in r.subs if fn.clmatch('*[0-9]$',d)]
-    avgload = 1+len(sublist)/(len(evsubs))
-    print('Subscriber load = %d' % avgload)
-    if avgload>maxload:
-        raise Exception('Load too high!, create archivers!')
-    
-    for i,d in enumerate(evsubs):
-        attrs = sublist[i*avgload:(i+1)*avgload]
-        print(d,len(attrs))
+    if subscribers:
+        print('Moving %d periodics to /null' % len(nulllist))
         if do_it:
-            fn.tango.put_device_property(d,'AttributeList',attrs)
+            fn.tango.put_device_property('archiving/%s/null'%api.db_name,
+                'AttributeList',nulllist)
+        
+        evsubs = [d for d in r.subs if fn.clmatch('*[0-9]$',d)]
+        avgload = 1+len(sublist)/(len(evsubs))
+        print('Subscriber load = %d' % avgload)
+        if avgload>maxload:
+            raise Exception('Load too high!, create archivers!')
+        
+        for i,d in enumerate(evsubs):
+            attrs = sublist[i*avgload:(i+1)*avgload]
+            print(d,len(attrs))
+            if do_it:
+                fn.tango.put_device_property(d,'AttributeList',attrs)
     
     r.nulllist = nulllist
     r.sublist = sublist
+    
+    if periodics:
+        sublist = []
+        for d in r.pers:
+            sublist.extend(fn.get_device_property(d,'AttributeList'))        
+        avgload = 1+len(sublist)/(len(r.pers))
+        print('Periodic archiver load = %d' % avgload)
+        if avgload>maxload:
+            raise Exception('Load too high!, create archivers!')
+        
+        for i,d in enumerate(r.pers):
+            attrs = sublist[i*avgload:(i+1)*avgload]
+            print(d,len(attrs))
+            if do_it:
+                fn.tango.put_device_property(d,'AttributeList',attrs)        
+    
+    if not do_it:
+        print('It was just a dry run, nothing done')
     return r
 
 """

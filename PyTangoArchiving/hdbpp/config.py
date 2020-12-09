@@ -311,7 +311,8 @@ class HDBppDB(ArchivingDB,SingletonMap):
         if any(props.values()):
             archs = [a for a,v in props.items() if not v]
         else:
-            archs = [a for a in props if fn.clmatch('*[0-9]$',a)]
+            archs = [a for a in props if fn.clmatch('*[0-9]$',a) 
+                     and 'null' not in a]
 
         loads = dict((a,self.get_archiver_load(a,use_freq=use_freq))
             for a in archs)
@@ -408,7 +409,7 @@ class HDBppDB(ArchivingDB,SingletonMap):
                     attrs.append(a)
         return attrs        
     
-    def get_stopped_attributes(self, errors=False):
+    def get_stopped_attributes(self, errors=False, killed=False):
         r = []
         for d in self.get_subscribers():
             try:
@@ -421,7 +422,8 @@ class HDBppDB(ArchivingDB,SingletonMap):
                     r.extend(self.get_archiver_errors(d).keys())
             except:
                 self.warning('%s not running!' % d)
-                r.extend(self.get_archiver_attributes(d,from_db=True))
+                if killed and not d.endswith('/null'):
+                    r.extend(self.get_archiver_attributes(d,from_db=True))
         return r
     
     def get_archived_attributes(self, *args, **kwargs):

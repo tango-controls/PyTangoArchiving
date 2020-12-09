@@ -145,6 +145,7 @@ class HDBppPeriodic(HDBppDB):
             raise Exception('periods below 500 ms are not allowed!')
         
         attribute = parse_tango_model(attribute,fqdn=True).fullname.lower()
+        evs = fn.tango.check_attribute_events(attribute)
         
         arch = self.get_periodic_attribute_archiver(attribute)
         if arch:
@@ -161,9 +162,14 @@ class HDBppPeriodic(HDBppDB):
         if not self.is_attribute_archived(attribute):
             self.info('Attribute %s does not exist in %s database, adding it'
                       % (attribute, self.db_name))
-            subs = [d for d in self.get_subscribers() if 'null' in d.lower()]
+            if evs:
+                subs,ctx = None,'ALWAYS'
+            else:
+                subs = [d for d in self.get_subscribers() 
+                        if 'null' in d.lower()]
+                ctx = 'SERVICE'
             self.add_attribute(attribute,archiver=(subs[0] if subs else None),
-                code_event=True,context='SERVICE')
+                code_event=True,context=ctx)
 
         self.info('%s.AttributeAdd(%s,%s)' % (archiver,attribute,period))            
         dp = fn.get_device(archiver,keep=True)
