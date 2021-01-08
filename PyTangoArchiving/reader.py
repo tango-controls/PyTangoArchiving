@@ -735,6 +735,10 @@ class Reader(Object,SingletonMap):
         if expandEvalAttribute(attribute):
             return all(self.is_attribute_archived(a,active) 
                        for a in expandEvalAttribute(attribute))
+        
+        if fn.isSequence(attribute):
+            return dict((a,rd.is_attribute_archived(a,active,preferent,start,
+                stop)) for a in attribute)
 
         self.get_attributes(False,'') #Updated cached lists
         attr = self.get_attribute_alias(attribute)

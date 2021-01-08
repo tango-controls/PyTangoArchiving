@@ -457,7 +457,7 @@ class HDBppDB(ArchivingDB,SingletonMap):
             raise Exception('wrong ID %s' % ID)
       
     def get_table_name(self,attr):
-        return get_attr_id_type_table(attr)[-1]
+        return self.get_attr_id_type_table(attr)[-1]
 
     @Cached(expire=600)
     def get_att_conf_table(self):
@@ -873,6 +873,9 @@ class HDBppDB(ArchivingDB,SingletonMap):
                 raise Exception('%s is not archived!' % attr)
             attr = a
             d = self.get_attribute_archiver(attr)
+            if d.endswith('/null'):
+                print('%s archived by %s is ignored'% (attr,d))
+                
             print('%s.restart_attribute(%s)' % (d,attr))
             dp = fn.get_device(d, keep=True)
 
@@ -900,6 +903,8 @@ class HDBppDB(ArchivingDB,SingletonMap):
         devs = dict(fn.kmap(self.get_attribute_archiver,todo))
 
         for a,d in fn.randomize(sorted(devs.items())):
+            if d.endswith('/null'): 
+                continue
             if not fn.check_device(d):
                 self.start_devices('(.*/)?'+d,do_restart=True)
             else:
@@ -910,6 +915,8 @@ class HDBppDB(ArchivingDB,SingletonMap):
         fn.wait(10.*timewait)
         
         for a,d in devs.items():
+            if d.endswith('/null'): 
+                continue            
             dp = fn.get_device(d, keep=True)
             dp.AttributeStart(a)
             fn.wait(timewait)

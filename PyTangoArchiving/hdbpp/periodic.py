@@ -233,14 +233,14 @@ class HDBppPeriodic(HDBppDB):
                 self.warning('%s is not archived!' % attribute)
             else:
                 self.info('Restarting %s at %s' % (attribute, arch))
-                dp = fn.get_device(archiver)
+                dp = fn.get_device(arch)
                 v = dp.AttributeStop(attribute)
                 dp.ResetErrorAttributes()
-                fn.wait(wait)
+                fn.wait(.5)
                 v = dp.AttributeStart(attribute)
                 return v
         except:
-            self.warning('restart_periodic_archiving(%s) failed!' %
+            self.warning('restart_periodic_archiving(%s) failed!\n%s' %
                          (attribute, traceback.format_exc()))        
 
     def clear_periodic_caches(self):
