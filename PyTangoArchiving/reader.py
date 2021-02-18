@@ -854,9 +854,9 @@ class Reader(Object,SingletonMap):
         
         start_date,start_time,stop_date,stop_time
         """
-        start_time = start_date if isinstance(start_date,(int,float)) \
+        start_time = start_date if isinstance(start_date,(long,int,float)) \
                             else (start_date and str2epoch(start_date) or 0)
-        stop_time = stop_date if isinstance(stop_date,(int,float)) \
+        stop_time = stop_date if isinstance(stop_date,(long,int,float)) \
                                 else (stop_date and str2epoch(stop_date) or 0)
         if not start_time or 0<=start_time<START_OF_TIME:
             raise Exception('StartDateTooOld(%s)'%start_date)
