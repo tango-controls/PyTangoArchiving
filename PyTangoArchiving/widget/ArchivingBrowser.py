@@ -30,14 +30,30 @@ import PyTango
 import fandango as fn
 from fandango.log import tracer
 
-import taurus
-from fandango.qt import Qt,Qwt5,getColorsForValue
-from fandango.qt import QGridTable, QDictToolBar
+#############################################################################
 
-try:
-    from taurus.qt.qtgui.plot import TaurusTrend,TaurusPlot
-except:
-    from taurus.qt.qtgui.qwt5 import TaurusTrend,TaurusPlot
+import taurus
+
+QT_API=os.getenv('QT_API')
+USE_PYQTGRAPH=os.getenv('USE_PYQTGRAPH')
+USE_QWT=str(QT_API).lower() in ('pyqt','pyqt4') and not USE_PYQTGRAPH
+if USE_QWT:
+    print('Loading taurus pyqwt')
+    try:
+        from fandango.qt import Qwt5
+        from taurus.qt.qtgui.qwt5 import TaurusTrend,TaurusPlot
+    except:
+        USE_QWT=False
+
+if not USE_QWT:
+    print('Loading taurus pyqtgraph')
+    #from taurus.qt.qtgui.plot import TaurusTrend,TaurusPlot
+    from taurus.qt.qtgui.tpg import TaurusTrend,TaurusPlot
+    
+print('QT_API: %s' % QT_API)
+print('USE_PYQTGRAPH: %s' % USE_PYQTGRAPH)
+print('TaurusTrend: %s' % TaurusTrend)
+print('TaurusPlot: %s' % TaurusPlot)
     
 from taurus.qt.qtgui.panel import TaurusDevicePanel
 from taurus.qt.qtgui.panel import TaurusValue
@@ -55,12 +71,19 @@ except:
     except:
         # Taurus > 3.4
         from taurus.qt.qtgui.display import TaurusLabel
+        
+#############################################################################
+
+from fandango.qt import Qt,getColorsForValue
+from fandango.qt import QGridTable, QDictToolBar
 
 try:
     from PyTangoArchiving.widget.tree import TaurusModelChooser
 except:
     traceback.print_exc()
     TaurusModelChooser = None
+    
+#############################################################################    
 
 def get_distinct_domains(l):
     return sorted(set(str(s).upper().split('/')[0] for s in l))
@@ -71,7 +94,6 @@ def launch(script,args=[]):
     print 'launch(%s)'%f
     os.system(f)
 
-###############################################################################
 ###############################################################################
 
 class MyScrollArea(Qt.QScrollArea):
@@ -307,9 +329,13 @@ class AttributesPanel(PARENT_KLASS):
               'hdb' : Archiving stopped, push to export values
               '...' : Not archived
               </pre>"""%txt)
-            self.connect(q, Qt.SIGNAL("pressed ()"), 
-                lambda a=self.reader.get_attribute_alias(model),o=q: 
-                 setattr(q,'w',show_history(a))) #showArchivingModes(a,parent=self)))
+            cb = (lambda a=self.reader.get_attribute_alias(model),o=q: 
+                 setattr(q,'w',show_history(a))) #showArchivingModes(a,parent=self)))) 
+            try:
+                self.connect(q, Qt.SIGNAL("pressed ()"), cb) 
+            except:
+                self.q.pressed.connect(cb)
+                
             self.setItem(i+self.offset,4,q)
             
             qc = Qt.QCheckBox()
@@ -674,8 +700,7 @@ class ArchivingBrowser(Qt.QWidget):
             self.split.setHandleWidth(25)
             self.split.addWidget(self.chooser)
             
-            if 0: #Qwt
-                from taurus.qt.qtgui.plot import TaurusTrend
+            if "qwt" in str(TaurusPlot.__bases__).lower():
                 from PyTangoArchiving.widget.trend import ArchivingTrend,ArchivingTrendWidget
                 self.trend = ArchivingTrendWidget() #TaurusArchivingTrend()
                 self.trend.setUseArchiving(True)
@@ -709,7 +734,10 @@ class ArchivingBrowser(Qt.QWidget):
     def connectSignals(self):
         #self.combo.connect(self.combo, Qt.SIGNAL("currentIndexChanged (const QString&)"), self.comboIndexChanged)
         #self.connect(self.combo, Qt.SIGNAL("currentIndexChanged (const QString&)"), self.comboIndexChanged)
-        self.connect(self.update, Qt.SIGNAL("pressed ()"), self.updateSearch)
+        try:
+            self.connect(self.update, Qt.SIGNAL("pressed ()"), self.updateSearch)
+        except:
+            self.update.pressed.connect(self.updateSearch)
         #if len(self.domains)==1: self.emit(Qt.SIGNAL("currentIndexChanged (const QString&)"),Qt.QString(self.domains[0]))
         
     def open_new_trend(self):
