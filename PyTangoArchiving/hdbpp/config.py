@@ -197,7 +197,7 @@ class HDBppDB(ArchivingDB,SingletonMap):
         return dp
     
     @Cached(expire=60.)
-    def get_subscribers(self, from_db = True):
+    def get_subscribers(self, from_db = True, exclude = '*/null'):
         """
         If not got from_db, the manager may limit the list available
         """
@@ -209,7 +209,8 @@ class HDBppDB(ArchivingDB,SingletonMap):
         else:
             raise Exception('%s Manager not running'%self.manager)
 
-        return [d for d in p if d.strip()]
+        return [d for d in p if d.strip() and (
+            not exclude or not fn.clmatch(exclude,d))]
 
     def get_archivers(self, *args, **kwargs):
         """ alias to get_subscribers """
@@ -307,12 +308,11 @@ class HDBppDB(ArchivingDB,SingletonMap):
         attrexp can be used to get archivers already archiving attributes
         """
         props = dict((a,fn.tango.get_device_property(a,'AttributeFilters'))
-                     for a in self.get_archivers())
+                     for a in self.get_archivers()) #get_archivers filters null
         if any(props.values()):
             archs = [a for a,v in props.items() if not v]
         else:
-            archs = [a for a in props if fn.clmatch('*[0-9]$',a) 
-                     and 'null' not in a]
+            archs = [a for a in props if fn.clmatch('*[0-9]$',a)]
 
         loads = dict((a,self.get_archiver_load(a,use_freq=use_freq))
             for a in archs)
@@ -411,7 +411,7 @@ class HDBppDB(ArchivingDB,SingletonMap):
     
     def get_stopped_attributes(self, errors=False, killed=False):
         r = []
-        for d in self.get_subscribers():
+        for d in self.get_subscribers(): #get_subscribers filters null
             try:
                 dp = fn.get_device(d,keep=True)
                 l = dp.AttributeStoppedList
@@ -422,7 +422,7 @@ class HDBppDB(ArchivingDB,SingletonMap):
                     r.extend(self.get_archiver_errors(d).keys())
             except:
                 self.warning('%s not running!' % d)
-                if killed and not d.endswith('/null'):
+                if killed:
                     r.extend(self.get_archiver_attributes(d,from_db=True))
         return r
     
@@ -571,21 +571,20 @@ class HDBppDB(ArchivingDB,SingletonMap):
         time.sleep(3.)
         self.start_devices(force=True)
         
-    def start_devices(self,regexp = '*', force = False, 
+    def start_devices(self,regexp = '*', dev_list = [], force = False, 
                       do_init = False, do_restart = False):
         """
         this method starts servers if needed and launches command Start()
 
-        :param regexp:
-        :param force:
-        :param do_init:
-        :param do_restart:
+        :param regexp: filter archivers by regexp
+        :param dev_list: list of devices to restart
+        :param force: execute an Start() command
+        :param do_init: execute an Init()
+        :param do_restart: restart devices using Starter
         :return:
         """
-        #devs = fn.tango.get_class_devices('HdbEventSubscriber')
-        devs = self.get_archivers()
-        if regexp:
-            devs = fn.filtersmart(devs,regexp)
+        devs = dev_list if dev_list else self.get_archivers() #get_archivers filters null
+        devs = fn.filtersmart(devs,regexp) if regexp else devs
         off = sorted(set(d for d in devs if not fn.check_device(d)))
 
         if off and do_restart:
@@ -602,7 +601,7 @@ class HDBppDB(ArchivingDB,SingletonMap):
                 dp = fn.get_device(d, keep=True)
                 if do_init:
                     dp.init()
-                if force or dp.attributenumber != dp.attributestartednumber:
+                if force and dp.attributenumber != dp.attributestartednumber:
                     off.append(d)
                     print('%s.Start()' % d)
                     dp.start()
@@ -875,6 +874,7 @@ class HDBppDB(ArchivingDB,SingletonMap):
             d = self.get_attribute_archiver(attr)
             if d.endswith('/null'):
                 print('%s archived by %s is ignored'% (attr,d))
+                return False
                 
             print('%s.restart_attribute(%s)' % (d,attr))
             dp = fn.get_device(d, keep=True)
@@ -883,43 +883,24 @@ class HDBppDB(ArchivingDB,SingletonMap):
                 self.start_devices('(.*/)?'+d,do_restart=True)
                 
             dp.AttributeStop(attr)
-            fn.wait(10.)
+            fn.wait(3.)
             dp.AttributeStart(attr)
+            return True
         except:
             print('%s.AttributeStart(%s) failed!'%(d,attr))
         
-    def restart_attributes(self,attributes=None,timewait=0.5):
+    def restart_attributes(self, attributes=None, from_db=False):
         if attributes is None:
-            attributes = self.get_attributes_not_updated()
+            if from_db:
+                attributes = self.get_attributes_not_updated()
+            else:
+                attributes = self.get_stopped_attributes()
         
-        todo = []
         for a in attributes:
-            a = self.is_attribute_archived(a)
-            if a:
-                todo.append(a)
-            else:
-                self.warning('%s is not archived!' % a)
-            
-        devs = dict(fn.kmap(self.get_attribute_archiver,todo))
-
-        for a,d in fn.randomize(sorted(devs.items())):
-            if d.endswith('/null'): 
-                continue
-            if not fn.check_device(d):
-                self.start_devices('(.*/)?'+d,do_restart=True)
-            else:
-                dp = fn.get_device(d, keep=True)
-                dp.AttributeStop(a)
-            fn.wait(timewait)
-            
-        fn.wait(10.*timewait)
-        
-        for a,d in devs.items():
-            if d.endswith('/null'): 
-                continue            
-            dp = fn.get_device(d, keep=True)
-            dp.AttributeStart(a)
-            fn.wait(timewait)
+            try:
+                api.restart_attribute(a)
+            except Exception as e:
+                print(e)
             
         print('%d attributes restarted' % len(attributes))
 

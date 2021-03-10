@@ -1,18 +1,29 @@
 #!/usr/bin/env python
 
 import fandango as fn
+import PyTangoArchiving as pta
 
-devs = fn.tango.get_class_devices('HdbEventSubscriber')
+import sys
+dbs = sys.argv[1:] or pta.get_hdbpp_databases()
 
-for d in devs:
-    try:
-        if not fn.check_device(d):
-            fn.Astor(d).stop_servers()
-            fn.Astor(d).start_servers()
-        else:
-            # Wait to next iteration before setting polling
-            dp = fn.get_device(d)
-            dp.poll_command('start',1200000)
-            print(d,'done')
-    except:
-        print(fn.getLastException())
+for db in dbs:
+    api = pta.api(db)
+    devs = api.get_subscribers() 
+    off = [d for d in devs if not fn.check_device(d)]
+    print('restart %s subscribers stopped in %s db' % (len(off),db))
+    api.start_devices(dev_list=off,do_restart=True,force=False)
+    
+    devs = api.get_periodic_archivers() 
+    poff = [d for d in devs if not fn.check_device(d)]
+    print('restart %s pollers stopped in %s db' % (len(poff),db))
+    api.start_devices(dev_list=poff,do_restart=True,force=False)
+    
+    stopped = api.get_stopped_attributes()
+    print('restart %s attributes stopped in %s db' % (len(stopped),db))
+    
+    for a in stopped:
+        try:
+            api.restart_attribute(a)
+        except Exception as e:
+            print(e)
+
