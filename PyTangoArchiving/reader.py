@@ -797,9 +797,12 @@ class Reader(Object,SingletonMap):
         """
         Returns the last values stored for each schema
         
-        active = True will search on schemas currently running only
-        
+        active = True will search on schemas currently running only        
         brief = True will return only the most updated
+
+        schemas: may be None (check all), a maximum number or a list
+        epoch: max date to search
+        n: number of values to return
         """
         result = dict()
         if fandango.isSequence(attribute):
@@ -875,7 +878,22 @@ class Reader(Object,SingletonMap):
                             %(start_date,stop_date))
         
         return start_date,start_time,stop_date,stop_time
-        
+    
+    def get_attribute_frequency(self,attribute,start=None,stop=None,schemas=None,n=10):
+        """ 
+        gets n values and computes frequency 
+        """
+        if start and stop:
+            vals = self.get_attribute_values(attribute,start,stop)
+        else:
+            vals = self.load_last_values(attribute,schema=schemas,active=True,n=n)
+            if len(vals):
+                vals = sorted((len(v),k,v) for k,v in vals.items())[-1][-1]
+                
+        if len(vals)>2:
+            return abs(float(len(vals))/(vals[-1][0]-vals[0][0]))
+        else:
+            return 0
         
     def get_attribute_values(self,attribute,start_date,stop_date=None,
             asHistoryBuffer=False,decimate=False,notNone=False,N=0,
