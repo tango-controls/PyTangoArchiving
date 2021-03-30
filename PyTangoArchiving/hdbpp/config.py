@@ -270,7 +270,7 @@ class HDBppDB(ArchivingDB,SingletonMap):
         self.dedicated.update(dedicated)
         return dedicated    
         
-    def get_archiver_errors(self,archiver):
+    def get_subscriber_errors(self,archiver):
         try:
             dp = fn.get_device(archiver,keep=True)
             al = dp.AttributeList or []
@@ -279,6 +279,8 @@ class HDBppDB(ArchivingDB,SingletonMap):
         except:
             print('Unable to get %s errors' % archiver)
             return {}
+        
+    get_archiver_errors = get_subscriber_errors
     
     def get_attribute_errors(self,attribute):
         """
@@ -294,13 +296,31 @@ class HDBppDB(ArchivingDB,SingletonMap):
     
     def get_archiver_load(self,archiver,use_freq=True):
         """
+        returns the estimated load of an archiver, in frequency of records or number
+        of attributes
+        
         if use_freq=True, returns attribute record frequency
         if false, returns attribute list size
+        the attribute list size counts for the time/stress needed
+        to subscribe the attributes
         """
         if use_freq:
             return fn.tango.read_attribute(archiver+'/attributerecordfreq')
         else:
             return len(self.get_archiver_attributes(archiver,from_db=False))
+        
+    def get_attribute_freq(self,attribute, from_db=False):
+        """
+        This method get attribute frequency from its current archiver
+        """
+        if from_db:
+            vals = self.load_last_values(attribute,n=10)[attribute]
+            return 10./abs(vals[0][0]-vals[-1][0])
+        else:
+            attribute = self.is_attribute_archived(attribute)
+            archiver = fn.get_device(self.get_attribute_archiver(attribute),keep=True)
+            freqs = dict(zip(archiver.AttributeList,archiver.AttributeRecordFreqList))
+            return freqs.get(attribute,None)        
     
     def get_next_archiver(self,errors=False,use_freq=False, attrexp=''):
         """
@@ -327,7 +347,7 @@ class HDBppDB(ArchivingDB,SingletonMap):
         elif attrexp:
             attrs = [a for a in self.get_attributes(True) 
                      if fn.clmatch(attrexp,a)]
-            archs = [self.get_attribute_archiver(a) for a in attrs]
+            archs = [self.get_attribute_subscriber(a) for a in attrs]
             if any(a in loads for a in archs):
                 loads = dict((k,v) for k,v in loads.items() if k in archs)
 
@@ -400,6 +420,7 @@ class HDBppDB(ArchivingDB,SingletonMap):
         self.get_att_conf_table()
         [self.get_archiver_attributes(d,from_db=True) 
             for d in self.get_subscribers()]
+        
         for d,dattrs in self.dedicated.items():
             for a in dattrs:
                 if a not in self.attributes:
@@ -411,7 +432,7 @@ class HDBppDB(ArchivingDB,SingletonMap):
     
     def get_stopped_attributes(self, errors=False, killed=False):
         r = []
-        for d in self.get_subscribers(): #get_subscribers filters null
+        for d in self.get_subscribers(exclude='*null'): #get_subscribers filters null
             try:
                 dp = fn.get_device(d,keep=True)
                 l = dp.AttributeStoppedList
@@ -677,7 +698,7 @@ class HDBppDB(ArchivingDB,SingletonMap):
     def add_attribute(self,attribute,archiver=None,period=0,
                       rel_event=None,per_event=None,abs_event=None,
                       code_event=False, ttl=None, start=False,
-                      use_freq=True,clear=False,context='ALWAYS'):
+                      use_freq=True,clear=False,context='RUN'):
         """
         set _event arguments to -1 to ignore them and not modify the database
         
@@ -735,7 +756,7 @@ class HDBppDB(ArchivingDB,SingletonMap):
           
             if start:
                 try:
-                    arch = archiver # self.get_attribute_archiver(attribute)
+                    arch = archiver
                     self.info('%s.Start()' % (arch))
                     fn.get_device(arch, keep=True).Start()
                 except:
@@ -788,7 +809,7 @@ class HDBppDB(ArchivingDB,SingletonMap):
             
             if start:
                 self.get_archivers_attributes();
-                archs = set(map(self.get_attribute_archiver,attributes))
+                archs = set(map(self.get_attribute_subscriber,attributes))
                 for h in archs:
                     try:
                         if h:
@@ -823,7 +844,7 @@ class HDBppDB(ArchivingDB,SingletonMap):
                 fullname = parse_tango_model(attribute,fqdn=True).fullname
                 archiver = fn.tango.get_full_name(archiver,fqdn=True)
                 
-                if not self.get_attribute_archiver(attribute):
+                if not self.get_attribute_subscriber(attribute):
                     
                     self.add_attribute(fullname,archiver=archiver,
                         period=period, rel_event=rel_event, 
@@ -850,7 +871,7 @@ class HDBppDB(ArchivingDB,SingletonMap):
         try:
             attribute = self.is_attribute_archived(attribute)
             if attribute:
-                arch = self.get_attribute_archiver(attribute)
+                arch = self.get_attribute_subscriber(attribute)
                 self.warning('Removing %s from %s' % (attribute,arch))
                 self.get_manager().AttributeRemove(attribute)
                 if clear:
@@ -861,6 +882,40 @@ class HDBppDB(ArchivingDB,SingletonMap):
         except:
             self.warning('stop_archiving(%s) failed!: %s' %
                          (attribute, traceback.format_exc()))
+            
+    def set_attribute_context(self,attr,context):
+        attr = self.is_attribute_archived(attr)
+        curr = self.get_attribute_archiver(attr)
+        dp = fn.get_device(curr,keep=True)
+        dp.SetAttributeStrategy([attr,context])
+        
+    def get_attribute_context(self,attr):
+        attr = self.is_attribute_archived(attr)
+        curr = self.get_attribute_archiver(attr)
+        dp = fn.get_device(curr,keep=True)
+        return dp.GetAttributeStrategy(attr)  
+        
+    def get_archiver_context(self,archiver):
+        dp = fn.get_device(archiver,keep=True)
+        return dp.Context      
+            
+    def reassign_attribute(self,attr,subscriber,context=None,ttl=None):
+        """
+        moves an attribute from an existing subscriber to a new one
+        """
+        attr = self.is_attribute_archived(attr)
+        curr = self.get_attribute_archiver(attr)
+        dp = fn.get_device(curr,keep=True)
+        if context is None:
+            context = dp.GetAttributeStrategy(attr)
+        if ttl is None:
+            ttl = dp.GetAttributeTTL(attr)
+        #dp.AttributeStop(attr)
+        dp.AttributeRemove(attr)
+        nw = fn.get_device(subscriber,keep=True)
+        nw.AttributeAdd([attr,context,str(ttl)])
+        nw.AttributeStart(attr)
+        return True
     
     def restart_attribute(self,attr, d=''):
         """
@@ -871,7 +926,7 @@ class HDBppDB(ArchivingDB,SingletonMap):
             if not a:
                 raise Exception('%s is not archived!' % attr)
             attr = a
-            d = self.get_attribute_archiver(attr)
+            d = self.get_attribute_subscriber(attr)
             if d.endswith('/null'):
                 print('%s archived by %s is ignored'% (attr,d))
                 return False
@@ -898,7 +953,7 @@ class HDBppDB(ArchivingDB,SingletonMap):
         
         for a in attributes:
             try:
-                api.restart_attribute(a)
+                self.restart_attribute(a)
             except Exception as e:
                 print(e)
             
@@ -912,7 +967,7 @@ class HDBppDB(ArchivingDB,SingletonMap):
         #self.get_att_conf_table.cache.clear()
         #self.get_subscribed_attributes.cache.clear()
         #self.get_attributes_by_table.cache.clear()
-        #self.get_attribute_archiver.cache.clear()
+        #self.get_attribute_subscriber.cache.clear()
         #self.get_archiver_attributes.cache.clear()
         #self.get_attribute_subscriber.cache.clear()
         #self.get_archivers_attributes.cache.clear()

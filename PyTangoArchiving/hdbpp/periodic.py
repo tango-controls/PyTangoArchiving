@@ -7,7 +7,7 @@ class HDBppPeriodic(HDBppDB):
     
     @Cached(depth=1000,expire=60.)
     def get_attribute_archiver(self,attribute):
-        r = HDBppDB.get_attribute_archiver(self,attribute)
+        r = self.get_attribute_subscriber(attribute)
         if not r:
             r = self.get_periodic_attribute_archiver(attribute)
         return r
@@ -83,12 +83,19 @@ class HDBppPeriodic(HDBppDB):
     
     is_periodic_archived = get_periodic_attribute_archiver
     
+    def get_archiver_errors(self,archiver):
+        dp = fn.get_device(archiver,keep=True)
+        if dp.info().dev_class == 'PyHdbppPeriodicArchiver':
+            return self.get_periodic_archiver_errors(archiver)
+        else:
+            return self.get_subscriber_errors(archiver)
+    
     def get_periodic_archiver_errors(self,archiver):
         try:
             dp = fn.get_device(archiver,keep=True)
             #al = dp.AttributeList
             er = dp.AttributesErrorList
-            return er or []#dict((a,e) for a,e in zip(al,er) if e)
+            return dict.fromkeys(er,True)
         except:
             print('Unable to get %s errors' % archiver)
             traceback.print_exc()
@@ -162,14 +169,13 @@ class HDBppPeriodic(HDBppDB):
         if not self.is_attribute_archived(attribute):
             self.info('Attribute %s does not exist in %s database, adding it'
                       % (attribute, self.db_name))
-            if evs:
-                subs,ctx = None,'ALWAYS'
-            else:
-                subs = [d for d in self.get_subscribers() 
+            ctx = 'RUN' if evs else 'SERVICE'
+            nulls = [d for d in self.get_subscribers(from_db=True,exclude='') 
                         if 'null' in d.lower()]
-                ctx = 'SERVICE'
-            self.add_attribute(attribute,archiver=(subs[0] if subs else None),
-                code_event=True,context=ctx)
+
+            self.add_attribute(attribute,
+                archiver=(nulls[0] if not evs and nulls else None),
+                code_event=True, context=ctx)
 
         self.info('%s.AttributeAdd(%s,%s)' % (archiver,attribute,period))            
         dp = fn.get_device(archiver,keep=True)
