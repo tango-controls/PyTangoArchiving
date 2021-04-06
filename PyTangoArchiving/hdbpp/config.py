@@ -299,7 +299,7 @@ class HDBppDB(ArchivingDB,SingletonMap):
         returns the estimated load of an archiver, in frequency of records or number
         of attributes
         
-        if use_freq=True, returns attribute record frequency
+        if use_freq=True, returns attribute record frequency (60s period)
         if false, returns attribute list size
         the attribute list size counts for the time/stress needed
         to subscribe the attributes
@@ -311,14 +311,15 @@ class HDBppDB(ArchivingDB,SingletonMap):
         
     def get_attribute_freq(self,attribute, from_db=False):
         """
-        This method get attribute frequency from its current archiver
+        This method get attribute frequency  (60s period) 
+        from its current archiver
         """
         if from_db:
             vals = self.load_last_values(attribute,n=10)[attribute]
             return 10./abs(vals[0][0]-vals[-1][0])
         else:
             attribute = self.is_attribute_archived(attribute)
-            archiver = fn.get_device(self.get_attribute_archiver(attribute),keep=True)
+            archiver = fn.get_device(self.get_attribute_subscriber(attribute),keep=True)
             freqs = dict(zip(archiver.AttributeList,archiver.AttributeRecordFreqList))
             return freqs.get(attribute,None)        
     
@@ -442,7 +443,9 @@ class HDBppDB(ArchivingDB,SingletonMap):
                     self.debug('adding %s error list' % d)
                     r.extend(self.get_archiver_errors(d).keys())
             except:
-                self.warning('%s not running!' % d)
+                if not fn.check_device(d):
+                    self.warning('%s not running!\n%s' % (
+                        d,traceback.format_exc()))
                 if killed:
                     r.extend(self.get_archiver_attributes(d,from_db=True))
         return r
