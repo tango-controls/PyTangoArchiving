@@ -919,42 +919,52 @@ def copy_between_tables(api, table, source, start, stop, step = 86400):
 #
 #     return ids.split(',')
 
-def add_int_time_column(api, table):
+def add_int_time_column(api, table,do_it=True):
     # Only prefixed tables will be modified
     pref = pta.hdbpp.query.partition_prefixes.get(table,None)
+    r = []
     if not pref:
-        return
+        return 
 
     if 'int_time' not in api.getTableCols(table):
         q = ('alter table %s add column int_time INT generated always as '
                 '(TO_SECONDS(data_time)-62167222800) PERSISTENT;' % table)
-        print(q)
-        api.Query(q)
+        if do_it: 
+            print(q)
+            api.Query(q)
+        r.append(q)
 
     if not any('int_time' in idx for idx in api.getTableIndex(table).values()):
-        api.Query('drop index att_conf_id_data_time on %s' % table)
+        q = 'drop index att_conf_id_data_time on %s' % table
+        if do_it: 
+            print(q)
+            api.Query(q)
+        r.append(q)
         q = ('create index i%s on %s(att_conf_id, int_time)' % (pref,table))
-        print(1)
-        api.Query(q)
+        if do_it: 
+            print(q)
+            api.Query(q)
+        r.append(q)
         
-    return 1
+    return '\n'.join(r)
 
-def add_idx_index(api, table):
+def add_idx_index(api, table, do_it=True):
     try:
         if not 'idx' in api.getTableCols(table):
-            return
+            return ''
         if any('idx' in ix for ix in api.getTableIndex(table).values()):
-            return
+            return ''
         pref = pta.hdbpp.query.partition_prefixes.get(table,None)
         if not pref:
-            return
+            return ''
         it = 'int_time' if 'int_time' in api.getTableCols(table) else 'data_time'
         #q = ('create index ii%s on %s(att_conf_id, idx, %s)' % (pref,table,it))
         # old index (aid/time) should go first!
         q = ('create index ii%s on %s(att_conf_id, idx, %s)' % (pref,table,it))
-        print(api.db_name,q)
-        api.Query(q)
-        return 1
+        if do_it: 
+            print(api.db_name,q)
+            api.Query(q)
+        return q
     except:
         traceback.print_exc()
     
@@ -1169,7 +1179,10 @@ def create_new_partitions(api,table,nmonths,partpermonth=1,
     npartitions = nmonths*partpermonth
     tables = pta.hdbpp.query.partition_prefixes
     t = table
-    pref = tables[t]
+    pref = tables.get(t,None)
+    if not pref:
+        print('table %s will not be partitioned' % t)
+        return []
     intcol = 'int_time'
     int_time = intcol in api.getTableCols(table)   
     eparts = sorted(api.getTablePartitions(t))
