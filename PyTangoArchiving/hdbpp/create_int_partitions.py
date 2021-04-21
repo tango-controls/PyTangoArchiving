@@ -1,40 +1,60 @@
-import sys
-import fandango as fd
+import sys, traceback
+import fandango as fn
+import PyTangoArchiving as pta
+import PyTangoArchiving.hdbpp.maintenance as ptam
 
 __doc__ = """
 Usage:
 
-create_int_partitions.py db_name user passwd start_date output_file
+create_int_partitions.py db_name host user passwd start_date output_file
+
+output_file will have to be inserted into database
+
+mysql -u root < output_file
+
 """
-if not sys.argv[5:]:
+
+try:
+    host = sys.argv[2]
+    db_name = sys.argv[1]
+    user = sys.argv[3]
+    passwd = sys.argv[4]
+    output_file = sys.argv[6]
+    start_date = sys.argv[5]
+except:
     print(__doc__)
     sys.exit()
     
-import PyTangoArchiving as pta
-import PyTangoArchiving.hdbpp.maintenance as ptam
 
-api = pta.HDBpp(host='localhost', db_name=sys.argv[1],
-                user=sys.argv[2], passwd=sys.argv[3])
+
+api = pta.HDBpp(host=host,db_name=db_name,user=user,passwd=passwd)
 
 r = []
 
-for t in api.get_data_tables():
-    r.append('ALTER TABLE %s MODIFY data_time DATETIME(3);'%t)
-    r.append('ALTER TABLE %s MODIFY recv_time DATETIME(3);'%t)
-    r.append('ALTER TABLE %s MODIFY insert_time DATETIME(3);'%t)
+tables = dict((t,api.getTableCreator(t)) for t in api.get_data_tables())
+
+for t in tables:
+    if "datetime(3)" not in str(tables[t]).lower():
+        r.append('ALTER TABLE %s MODIFY data_time DATETIME(3);'%t)
+        r.append('ALTER TABLE %s MODIFY recv_time DATETIME(3);'%t)
+        r.append('ALTER TABLE %s MODIFY insert_time DATETIME(3);'%t)
     
-for t in api.get_data_tables():
-    r.append(ptam.add_int_time_column(api,t,do_it=False))
-    r.append(ptam.add_idx_index(api,t,do_it=False))
+for t in tables:
+    if t in pta.hdbpp.query.partition_prefixes:
+        if "int_time" not in str(tables[t]).lower():
+            r.append(ptam.add_int_time_column(api,t,do_it=False))
+            r.append(ptam.add_idx_index(api,t,do_it=False))
     
-for t in api.get_data_tables():
-    try:
-        r.append(ptam.create_new_partitions(api,t,nmonths=24,
-                start_date=sys.argv[4],add_last=True,do_it=False))
-    except:
-        print('%s failed' % t)
+for t in tables:
+    if t in pta.hdbpp.query.partition_prefixes:
+        try:
+            r.append(ptam.create_new_partitions(api,t,nmonths=24,
+                    start_date=start_date,add_last=True,do_it=False))
+        except:
+            traceback.print_exc()
+            print('%s failed' % t)
     
-f = open(sys.argv[5],'w')
+f = open(output_file,'w')
 f.write('\n'.join(l for l in r if l))
 f.close()
 

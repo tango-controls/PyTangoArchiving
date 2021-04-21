@@ -951,12 +951,12 @@ def add_int_time_column(api, table,do_it=True):
 def add_idx_index(api, table, do_it=True):
     try:
         if not 'idx' in api.getTableCols(table):
-            return ''
+            return 
         if any('idx' in ix for ix in api.getTableIndex(table).values()):
-            return ''
+            return 
         pref = pta.hdbpp.query.partition_prefixes.get(table,None)
         if not pref:
-            return ''
+            return
         it = 'int_time' if 'int_time' in api.getTableCols(table) else 'data_time'
         #q = ('create index ii%s on %s(att_conf_id, idx, %s)' % (pref,table,it))
         # old index (aid/time) should go first!

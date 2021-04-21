@@ -88,6 +88,7 @@ class HDBppDB(ArchivingDB,SingletonMap):
                     user = user or sch.get('user')
                     passwd = passwd or sch.get('passwd')
                     port = port or sch.get('port')
+                    self.libname = sch.get('libname','')
                 elif not manager:
                     print('HDBpp(): Searching for manager')
                     m = self.get_manager(db_name)
@@ -122,9 +123,11 @@ class HDBppDB(ArchivingDB,SingletonMap):
             
     #@staticmethod
     def get_hdbpp_libname(self):
-        self.get_manager()
-        conf = get_device_property(self.manager,'LibConfiguration')
+        if getattr(self,'libname',None):
+            return self.libname
         try:
+            self.get_manager()
+            conf = get_device_property(self.manager,'LibConfiguration')            
             conf = dict(t.split('=',1) for t in conf)
             r = conf['libname']
         except:
@@ -204,10 +207,11 @@ class HDBppDB(ArchivingDB,SingletonMap):
         if from_db:
             p = list(self.tango.get_device_property(
                 self.manager,'ArchiverList')['ArchiverList'])
-        elif self.manager and check_device(self.manager):
+        elif self.manager: # and check_device(self.manager):
+            self.get_manager().state()
             p = self.get_manager().ArchiverList
-        else:
-            raise Exception('%s Manager not running'%self.manager)
+        #else:
+            #raise Exception('%s Manager not running'%self.manager)
 
         return [d for d in p if d.strip() and (
             not exclude or not fn.clmatch(exclude,d))]
@@ -638,14 +642,15 @@ class HDBppDB(ArchivingDB,SingletonMap):
         if '/' not in srv: srv = 'hdb++cm-srv/'+srv
         libname = libname or self.get_hdbpp_libname()
         add_new_device(srv,'HdbConfigurationManager',dev)
-        prev = get_device_property(dev,'ArchiverList') or ''
-        put_device_property(dev,'ArchiverList',prev)
-        #put_device_property(dev,'ArchiveName','MySQL')
+        prev = get_device_property(dev,'ArchiverList') or '' #Weird, but needed
+        fn.put_device_property(dev,'ArchiverList',prev)
+        #put_device_property(dev,'ArchiverList',prev)
         put_device_property(dev,'DbHost',self.host)
         put_device_property(dev,'DbName',self.db_name)
         #put_device_property(dev,'DbUser',self.user)
         #put_device_property(dev,'DbPassword',self.passwd)
         #put_device_property(dev,'DbPort','3306')
+        #put_device_property(dev,'ArchiveName','MySQL')        
         put_device_property(dev,'LibConfiguration',[
             'libname='+libname,
             'lightschema=1',
@@ -659,8 +664,9 @@ class HDBppDB(ArchivingDB,SingletonMap):
 
     def add_event_subscriber(self,srv,dev,libname=''):
         
-        if not fn.check_device(self.manager):
-            raise Exception('%s not running!' % self.manager)
+        #if not fn.check_device(self.manager):
+            #raise Exception('%s not running!' % self.manager)
+        self.get_manager().state()
         
         if '/' not in srv: 
             srv = 'hdb++es-srv/'+srv
@@ -696,6 +702,10 @@ class HDBppDB(ArchivingDB,SingletonMap):
                             #list(set(list(props.ArchiverList)+[dev])))
         print(dev)
         dp.ArchiverAdd(dev)
+        prev = fn.get_device_property(manager,'ArchiverList') #Weird, but needed
+        prev = sorted(set(d for d in prev if d.strip()))
+        fn.put_device_property(manager,'ArchiverList',prev)
+        dp.init()
         return dev
 
     def add_attribute(self,attribute,archiver=None,period=0,
