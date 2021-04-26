@@ -690,7 +690,7 @@ class ArchivingBrowser(Qt.QWidget):
             self.toppan.layout().addWidget(self.panel)
             self.attrpanel = self.panel
             
-        self.toppan.layout().addWidget(Qt.QLabel('Drag any attribute from the first column into the trend or any taurus widget you want:'))
+        self.toppan.layout().addWidget(Qt.QLabel('If drag&drop fails, PLEASE USE RIGHT-CLICK ON THE NAME OF THE ATTRIBUTE OR CHECKBOX!!'))
         
         self.browser.layout().addWidget(self.toppan)
         self.chooser.addTab(self.browser,'Search ...')

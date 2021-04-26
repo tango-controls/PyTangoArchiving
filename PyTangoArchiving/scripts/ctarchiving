@@ -1,11 +1,11 @@
 #!/bin/bash
 
-export QT_API=pyqt4
-
 if [ "$(which alba_blissrc 2>/dev/null)" ] ; then
   echo "loading .rc file ..."
   . alba_blissrc
 fi
+
+export QT_API=pyqt4
 
 PTAROOT=$(python -c "import imp;print(imp.find_module('PyTangoArchiving')[1])")
 
