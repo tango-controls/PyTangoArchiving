@@ -536,7 +536,7 @@ class HDBppDB(ArchivingDB,SingletonMap):
         m = get_full_name(attribute,fqdn=True)
         for k,v in self.dedicated.items():
             for l in v:
-                if fn.inCl(m,l.split(';')):
+                if m in l.split(';'):
                     return k
         
         return None
