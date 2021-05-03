@@ -549,8 +549,9 @@ class HDBppDB(ArchivingDB,SingletonMap):
         d = self.get_manager()
         if d and cached:
             self.get_archived_attributes()
-            if any(fn.inCl(m,self.attributes) for m 
-                   in (attribute,model.fullname,model.normalname)):
+            l = map(str.lower,self.attributes)
+            ms =  map(str.lower,(attribute,model.fullname,model.normalname))
+            if ms[0] in l or ms[1] in l:
                 return model.fullname
             else:
                 return False
