@@ -424,7 +424,7 @@ class HDBppDB(ArchivingDB,SingletonMap):
         attrs = []
         self.get_att_conf_table()
         [self.get_archiver_attributes(d,from_db=True) 
-            for d in self.get_subscribers()]
+            for d in self.get_subscribers()] #/null is excluded here
         
         for d,dattrs in self.dedicated.items():
             for a in dattrs:
@@ -457,6 +457,13 @@ class HDBppDB(ArchivingDB,SingletonMap):
     def get_archived_attributes(self, *args, **kwargs):
         """
         alias to get_subscribed_attributes, to be overloaded in subclasses
+        
+        It gets attributes currently assigned to subscribers and updates
+        internal attribute/archiver index.
+        
+        @param search: use it as a filter
+        
+        DONT USE Manager.AttributeSearch, it is limited to 1024 attrs!        
         """
         self.get_att_conf_table()
         return self.get_subscribed_attributes(*args, **kwargs)
@@ -530,7 +537,8 @@ class HDBppDB(ArchivingDB,SingletonMap):
     @Cached(depth=1000,expire=60.)
     def get_attribute_subscriber(self,attribute):
         if not self.dedicated:
-            [self.get_archiver_attributes(d) for d in self.get_archivers()]
+            [self.get_archiver_attributes(d) 
+             for d in self.get_archivers(exclude='')]
 
         #m = parse_tango_model(attribute,fqdn=True).fullname
         m = get_full_name(attribute,fqdn=True)
@@ -570,6 +578,13 @@ class HDBppDB(ArchivingDB,SingletonMap):
                 if a.endswith('/'+attribute.split('[')[0].lower()):
                     return a+index
             return False
+        
+    def is_attribute_subscribed(self,attribute,exclude='.*/null'):
+        """
+        checks if attribute is archived by a valid subscriber
+        """
+        s = self.get_attribute_subscriber(attribute)
+        return s and not fn.clmatch(exclude,str(s))
     
     def start_servers(self,host='',restart=True):
         """
@@ -729,6 +744,9 @@ class HDBppDB(ArchivingDB,SingletonMap):
         #if 'spectrum' in str(config.data_format).lower():
             #raise Exception('Arrays not supported yet!')
         data_type = str(PyTango.CmdArgType.values[config.data_type])
+        
+        if str(self.get_attribute_subscriber(attribute)).endswith('/null'):
+            self.stop_archiving(attribute)
 
         if not self.manager: 
             return False
@@ -804,6 +822,13 @@ class HDBppDB(ArchivingDB,SingletonMap):
         """
         try:
             attributes = sorted(attributes)
+            stops = []
+            for a in attributes:
+                if str(self.get_attribute_subscriber(a)).endswith('/null'):
+                    stops.append(a)
+            if stops:
+                self.stop_archiving(stops)
+                
             start = kwargs.get('start',True)
             devs = fn.defaultdict(list)
             [devs[fn.tango.get_dev_name(a)].append(a) for a in attributes]
@@ -883,15 +908,18 @@ class HDBppDB(ArchivingDB,SingletonMap):
         This method will remove the attribute from an existing archiver
         """
         try:
-            attribute = self.is_attribute_archived(attribute)
-            if attribute:
-                arch = self.get_attribute_subscriber(attribute)
-                self.warning('Removing %s from %s' % (attribute,arch))
-                self.get_manager().AttributeRemove(attribute)
-                if clear:
-                    self.clear_caches()
+            if fn.isSequence(attribute):
+                [self.stop_archiving(a,clear=False) for a in attribute]
             else:
-                self.warning('%s is not archived!' % attribute)
+                attribute = self.is_attribute_archived(attribute)
+                if attribute:
+                    arch = self.get_attribute_subscriber(attribute)
+                    self.warning('Removing %s from %s' % (attribute,arch))
+                    self.get_manager().AttributeRemove(attribute)
+                else:
+                    self.warning('%s is not archived!' % attribute)
+            if clear:
+                self.clear_caches()
             return attribute
         except:
             self.warning('stop_archiving(%s) failed!: %s' %
@@ -973,18 +1001,13 @@ class HDBppDB(ArchivingDB,SingletonMap):
             
         print('%d attributes restarted' % len(attributes))
 
-    def clear_caches(self,regexp='get*'):
+    def clear_caches(self,regexp='.*'): #'get*'
         self.info('Clear attribute lists caches ...')
         for m in dir(self):
-            if fn.clmatch(regexp,m) and hasattr(m,'cache'):
+            o = getattr(self,m)
+            if fn.clmatch(regexp,m) and fn.isCallable(o) and hasattr(o,'cache'):
+                #print('clearing %s cache' % str(m))
                 getattr(self,m).cache.clear()
-        #self.get_att_conf_table.cache.clear()
-        #self.get_subscribed_attributes.cache.clear()
-        #self.get_attributes_by_table.cache.clear()
-        #self.get_attribute_subscriber.cache.clear()
-        #self.get_archiver_attributes.cache.clear()
-        #self.get_attribute_subscriber.cache.clear()
-        #self.get_archivers_attributes.cache.clear()
         self.dedicated = {}
         self.attributes = {}
     

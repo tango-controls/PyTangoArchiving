@@ -103,7 +103,7 @@ class HDBppPeriodic(HDBppDB):
 
     
     @Cached(expire=10.)
-    def get_periodic_attributes(self):
+    def get_periodic_attributes(self,search=''):
         self.periodic_attributes = {}
         for v in self.get_periodic_archivers_attributes().values():
             for k,p in v.items():
@@ -112,7 +112,8 @@ class HDBppPeriodic(HDBppDB):
                     self.periodic_attributes[k.lower()] = int(p.split('=')[-1])
                 except:
                     print(fn.except2str())
-        return self.periodic_attributes
+        return [a for a in self.periodic_attributes 
+                if not search or fn.clmatch(search,a)]
     
     @Cached(depth=10,expire=60.)
     def get_archived_attributes(self,search='',periodic=True):
@@ -125,7 +126,7 @@ class HDBppPeriodic(HDBppDB):
         #print('get_archived_attributes(%s)'%str(search))
         attrs = HDBppDB.get_subscribed_attributes(self, search)
         if periodic:
-            attrs.extend(self.get_periodic_attributes())
+            attrs.extend(self.get_periodic_attributes(search=search))
         return sorted(set(fn.tango.get_full_name(a,fqdn=True).lower()
                           for a in attrs))
     
