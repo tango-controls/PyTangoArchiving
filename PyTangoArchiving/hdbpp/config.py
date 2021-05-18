@@ -313,19 +313,21 @@ class HDBppDB(ArchivingDB,SingletonMap):
         else:
             return len(self.get_archiver_attributes(archiver,from_db=False))
         
-    def get_attribute_freq(self,attribute, from_db=False):
+    def get_attribute_freq(self,attribute, from_db=False, n=10):
         """
         This method get attribute frequency  (60s period) 
-        from its current archiver
+        from its current archiver and divides per 60.
+        
+        if from_db, it will query n values to calcullate the right frequency
         """
         if from_db:
-            vals = self.load_last_values(attribute,n=10)[attribute]
-            return 10./abs(vals[0][0]-vals[-1][0])
+            vals = self.load_last_values(attribute,n=n)[attribute]
+            return float(n)/abs(vals[0][0]-vals[-1][0])
         else:
             attribute = self.is_attribute_archived(attribute)
             archiver = fn.get_device(self.get_attribute_subscriber(attribute),keep=True)
             freqs = dict(zip(archiver.AttributeList,archiver.AttributeRecordFreqList))
-            return freqs.get(attribute,None)        
+            return freqs.get(attribute,0.)/60.
     
     def get_next_archiver(self,errors=False,use_freq=False, attrexp=''):
         """
@@ -450,6 +452,7 @@ class HDBppDB(ArchivingDB,SingletonMap):
                 if not fn.check_device(d):
                     self.warning('%s not running!\n%s' % (
                         d,traceback.format_exc()))
+                traceback.print_exc()
                 if killed:
                     r.extend(self.get_archiver_attributes(d,from_db=True))
         return r
