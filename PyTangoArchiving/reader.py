@@ -928,6 +928,7 @@ class Reader(Object,SingletonMap):
                 ' Archiving not available!')
             return []
 
+        attribute = str(attribute)
         start_date,start_time,stop_date,stop_time = \
             self.get_time_interval(start_date,stop_date)
           
