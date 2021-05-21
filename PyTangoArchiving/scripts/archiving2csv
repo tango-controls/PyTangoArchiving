@@ -206,7 +206,7 @@ def main():
     else:
         # Getting the right Reader object
         rd = pta.Reader(schema)
-        rd.log.setLogLevel('DEBUG')
+        #rd.log.setLogLevel('DEBUG')
         print('Using %s db schema (%s)' % (schema,str(rd.configs)))
             
         print('archiving2csv: The list of attributes is: %s'%attrs)
