@@ -814,7 +814,9 @@ class Reader(Object,SingletonMap):
             if fn.isNumber(schema):
                 schemas = schemas[:schema]    
         else:
-            schemas = fandango.toList(schema)
+            schemas = [s for s in fandango.toList(schema)
+                if Schemas.getApi(s).is_attribute_archived(attribute)]
+            
             
         self.log.debug('load_last_values(%s,%s)' % (attribute,schemas))
         
@@ -830,7 +832,7 @@ class Reader(Object,SingletonMap):
             result[s] = r
             
         if brief and result:
-            result = sorted((t[0],t[1],t[2],t[3],s) for s,t in result.items() if t)
+            result = sorted(list(t[0:3])+[s] for s,t in result.items() if t)
             result = result and result[-1]
 
         return result
