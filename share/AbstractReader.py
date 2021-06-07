@@ -109,21 +109,27 @@ class AbstractReader(object):
             (epoch1, r_value, w_value, quality, error_desc),
             ... ]
         """
-        attributes[attribute] = {'start': start_date
-                , 'stop': stop_date
-                , 'decimation': decimate}
-        return get_attributes_values(attributes, params)[attribute]
+        return get_attributes_values((attribute), start_date, stop_date, decimate, False, params)[attribute]
 
     def get_attributes_values(self, attributes,
-            correlate = False, **params):
+            start_date, stop_date=None,
+            decimate=None,
+            correlate = False,
+            **params):
         """
         Returns attributes values between start and stop dates
-        , using decimation or not.
+        , using decimation or not, correlating the values or not.
 
         arguments:
-            attributes: a dict from the fqdn for the attributes
-                        to the data to extract.
-                        See get_attribute_values for the format to be used.
+            attributes: a list of the attributes' fqdn
+            start_date: datetime, beginning of the period to query.
+            stop_date: datetime, end of the period to query.
+                       if None, now() is used.
+            decimate: aggregation function to use in the form:
+                      {'timedelta0':(MIN, MAX, …)
+                      , 'timedelta1':(AVG, COUNT, …)
+                      , …}
+                      if None, returns raw data.
             correlate: if True, data is generated so that
                        there is available data for each timestamp of
                        each attribute.
