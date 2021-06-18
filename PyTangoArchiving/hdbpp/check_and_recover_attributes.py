@@ -1,7 +1,8 @@
 import PyTangoArchiving as pta, fandango as fn, PyTangoArchiving.hdbpp.maintenance as ptam
 import traceback
 
-dbs = ['hdbacc','hdbct','hdbdi','hdbpc','hdbrf','hdbvc']
+#dbs = ['hdbacc','hdbct','hdbdi','hdbpc','hdbrf','hdbvc']
+dbs = pta.get_hdbpp_databases()
 
 checks = dict((d,pta.check.check_db_schema(d,subscribe=False)) for d in dbs)
 

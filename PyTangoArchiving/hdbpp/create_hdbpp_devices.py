@@ -15,7 +15,10 @@ try:
     user = sys.argv[3]
     passwd = sys.argv[4]
     n_arch = int(sys.argv[5])
-    lib_location = '/usr/lib/x86_64-linux-gnu/libhdb++mysql.so.6'    
+    if sys.argv[6:]:
+        lib_location = sys.argv[6]
+    else:
+        lib_location = '/usr/lib/x86_64-linux-gnu/libhdb++mysql.so.6'    
 
     schemas = fn.tango.get_free_property('PyTangoArchiving','DbSchemas')
     schemas  = [] if not len(schemas) else fn.toList(schemas)

@@ -94,7 +94,7 @@ class HDBppPeriodic(HDBppDB):
         try:
             dp = fn.get_device(archiver,keep=True)
             #al = dp.AttributeList
-            er = dp.AttributesErrorList
+            er = dp.AttributesErrorList or []
             return dict.fromkeys(er,True)
         except:
             print('Unable to get %s errors' % archiver)
@@ -134,6 +134,13 @@ class HDBppPeriodic(HDBppDB):
         """
         attrexp can be used to get archivers already archiving attributes
         """
+        props = dict((a,fn.tango.get_device_property(a,'AttributeFilters'))
+                     for a in self.get_periodic_archivers()) #get_archivers filters null
+        if any(props.values()):
+            archs = [a for a,v in props.items() if not v]
+        else:
+            archs = [a for a in props if fn.clmatch('*[0-9]$',a)]
+            
         loads = self.get_periodic_archivers_attributes()
                 
         if attrexp:
@@ -214,8 +221,31 @@ class HDBppPeriodic(HDBppDB):
                     self.warning(fn.except2str())
                 
         return done
+    
+    def stop_archiving(self, attribute, clear=True):
+        """
+        This method will remove the attribute from an existing archiver
+        """        
+        try:
+            if fn.isSequence(attribute):
+                [self.stop_archiving(a,clear=False) for a in attribute]        
+            else:
+                if self.is_periodic_archived(attribute):
+                    self.stop_periodic_archiving(attribute,clear=clear)
 
-    def stop_periodic_archiving(self, attribute):
+                HDBppDB.stop_archiving(self,attribute,clear)
+        except:
+            self.warning('stop_archiving(%s) failed!: %s' %
+                         (attribute, traceback.format_exc()))            
+        finally:
+            if clear:
+                self.clear_caches()              
+
+
+    def stop_periodic_archiving(self, attribute, clear=True):
+        """
+        This method will remove the attribute from an existing archiver
+        """        
         try:
             attribute = parse_tango_model(attribute, fqdn=True).fullname.lower()
             arch = self.get_periodic_attribute_archiver(attribute)
@@ -231,6 +261,9 @@ class HDBppPeriodic(HDBppDB):
         except:
             self.warning('stop_periodic_archiving(%s) failed!' %
                          (attribute, traceback.format_exc()))
+        finally:
+            if clear:
+                self.clear_caches()            
             
     def restart_periodic_archiving(self, attribute):
         try:
