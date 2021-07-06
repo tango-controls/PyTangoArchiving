@@ -104,9 +104,14 @@ class HDBppDB(ArchivingDB,SingletonMap):
             self.default_cursor = MySQLdb.cursors.SSCursor
         except:
             self.default_cursor = None
-        ArchivingDB.__init__(self,db_name,host,user,passwd,
+        try:
+            ArchivingDB.__init__(self,db_name,host,user,passwd,
                              default_cursor=self.default_cursor)
-        self.setLogLevel(log_level)
+            self.setLogLevel(log_level)
+        except:
+            self.db = None
+            traceback.print_exc()
+            print('Unable to connect to database')            
         try:
             self.get_manager()
             self.get_attributes()
@@ -424,7 +429,8 @@ class HDBppDB(ArchivingDB,SingletonMap):
         """
         #print('get_archived_attributes(%s)'%str(search))
         attrs = []
-        self.get_att_conf_table()
+        if self.db is not None:
+            self.get_att_conf_table()
         [self.get_archiver_attributes(d,from_db=True) 
             for d in self.get_subscribers()] #/null is excluded here
         
@@ -468,7 +474,8 @@ class HDBppDB(ArchivingDB,SingletonMap):
         
         DONT USE Manager.AttributeSearch, it is limited to 1024 attrs!        
         """
-        self.get_att_conf_table()
+        if self.db is not None:
+            self.get_att_conf_table()
         return self.get_subscribed_attributes(*args, **kwargs)
  
     def get_attribute_ID(self,attr):
@@ -579,6 +586,8 @@ class HDBppDB(ArchivingDB,SingletonMap):
             for a in self.get_attributes():
                 index = '['+attribute.split('[',1)[-1] if '[' in attribute else ''
                 if a.endswith('/'+attribute.split('[')[0].lower()):
+                    return a+index
+                if a == model.fullname:
                     return a+index
             return False
         
@@ -836,7 +845,8 @@ class HDBppDB(ArchivingDB,SingletonMap):
             devs = fn.defaultdict(list)
             [devs[fn.tango.get_dev_name(a)].append(a) for a in attributes]
             for dev,attrs in devs.items():
-                arch = self.get_next_archiver(attrexp=dev+'/*')
+                arch = kwargs.get('archiver',None)
+                arch = arch or self.get_next_archiver(attrexp=dev+'/*')
                 for a in attrs:
                     kwargs['start'] = False #Avoid recursive start
                     try:
