@@ -110,15 +110,15 @@ class HDBppReader(HDBppDB):
             last_part = None
         else:
             last_part = fn.last(sorted(p for p in parts 
-                if p and self.getPartitionSize(table,p) > min_size
-                    and (add_last or '_last' not in p)), 
+                if p and self.getPartitionSize(table,p) > min_size),
+                    #and (add_last or '_last' not in p)), 
                     default=None)
         # Gets last partition declared
         if parts and not last_part:
             last_part = fn.last(sorted(p for p in parts 
-                if (add_last and '_last' in p) 
-                    or self.get_partition_time_by_name(p) < tref),
-                        default=parts[0])
+                if #(add_last and '_last' in p) or
+                    self.get_partition_time_by_name(p) < tref),
+                        default=parts[-1])
         return last_part
     
     def generate_partition_name_for_date(self, table, date):
@@ -268,7 +268,7 @@ class HDBppReader(HDBppDB):
         
         attributes: attribute name or list
         n: the number of last values to be retorned
-        tref: time from which start searching values (-1d by default)
+        tref: time from which start searching values (-90d by default)
         epoch: end of window to search values (now by default)
         """       
         if attributes is None:

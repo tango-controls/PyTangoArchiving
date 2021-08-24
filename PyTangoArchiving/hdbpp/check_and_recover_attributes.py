@@ -34,19 +34,28 @@ for db in dbs:
             print(a,d,traceback.format_exc())
 
     periods = dict((a,api.get_periodic_attribute_period(a)) for a in perlost)
-    for attr,period in periods.items():
-        print('recovering %s' % attr)
-        try:
-            d = api.get_periodic_attribute_archiver(attr)
-            dp = fn.get_device(d)
-            dp.AttributeRemove(attr)
-            fn.wait(.5)
-            dp.AttributeAdd([attr,str(int(period))])
-            fn.wait(.5)
-            print('%s done' % attr)
-        except:
-            failed.append(attr)
-            print(attr,d,traceback.format_exc())
+            
+    for per in api.get_periodic_archivers():
+        perattrs = api.get_periodic_archiver_attributes(per)
+        if len([a for a in perattrs if a in perlost]) > 0.3*len(perattrs):
+            fn.Astor(per).stop_servers()
+            fn.wait(5.)
+            fn.Astor(per).start_servers()
+        else:
+            for attr in [p for p in perattrs if p in perlost]:
+                period = periods[attr]
+                print('recovering %s' % attr)
+                try:
+                    d = api.get_periodic_attribute_archiver(attr)
+                    dp = fn.get_device(d)
+                    dp.AttributeRemove(attr)
+                    fn.wait(.5)
+                    dp.AttributeAdd([attr,str(int(period))])
+                    fn.wait(.5)
+                    print('%s done' % attr)
+                except:
+                    failed.append(attr)
+                    print(attr,d,traceback.format_exc())
 
     print('attributes not recoverable: %s' % str([a for a in errors if a not in recover]))
     print('attributes failed: %s' % str(failed))

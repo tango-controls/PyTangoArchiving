@@ -1165,7 +1165,7 @@ def check_db_partitions(api,year='',month='',max_size=128*1e9/10):
 
     return result
 
-def create_db_partitions(api, max_parts, stop_date, do_it = False, force = False, test=False,
+def create_db_partitions(api, max_parts, stop_date, do_it = False, test=False,
                          bigs = ['att_array_devdouble_ro', 'att_scalar_devdouble_ro']):
     """
     nmonths, maximum number of partitions to create
@@ -1194,8 +1194,11 @@ def create_db_partitions(api, max_parts, stop_date, do_it = False, force = False
             print('%s is huge, %sG! 2 parts/month will be created' % (t,s))
             n = 2
         elif s < 1:
-            print('%s is too small, %sG, to be partitioned!' % (t,s))
-            continue
+            if last is not None:
+                n = 0
+            else:
+                print('%s is too small, %sG, to be partitioned!' % (t,s))
+                continue
         else:
             n = 1
 
@@ -1289,7 +1292,10 @@ def create_new_partitions(api,table,nmonths,partpermonth=1,
         end = inc_months(date,1)
         pp = pref+date.replace('-','') #prefix+date
         
-        if partpermonth == 1:
+        if not partpermonth:
+            continue
+        
+        elif partpermonth == 1:
             dates = [(date,end)]
             
         elif partpermonth == 2:
