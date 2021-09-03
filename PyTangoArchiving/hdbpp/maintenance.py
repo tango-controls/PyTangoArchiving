@@ -344,7 +344,8 @@ def decimate_into_new_db(db_in, db_out, min_period = 3, min_array_period = 10,
                          server_dec = True, 
                          bunch=86400/4,
                          use_files=True,
-                         force_interval=False):
+                         force_interval=False,
+                         tmpdir='/tmp/'):
     if tables is None:
         tables = db_in.get_data_tables() #pta.hdbpp.query.partition_prefixes.keys()
 
@@ -396,7 +397,8 @@ def decimate_into_new_db(db_in, db_out, min_period = 3, min_array_period = 10,
                     tbegin,tend,min_period=period, max_period = max_period,
                     method = method,remove_nones = remove_nones,
                     server_dec = server_dec, bunch = bunch,
-                    use_files = use_files)
+                    use_files = use_files,
+                    tmpdir=tmpdir)
 
                 done.append(table)
             finally:
@@ -414,6 +416,7 @@ def decimate_into_new_table(db_in, db_out, table, start, stop, ntable='',
         drop=False, method=None, 
         remove_nones=True,
         server_dec=True, insert=True, use_files=True, use_process=True,
+        tmpdir='/tmp/'
         ):
     """
     decimate by distinct value, or by fix period
@@ -620,7 +623,7 @@ def decimate_into_new_table(db_in, db_out, table, start, stop, ntable='',
     
     if insert:
         if use_files:
-            filename = '/tmp/%s.%s.bulk' % (db_out.db_name,ntable)
+            filename = tmpdir+'/%s.%s.bulk' % (db_out.db_name,ntable)
             columns = 'att_conf_id'
             if array:
                 columns += ',idx'
@@ -1202,7 +1205,7 @@ def create_db_partitions(api, max_parts, stop_date, do_it = False, test=False, f
         else:
             n = 1
 
-        if force or api.get_partition_time_by_name(parts[-2]) < fn.str2time(stop_date)-20*86400:
+        if not parts[-2:] or api.get_partition_time_by_name(parts[-2]) < fn.str2time(stop_date)-20*86400:
             print('%s will be partitioned' % t)
             if do_it:
                 create_new_partitions(api,t,max_parts,partpermonth=n,stop_date=stop_date,do_it=True)
@@ -1213,7 +1216,7 @@ def create_db_partitions(api, max_parts, stop_date, do_it = False, test=False, f
 
 def create_new_partitions(api,table,nmonths,partpermonth=1,
                           start_date=None,stop_date=None,
-                          add_last=True,do_it=False):
+                          add_last=True,int_time=False,do_it=False):
     """
     This script will create new partitions for nmonths*partpermonth
     for the given table and key
@@ -1233,7 +1236,7 @@ def create_new_partitions(api,table,nmonths,partpermonth=1,
         print('table %s will not be partitioned' % t)
         return []
     intcol = 'int_time'
-    int_time = intcol in api.getTableCols(table)   
+    #int_time = intcol in api.getTableCols(table)   
     eparts = sorted(api.getTablePartitions(t))
 
     if not start_date:
@@ -1258,29 +1261,32 @@ def create_new_partitions(api,table,nmonths,partpermonth=1,
             m = 12
         return '%04d-%02d-%02d'%(y,m,d)
 
-    lines = []
-
-    if not int_time:
+    if int_time and intcol not in api.getTableCols(table):
         newc = ("alter table %s add column int_time INT "
             "generated always as (TO_SECONDS(data_time)-62167222800) PERSISTENT;")
 
         newi = ("drop index att_conf_id_data_time on %s;")
         newi += ("\ncreate index i%s on %s(att_conf_id, int_time);")
+        
+    if int_time or intcol in api.getTableCols(table):
         head = "ALTER TABLE %s "
         comm = "PARTITION BY RANGE(int_time) ("
         line = "PARTITION %s%s VALUES LESS THAN (TO_SECONDS('%s')-62167222800)"
-        lines.append(newc%t)
-        lines.append(newi%(t,pref,t))
-        
     else:
         head = "ALTER TABLE %s "
         comm = "PARTITION BY RANGE(TO_DAYS(data_time)) ("
         line = "PARTITION %s%s VALUES LESS THAN (TO_DAYS('%s'))"
 
+    lines = []
+
+    if int_time and (not api or not intcol in api.getTableCols(t)):
+        lines.append(newc%t)
+        lines.append(newi%(t,pref,t))
+
     lines.append(head%t)
     if not any(eparts):
         lines.append(comm)
-    elif pref+'_last' in eparts:
+    elif pref+'_last' in eparts and npartitions>0:
         lines.append('REORGANIZE PARTITION %s INTO (' % (pref+'_last'))
     else:
         lines.append('ADD PARTITION (')
@@ -1327,7 +1333,7 @@ def create_new_partitions(api,table,nmonths,partpermonth=1,
             
     lines.append(');\n\n') 
     r = '\n'.join(lines)
-    if do_it:    
+    if do_it and (counter or ('last' in r)):
         print('Executing query .... %s' % r)
         api.Query(r)
     
