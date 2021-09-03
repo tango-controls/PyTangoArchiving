@@ -253,13 +253,12 @@ class HDBppPeriodic(HDBppDB):
                 self.warning('%s is not archived!' % attribute)
             else:
                 self.info('Removing %s from %s' % (attribute, arch))
-                dp = fn.get_device(archiver)
-                v = dp.AttributeRemove([attribute, str(int(float(period)))])
+                dp = fn.get_device(arch)
+                v = dp.AttributeRemove(attribute)
                 dp.UpdateAttributeList()
-                fn.wait(wait)
                 return v
         except:
-            self.warning('stop_periodic_archiving(%s) failed!' %
+            self.warning('stop_periodic_archiving(%s) failed!\n%s' %
                          (attribute, traceback.format_exc()))
         finally:
             if clear:
