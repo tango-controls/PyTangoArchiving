@@ -6,7 +6,7 @@ import PyTangoArchiving.hdbpp.maintenance as ptam
 __doc__ = """
 Usage:
 
-create_int_partitions.py db_name host user passwd start_date output_file
+create_int_index.py db_name host user passwd start_date output_file
 
 output_file will have to be inserted into database
 
@@ -19,8 +19,8 @@ try:
     db_name = sys.argv[1]
     user = sys.argv[3]
     passwd = sys.argv[4]
-    output_file = sys.argv[6]
     start_date = sys.argv[5]
+    output_file = sys.argv[6]
 except:
     print(__doc__)
     sys.exit()
@@ -43,20 +43,21 @@ for t in tables:
     if t in pta.hdbpp.query.partition_prefixes:
         if "int_time" not in str(tables[t]).lower():
             r.append(ptam.add_int_time_column(api,t,do_it=False))
-            r.append(ptam.add_idx_index(api,t,do_it=False))
+            #r.append(ptam.add_idx_index(api,t,do_it=False))
     
-for t in tables:
-    if t in pta.hdbpp.query.partition_prefixes:
-        try:
-            r.append(ptam.create_new_partitions(api,t,nmonths=24,
-                    start_date=start_date,add_last=True,do_it=False))
-        except:
-            traceback.print_exc()
-            print('%s failed' % t)
+#for t in tables:
+    #if t in pta.hdbpp.query.partition_prefixes:
+        #try:
+            #r.append(ptam.create_new_partitions(api,t,nmonths=24,
+                    #start_date=start_date,add_last=True,do_it=False))
+        #except:
+            #traceback.print_exc()
+            #print('%s failed' % t)
     
 f = open(output_file,'w')
-f.write('\n'.join(l for l in r if l))
+f.write('\n'.join(l+('' if ';' in l else ';') for l in r if l))
 f.close()
+print('%s written'%output_file)
 
 #tables = {
 #### BUT, NOT ALL TABLES ARE IN THIS LIST!

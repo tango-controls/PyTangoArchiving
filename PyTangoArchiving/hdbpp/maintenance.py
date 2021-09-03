@@ -935,12 +935,12 @@ def add_int_time_column(api, table,do_it=True):
         r.append(q)
 
     if not any('int_time' in idx for idx in api.getTableIndex(table).values()):
-        q = 'drop index att_conf_id_data_time on %s' % table
+        q = 'drop index att_conf_id_data_time on %s;' % table
         if do_it: 
             print(q)
             api.Query(q)
         r.append(q)
-        q = ('create index i%s on %s(att_conf_id, int_time)' % (pref,table))
+        q = ('create index i%s on %s(att_conf_id, int_time);' % (pref,table))
         if do_it: 
             print(q)
             api.Query(q)
@@ -960,7 +960,7 @@ def add_idx_index(api, table, do_it=True):
         it = 'int_time' if 'int_time' in api.getTableCols(table) else 'data_time'
         #q = ('create index ii%s on %s(att_conf_id, idx, %s)' % (pref,table,it))
         # old index (aid/time) should go first!
-        q = ('create index ii%s on %s(att_conf_id, idx, %s)' % (pref,table,it))
+        q = ('create index ii%s on %s(att_conf_id, idx, %s);' % (pref,table,it))
         if do_it: 
             print(api.db_name,q)
             api.Query(q)
@@ -1165,7 +1165,7 @@ def check_db_partitions(api,year='',month='',max_size=128*1e9/10):
 
     return result
 
-def create_db_partitions(api, max_parts, stop_date, do_it = False, test=False,
+def create_db_partitions(api, max_parts, stop_date, do_it = False, test=False, force=True,
                          bigs = ['att_array_devdouble_ro', 'att_scalar_devdouble_ro']):
     """
     nmonths, maximum number of partitions to create
@@ -1180,29 +1180,29 @@ def create_db_partitions(api, max_parts, stop_date, do_it = False, test=False,
         print('%s size is %sG' % (t,s))
         print('%s last partitions: %s' % (t,parts[-3:]))
         
-        if not parts or len(parts)==1:
+        if not force and (not parts or len(parts)==1):
             if s>15:
                 print('%s is not partitioned ... and it should!' % t)
             continue
         
         last = api.get_last_partition(t,tref=fn.now())
-        if 'last' in last:
+        if last and 'last' in last:
             print('%s last partition is under use! manual maintenance required!' % t)
             continue
             
         if s > 100 or t in bigs:
             print('%s is huge, %sG! 2 parts/month will be created' % (t,s))
             n = 2
-        elif s < 1:
+        elif s < 1 and not force:
             if last is not None:
-                n = 0
+                n = 0 #not adding new partitions, but at least adding _last
             else:
                 print('%s is too small, %sG, to be partitioned!' % (t,s))
                 continue
         else:
             n = 1
 
-        if api.get_partition_time_by_name(parts[-2]) < fn.str2time(stop_date)-20*86400:
+        if force or api.get_partition_time_by_name(parts[-2]) < fn.str2time(stop_date)-20*86400:
             print('%s will be partitioned' % t)
             if do_it:
                 create_new_partitions(api,t,max_parts,partpermonth=n,stop_date=stop_date,do_it=True)
@@ -1258,7 +1258,9 @@ def create_new_partitions(api,table,nmonths,partpermonth=1,
             m = 12
         return '%04d-%02d-%02d'%(y,m,d)
 
-    if int_time:
+    lines = []
+
+    if not int_time:
         newc = ("alter table %s add column int_time INT "
             "generated always as (TO_SECONDS(data_time)-62167222800) PERSISTENT;")
 
@@ -1267,16 +1269,13 @@ def create_new_partitions(api,table,nmonths,partpermonth=1,
         head = "ALTER TABLE %s "
         comm = "PARTITION BY RANGE(int_time) ("
         line = "PARTITION %s%s VALUES LESS THAN (TO_SECONDS('%s')-62167222800)"
+        lines.append(newc%t)
+        lines.append(newi%(t,pref,t))
+        
     else:
         head = "ALTER TABLE %s "
         comm = "PARTITION BY RANGE(TO_DAYS(data_time)) ("
         line = "PARTITION %s%s VALUES LESS THAN (TO_DAYS('%s'))"
-
-    lines = []
-
-    if int_time and (not api or not intcol in api.getTableCols(t)):
-        lines.append(newc%t)
-        lines.append(newi%(t,pref,t))
 
     lines.append(head%t)
     if not any(eparts):
