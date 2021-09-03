@@ -707,8 +707,12 @@ class ArchivingBrowser(Qt.QWidget):
                 self.trend.showLegend(True)
                 
             else: #PyQtGraph
-                from taurus_tangoarchiving.widget.tpgarchivingwidget import \
-                    ArchivingWidget
+                try:
+                    from taurus_tangoarchiving.widget.tpgarchivingwidget import \
+                        ArchivingWidget
+                except:
+                    from PyTangoArchiving.widget.tpgarchivingwidget import \
+                        ArchivingWidget
                 
                 self.trend = ArchivingWidget()
                 
