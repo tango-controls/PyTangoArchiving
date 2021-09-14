@@ -66,6 +66,7 @@ class HDBppDB(ArchivingDB,SingletonMap):
         """
         assert db_name or manager, 'db_name/manager argument is required!'
         self.tango = get_database()
+        self.schema = db_name
 
         if not all((db_name,host,user,passwd)):
             if other:
@@ -80,7 +81,7 @@ class HDBppDB(ArchivingDB,SingletonMap):
                 user = user or u
                 passwd = passwd or p                
             else:
-                sch = Schemas.getSchema(db_name)
+                sch = Schemas.getSchema(self.schema)
                 if sch:
                     #print('HDBpp(): Loading from Schemas')
                     db_name = sch.get('dbname',sch.get('db_name'))
@@ -89,6 +90,7 @@ class HDBppDB(ArchivingDB,SingletonMap):
                     passwd = passwd or sch.get('passwd')
                     port = port or sch.get('port')
                     self.libname = sch.get('libname','')
+                    self.schema = sch.get('schema',self.schema)
                 elif not manager:
                     print('HDBpp(): Searching for manager')
                     m = self.get_manager(db_name)
@@ -183,23 +185,18 @@ class HDBppDB(ArchivingDB,SingletonMap):
         """ Returns manager proxy, initializes from Tango DB if missing"""
         if not getattr(self,'manager',None):
             self.manager,db_name = '',db_name or getattr(self,'db_name','')
-            managers = self.get_all_managers()
-            if len(managers) == 1:
-                # needed hook for beamlines
-                self.manager = managers[0]
-            else:
-                for m in self.get_all_managers():
-                    prophost = str(get_device_property(m,'DbHost'))
-                    propdb = str(get_device_property(m,'DbName'))
-                    if (prophost,propdb) == (self.host,db_name):
-                        self.manager = m
+            #print(self.schema,db_name,self.host)
+            for m in self.get_all_managers():
+                propdb = str(get_device_property(m,'DbName'))
+                host = str(get_device_property(m,'DbHost'))
+                conf = get_device_property(m,'LibConfiguration') #list
 
-                if not self.manager:
-                    for m in self.get_all_managers():
-                        propconf = get_device_property(m,'LibConfiguration')
-                        if ('dbname=%s'%db_name in propconf and 
-                            'host=%s'%self.host in propconf):
-                            self.manager = m
+                if ((propdb == db_name or 'dbname=%s'%db_name in conf)
+                    and (host == self.host or 'host=%s'%self.host in conf
+                         or host == 'localhost')):
+
+                    #print(self.schema,db_name,propdb,self.host,host,conf)
+                    self.manager = m
                     
         dp = get_device(self.manager,keep=True) if self.manager else None
         return dp
