@@ -149,7 +149,7 @@ class MariadbReader(AbstractReader.AbstractReader):
         q = 'select att_name from att_conf'
         if pattern:
             q += " where att_name like '%s'" % pattern.replace('*','%')
-        print(q)
+        #print(q)
         return [str(a[0]).lower() for a in self._query(q) if a]
     
     def get_attribute_name(self,attribute):
