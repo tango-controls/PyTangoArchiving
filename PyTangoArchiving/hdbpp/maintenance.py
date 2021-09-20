@@ -509,9 +509,6 @@ def decimate_into_new_table(db_in, db_out, table, start, stop, ntable='',
     try:
         # Create Indexes if they doesn't exit
         add_int_time_column(db_out, table)
-        # array index
-        if 'array' in table:
-            add_idx_index(db_out, table) #This method already checks if exists
     except:
         traceback.print_exc()
 
@@ -922,6 +919,18 @@ def copy_between_tables(api, table, source, start, stop, step = 86400):
 #
 #     return ids.split(',')
 
+
+def alter_data_time(api, precision=3, do_it=True):
+    r = []
+    for t in api.get_data_tables():
+        for f in ('data_time','recv_time','insert_time'):
+            q = 'ALTER TABLE %s MODIFY %s DATETIME(%d);' % (t,f,precision)
+            r.append(q)
+            if do_it:
+                api.Query(q)
+    return r
+
+
 def add_int_time_column(api, table,do_it=True):
     # Only prefixed tables will be modified
     pref = pta.hdbpp.query.partition_prefixes.get(table,None)
@@ -948,6 +957,10 @@ def add_int_time_column(api, table,do_it=True):
             print(q)
             api.Query(q)
         r.append(q)
+        
+    # array index
+    if 'array' in table:
+        add_idx_index(db_out, table) #This method already checks if exists        
         
     return '\n'.join(r)
 
