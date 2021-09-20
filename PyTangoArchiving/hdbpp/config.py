@@ -193,7 +193,7 @@ class HDBppDB(ArchivingDB,SingletonMap):
 
                 if ((propdb == db_name or 'dbname=%s'%db_name in conf)
                     and (host == self.host or 'host=%s'%self.host in conf
-                         or host == 'localhost')):
+                         or host == 'localhost' or 'host=localhost' in conf)):
 
                     #print(self.schema,db_name,propdb,self.host,host,conf)
                     self.manager = m
