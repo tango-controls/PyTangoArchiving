@@ -2,7 +2,7 @@
 -- --------------CONCRETE TABLE INHERITANCE-----------------------
 -- ---------------------------------------------------------------
 
-DROP TABLE IF EXISTS att_conf;
+-- DROP TABLE IF EXISTS att_conf;
 CREATE TABLE IF NOT EXISTS att_conf
 (
 att_conf_id INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
@@ -18,7 +18,7 @@ name VARCHAR(250) NOT NULL DEFAULT '',
 INDEX(att_conf_data_type_id)
 ) ENGINE=MyISAM COMMENT='Attribute Configuration Table';
 
-DROP TABLE IF EXISTS att_conf_data_type;
+-- DROP TABLE IF EXISTS att_conf_data_type;
 CREATE TABLE IF NOT EXISTS att_conf_data_type
 (
 att_conf_data_type_id INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
@@ -51,7 +51,7 @@ INDEX(att_conf_id),
 INDEX(att_history_event_id)
 ) ENGINE=MyISAM COMMENT='Attribute Configuration Events History Table';
 
-DROP TABLE IF EXISTS att_history_event;
+-- DROP TABLE IF EXISTS att_history_event;
 CREATE TABLE IF NOT EXISTS att_history_event
 (	
 att_history_event_id INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
@@ -671,7 +671,7 @@ att_conf_id INT UNSIGNED NOT NULL,
 data_time TIMESTAMP(6) DEFAULT 0,
 recv_time TIMESTAMP(6) DEFAULT 0,
 insert_time TIMESTAMP(6) DEFAULT 0,
-value_r VARCHAR(16384) DEFAULT NULL,
+value_r VARCHAR(1024) DEFAULT NULL,
 quality TINYINT(1) DEFAULT NULL,
 att_error_desc_id INT UNSIGNED NULL DEFAULT NULL,
 INDEX att_conf_id_data_time (att_conf_id,data_time)
@@ -683,8 +683,8 @@ att_conf_id INT UNSIGNED NOT NULL,
 data_time TIMESTAMP(6) DEFAULT 0,
 recv_time TIMESTAMP(6) DEFAULT 0,
 insert_time TIMESTAMP(6) DEFAULT 0,
-value_r VARCHAR(16384) DEFAULT NULL,
-value_w VARCHAR(16384) DEFAULT NULL,
+value_r VARCHAR(1024) DEFAULT NULL,
+value_w VARCHAR(1024) DEFAULT NULL,
 quality TINYINT(1) DEFAULT NULL,
 att_error_desc_id INT UNSIGNED NULL DEFAULT NULL,
 INDEX att_conf_id_data_time (att_conf_id,data_time)
@@ -699,7 +699,7 @@ insert_time TIMESTAMP(6) DEFAULT 0,
 idx INT UNSIGNED NOT NULL,
 dim_x_r INT UNSIGNED NOT NULL,
 dim_y_r INT UNSIGNED NOT NULL DEFAULT 0,
-value_r VARCHAR(16384) DEFAULT NULL,
+value_r VARCHAR(1024) DEFAULT NULL,
 quality TINYINT(1) DEFAULT NULL,
 att_error_desc_id INT UNSIGNED NULL DEFAULT NULL,
 INDEX att_conf_id_data_time (att_conf_id,data_time)
@@ -714,10 +714,10 @@ insert_time TIMESTAMP(6) DEFAULT 0,
 idx INT UNSIGNED NOT NULL,
 dim_x_r INT UNSIGNED NOT NULL,
 dim_y_r INT UNSIGNED NOT NULL DEFAULT 0,
-value_r VARCHAR(16384) DEFAULT NULL,
+value_r VARCHAR(1024) DEFAULT NULL,
 dim_x_w INT UNSIGNED NOT NULL,
 dim_y_w INT UNSIGNED NOT NULL DEFAULT 0,
-value_w VARCHAR(16384) DEFAULT NULL,
+value_w VARCHAR(1024) DEFAULT NULL,
 quality TINYINT(1) DEFAULT NULL,
 att_error_desc_id INT UNSIGNED NULL DEFAULT NULL,
 INDEX att_conf_id_data_time (att_conf_id,data_time)

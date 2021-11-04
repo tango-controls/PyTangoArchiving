@@ -6,43 +6,39 @@ import PyTangoArchiving.hdbpp.maintenance as ptam
 __doc__ = """
 Usage:
 
-create_int_index.py db_name host user passwd start_date output_file
-
-output_file will have to be inserted into database
-
-mysql -u root < output_file
+create_int_index.py db_name host user passwd n_months
 
 """
 
 try:
+    db_name = sys.argv[1]    
     host = sys.argv[2]
-    db_name = sys.argv[1]
     user = sys.argv[3]
     passwd = sys.argv[4]
-    start_date = sys.argv[5]
-    output_file = sys.argv[6]
+    max_parts = int(sys.argv[5])
+    stop_date = fn.time2str(fn.now()+max_parts*365.25*86400/12.)
+    stop_date = stop_date.rsplit('-',1)[0]+'-01'
 except:
     print(__doc__)
-    sys.exit()
-    
-
+    sys.exit() 
 
 api = pta.HDBpp(host=host,db_name=db_name,user=user,passwd=passwd)
-
-r = []
+if fn.check_device(api.manager) or any(api.check_device(e) for e in api.get_archivers()):
+    print('Archiving devices must be stop first!')
+    sys.exit()
 
 tables = dict((t,api.getTableCreator(t)) for t in api.get_data_tables())
 
-for t in tables:
-    if "datetime(3)" not in str(tables[t]).lower():
-        r.append('ALTER TABLE %s MODIFY data_time DATETIME(3);'%t)
-        r.append('ALTER TABLE %s MODIFY recv_time DATETIME(3);'%t)
-        r.append('ALTER TABLE %s MODIFY insert_time DATETIME(3);'%t)
+if not all("datetime(3)" in str(tables[t]).lower() for t in tables):
+    ptam.alter_data_time(api)
     
-for t in tables:
-    if t in pta.hdbpp.query.partition_prefixes:
-        if "int_time" not in str(tables[t]).lower():
-            r.append(ptam.add_int_time_column(api,t,do_it=False))
+ptam.create_db_partitions(api, max_parts=max_parts, stop_date=stop_date,
+                          do_it = True, int_time = True)
+
+#for t in tables:
+    #if t in pta.hdbpp.query.partition_prefixes:
+        #if "int_time" not in str(tables[t]).lower():
+            #r.append(ptam.add_int_time_column(api,t,do_it=False))
             #r.append(ptam.add_idx_index(api,t,do_it=False))
     
 #for t in tables:
@@ -54,10 +50,10 @@ for t in tables:
             #traceback.print_exc()
             #print('%s failed' % t)
     
-f = open(output_file,'w')
-f.write('\n'.join(l+('' if ';' in l else ';') for l in r if l))
-f.close()
-print('%s written'%output_file)
+#f = open(output_file,'w')
+#f.write('\n'.join(l+('' if ';' in l else ';') for l in r if l))
+#f.close()
+#print('%s written'%output_file)
 
 #tables = {
 #### BUT, NOT ALL TABLES ARE IN THIS LIST!

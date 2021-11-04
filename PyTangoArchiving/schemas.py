@@ -229,7 +229,8 @@ class Schemas(object):
             tango = fn.tango.get_database(tango)
             props = prop or tango.get_property('PyTangoArchiving',
                                                schema)[schema]
-            assert len(props)
+            if not len(props): 
+                raise Exception('Empty Property!')
             if fn.isSequence(props):
                 props = dict(map(str.strip,t.split('=',1)) for t in props)
             if 'check' in dct:

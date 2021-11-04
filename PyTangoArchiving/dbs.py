@@ -45,29 +45,7 @@ except:
 class ArchivingDB(FriendlyDB):
     """ 
     Class for managing the direct access to the database 
-    """
-    
-    #def __init__(self,api,db_name,user='',passwd='', host=''):
-        #if not api or not database:
-            #self.log.error('ArchivingAPI and database are required arguments '
-            # 'for ArchivingDB initialization!')
-            #return
-        #self.api=api
-        #self.db_name=db_name
-        #self.host=api.host
-        #self.log=Logger('ArchivingDB(%s)'%db_name)
-        #self.setUser(user,passwd)
-        #self.__initMySQLconection()
-    #def setUser(self,user,passwd):
-        #self.user=user
-        #self.passwd=passwd
-    #def cursor(self):
-        #return self.db.cursor()
-    #def __initMySQLconnection(self):
-        #try:
-            #self.db=MySQLdb.connect(db=self.db_name,host=self.host,user=self.user,passwd=self.passwd)
-        #except Exception,e:
-            #self.log.error( 'Unable to create a MySQLdb connection to "%s"@%s.%s: %s'%(self.user,self.host,self.db_name,str(e)))
+    """    
             
     def check(self):
         return bool(self.Query('describe adt'))

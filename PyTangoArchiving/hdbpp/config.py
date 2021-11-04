@@ -43,6 +43,7 @@ def get_search_model(model):
     model = clsub('[:][0-9]+','%:%',model)
     return model
 
+
 class HDBppDB(ArchivingDB,SingletonMap):
     """
     Python API for accessing HDB++
@@ -67,6 +68,8 @@ class HDBppDB(ArchivingDB,SingletonMap):
         assert db_name or manager, 'db_name/manager argument is required!'
         self.tango = get_database()
         self.schema = db_name
+        self.manager = manager
+        self.host = host #needed to initialize from manager
 
         if not all((db_name,host,user,passwd)):
             if other:
@@ -75,7 +78,7 @@ class HDBppDB(ArchivingDB,SingletonMap):
                     other.db_name,other.host,other.user,other.passwd
             elif manager:
                 print('HDBpp(): Loading from manager')
-                d,h,u,p = HDBpp.get_db_config(manager=manager,db_name=db_name)
+                d,h,u,p = HDBppDB.get_db_config(manager=manager,db_name=db_name)
                 db_name = db_name or d
                 host = host or h    
                 user = user or u
@@ -93,8 +96,8 @@ class HDBppDB(ArchivingDB,SingletonMap):
                     self.schema = sch.get('schema',self.schema)
                 elif not manager:
                     print('HDBpp(): Searching for manager')
-                    m = self.get_manager(db_name)
-                    t = HDBpp.get_db_config(manager=m,db_name=db_name)
+                    self.get_manager(db_name)
+                    t = HDBppDB.get_db_config(manager=self.manager,db_name=db_name)
                     host,user,passwd = t[1],t[2],t[3]
 
         self.port = port
@@ -147,17 +150,14 @@ class HDBppDB(ArchivingDB,SingletonMap):
         """
         Return all registered HDB++ databases
         """
-        managers = HDBpp.get_all_managers()
-        dbs = [HDBpp.get_db_config(m) for m in managers]
+        managers = HDBppDB.get_all_managers()
+        dbs = [HDBppDB.get_db_config(m) for m in managers]
         dbs = [d for d in dbs if fn.clsearch(regexp,str(d))]
         return [t[0] for t in dbs]
             
     @staticmethod
     def get_db_config(manager='', db_name=''):
-        
-        #if not manager:
-            #manager = self.get_manager(db_name).name()
-            
+        # this is a class method, so it cannot access self.manager
         prop = get_device_property(manager,'LibConfiguration')
 
         if prop:
@@ -186,13 +186,15 @@ class HDBppDB(ArchivingDB,SingletonMap):
         if not getattr(self,'manager',None):
             self.manager,db_name = '',db_name or getattr(self,'db_name','')
             #print(self.schema,db_name,self.host)
-            for m in self.get_all_managers():
+            managers = self.get_all_managers()
+            for m in managers:
                 propdb = str(get_device_property(m,'DbName'))
                 host = str(get_device_property(m,'DbHost'))
                 conf = get_device_property(m,'LibConfiguration') #list
 
                 if ((propdb == db_name or 'dbname=%s'%db_name in conf)
-                    and (host == self.host or 'host=%s'%self.host in conf
+                    and (len(managers)==1 or host == self.host 
+                         or 'host=%s'%self.host in conf
                          or host == 'localhost' or 'host=localhost' in conf)):
 
                     #print(self.schema,db_name,propdb,self.host,host,conf)

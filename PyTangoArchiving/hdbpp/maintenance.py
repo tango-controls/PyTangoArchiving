@@ -931,7 +931,7 @@ def alter_data_time(api, precision=3, do_it=True):
     return r
 
 
-def add_int_time_column(api, table,do_it=True):
+def add_int_time_column(api, table, do_it=True):
     # Only prefixed tables will be modified
     pref = pta.hdbpp.query.partition_prefixes.get(table,None)
     r = []
@@ -960,7 +960,7 @@ def add_int_time_column(api, table,do_it=True):
         
     # array index
     if 'array' in table:
-        add_idx_index(db_out, table) #This method already checks if exists        
+        add_idx_index(api, table, do_it=do_it) #This method already checks if exists        
         
     return '\n'.join(r)
 
@@ -1181,11 +1181,17 @@ def check_db_partitions(api,year='',month='',max_size=128*1e9/10):
 
     return result
 
-def create_db_partitions(api, max_parts, stop_date, do_it = False, test=False, force=True,
-                         bigs = ['att_array_devdouble_ro', 'att_scalar_devdouble_ro']):
+def create_db_partitions(api, max_parts, stop_date, do_it = False, 
+        test = False, force = True, int_time = True,
+        bigs = ['att_array_devdouble_ro', 'att_scalar_devdouble_ro']):
     """
     nmonths, maximum number of partitions to create
     stop_date, date of last partition
+    
+    do_it: if not True, nothing is executed
+    test: if not True, queries to be done are printed out
+    force: if True, partitions will be created even if the table is small (needed for new DBs)
+    int_time: it creates and int_time column and index
     """
 
     for t in pta.hdbpp.partition_prefixes:
@@ -1217,19 +1223,27 @@ def create_db_partitions(api, max_parts, stop_date, do_it = False, test=False, f
                 continue
         else:
             n = 1
+            
+        if int_time:
+            r = add_int_time_column(api, t, do_it=do_it)
+            api.getTables(load=True)
+            if not do_it and not test:
+                print(r)
 
         if not parts[-2:] or api.get_partition_time_by_name(parts[-2]) < fn.str2time(stop_date)-20*86400:
             print('%s will be partitioned' % t)
             if do_it:
-                create_new_partitions(api,t,max_parts,partpermonth=n,stop_date=stop_date,do_it=True)
+                create_new_partitions(api,t,n*max_parts,partpermonth=n,
+                    stop_date=stop_date,int_time=int_time,do_it=True)
             elif not test:
-                print(create_new_partitions(api,t,max_parts,partpermonth=n,stop_date=stop_date))
+                print(create_new_partitions(api,t,n*max_parts,partpermonth=n,
+                    stop_date=stop_date,int_time=int_time))
                   
     return
 
 def create_new_partitions(api,table,nmonths,partpermonth=1,
-                          start_date=None,stop_date=None,
-                          add_last=True,int_time=False,do_it=False):
+        start_date=None,stop_date=None, int_time=False,
+        add_last=True,do_it=False):
     """
     This script will create new partitions for nmonths*partpermonth
     for the given table and key
@@ -1249,7 +1263,7 @@ def create_new_partitions(api,table,nmonths,partpermonth=1,
         print('table %s will not be partitioned' % t)
         return []
     intcol = 'int_time'
-    #int_time = intcol in api.getTableCols(table)   
+    int_time = int_time or intcol in api.getTableCols(table)
     eparts = sorted(api.getTablePartitions(t))
 
     if not start_date:
@@ -1273,15 +1287,8 @@ def create_new_partitions(api,table,nmonths,partpermonth=1,
             y += int(m/12)-1
             m = 12
         return '%04d-%02d-%02d'%(y,m,d)
-
-    if int_time and intcol not in api.getTableCols(table):
-        newc = ("alter table %s add column int_time INT "
-            "generated always as (TO_SECONDS(data_time)-62167222800) PERSISTENT;")
-
-        newi = ("drop index att_conf_id_data_time on %s;")
-        newi += ("\ncreate index i%s on %s(att_conf_id, int_time);")
         
-    if int_time or intcol in api.getTableCols(table):
+    if int_time:
         head = "ALTER TABLE %s "
         comm = "PARTITION BY RANGE(int_time) ("
         line = "PARTITION %s%s VALUES LESS THAN (TO_SECONDS('%s')-62167222800)"
@@ -1292,9 +1299,11 @@ def create_new_partitions(api,table,nmonths,partpermonth=1,
 
     lines = []
 
-    if int_time and (not api or not intcol in api.getTableCols(t)):
-        lines.append(newc%t)
-        lines.append(newi%(t,pref,t))
+    if int_time and (api is None or not intcol in api.getTableCols(t)):
+        print(int_time,api is None,intcol,api.getTableCols(t))
+        raise Exception('%s.%s column do not exist!' % (t,intcol))
+        #lines.append(newc%t)
+        #lines.append(newi%(t,pref,t))
 
     lines.append(head%t)
     if not any(eparts):
