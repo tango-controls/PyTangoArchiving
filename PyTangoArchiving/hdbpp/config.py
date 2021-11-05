@@ -66,6 +66,7 @@ class HDBppDB(ArchivingDB,SingletonMap):
         """
         assert db_name or manager, 'db_name/manager argument is required!'
         self.tango = get_database()
+        self.schema = db_name
 
         if not all((db_name,host,user,passwd)):
             if other:
@@ -80,7 +81,7 @@ class HDBppDB(ArchivingDB,SingletonMap):
                 user = user or u
                 passwd = passwd or p                
             else:
-                sch = Schemas.getSchema(db_name)
+                sch = Schemas.getSchema(self.schema)
                 if sch:
                     #print('HDBpp(): Loading from Schemas')
                     db_name = sch.get('dbname',sch.get('db_name'))
@@ -88,6 +89,8 @@ class HDBppDB(ArchivingDB,SingletonMap):
                     user = user or sch.get('user')
                     passwd = passwd or sch.get('passwd')
                     port = port or sch.get('port')
+                    self.libname = sch.get('libname','')
+                    self.schema = sch.get('schema',self.schema)
                 elif not manager:
                     print('HDBpp(): Searching for manager')
                     m = self.get_manager(db_name)
@@ -103,9 +106,14 @@ class HDBppDB(ArchivingDB,SingletonMap):
             self.default_cursor = MySQLdb.cursors.SSCursor
         except:
             self.default_cursor = None
-        ArchivingDB.__init__(self,db_name,host,user,passwd,
+        try:
+            ArchivingDB.__init__(self,db_name,host,user,passwd,
                              default_cursor=self.default_cursor)
-        self.setLogLevel(log_level)
+            self.setLogLevel(log_level)
+        except:
+            self.db = None
+            traceback.print_exc()
+            print('Unable to connect to database')            
         try:
             self.get_manager()
             self.get_attributes()
@@ -120,10 +128,18 @@ class HDBppDB(ArchivingDB,SingletonMap):
         else:
             return method()
             
-    @staticmethod
-    def get_hdbpp_libname():
-        r = fn.shell_command('locate libhdb++mysql.so')
-        #libname=/homelocal/sicilia/src/hdbpp.git/lib/libhdb++mysql.so
+    #@staticmethod
+    def get_hdbpp_libname(self):
+        if getattr(self,'libname',None):
+            return self.libname
+        try:
+            self.get_manager()
+            conf = get_device_property(self.manager,'LibConfiguration')            
+            conf = dict(t.split('=',1) for t in conf)
+            r = conf['libname']
+        except:
+            print('Unable to parse %s.LibConfiguration' % self.manager)
+            r = fn.shell_command('locate libhdb++mysql.so')
         return r.split()[0]
     
     @staticmethod
@@ -169,35 +185,38 @@ class HDBppDB(ArchivingDB,SingletonMap):
         """ Returns manager proxy, initializes from Tango DB if missing"""
         if not getattr(self,'manager',None):
             self.manager,db_name = '',db_name or getattr(self,'db_name','')
-            managers = self.get_all_managers()
-            if len(managers) == 1:
-                # needed hook for beamlines
-                self.manager = managers[0]
-            else:
-                for m in self.get_all_managers():
-                    prop = str(get_device_property(m,'LibConfiguration'))
-                    prop += str(get_device_property(m,'DbHost'))
+            #print(self.schema,db_name,self.host)
+            for m in self.get_all_managers():
+                propdb = str(get_device_property(m,'DbName'))
+                host = str(get_device_property(m,'DbHost'))
+                conf = get_device_property(m,'LibConfiguration') #list
 
-                    if (not db_name or db_name in prop) and self.host in prop:
-                        self.manager = m
+                if ((propdb == db_name or 'dbname=%s'%db_name in conf)
+                    and (host == self.host or 'host=%s'%self.host in conf
+                         or host == 'localhost')):
+
+                    #print(self.schema,db_name,propdb,self.host,host,conf)
+                    self.manager = m
                     
         dp = get_device(self.manager,keep=True) if self.manager else None
         return dp
     
     @Cached(expire=60.)
-    def get_subscribers(self, from_db = True):
+    def get_subscribers(self, from_db = True, exclude = '*/null'):
         """
         If not got from_db, the manager may limit the list available
         """
         if from_db:
             p = list(self.tango.get_device_property(
                 self.manager,'ArchiverList')['ArchiverList'])
-        elif self.manager and check_device(self.manager):
+        elif self.manager: # and check_device(self.manager):
+            self.get_manager().state()
             p = self.get_manager().ArchiverList
-        else:
-            raise Exception('%s Manager not running'%self.manager)
+        #else:
+            #raise Exception('%s Manager not running'%self.manager)
 
-        return [d for d in p if d.strip()]
+        return [d for d in p if d.strip() and (
+            not exclude or not fn.clmatch(exclude,d))]
 
     def get_archivers(self, *args, **kwargs):
         """ alias to get_subscribers """
@@ -257,12 +276,17 @@ class HDBppDB(ArchivingDB,SingletonMap):
         self.dedicated.update(dedicated)
         return dedicated    
         
-    @Cached(expire=10.)
-    def get_archiver_errors(self,archiver):
-        dp = fn.get_device(archiver,keep=True)
-        al = dp.AttributeList
-        er = dp.AttributeErrorList
-        return dict((a,e) for a,e in zip(al,er) if e)
+    def get_subscriber_errors(self,archiver):
+        try:
+            dp = fn.get_device(archiver,keep=True)
+            al = dp.AttributeList or []
+            er = dp.AttributeErrorList or []
+            return dict((a,e) for a,e in zip(al,er) if e)
+        except:
+            print('Unable to get %s errors' % archiver)
+            return {}
+        
+    get_archiver_errors = get_subscriber_errors
     
     def get_attribute_errors(self,attribute):
         """
@@ -272,15 +296,40 @@ class HDBppDB(ArchivingDB,SingletonMap):
         errors = self.get_archiver_errors(archiver)
         return errors.get(attribute,None)
     
+    def get_loads(self, use_freq=False):
+        return dict((d,self.get_archiver_load(d,use_freq))
+            for d in self.get_subscribers())
+    
     def get_archiver_load(self,archiver,use_freq=True):
         """
-        if use_freq=True, returns attribute record frequency
+        returns the estimated load of an archiver, in frequency of records or number
+        of attributes
+        
+        if use_freq=True, returns attribute record frequency (60s period)
         if false, returns attribute list size
+        the attribute list size counts for the time/stress needed
+        to subscribe the attributes
         """
         if use_freq:
             return fn.tango.read_attribute(archiver+'/attributerecordfreq')
         else:
             return len(self.get_archiver_attributes(archiver,from_db=False))
+        
+    def get_attribute_freq(self,attribute, from_db=False, n=10):
+        """
+        This method get attribute frequency  (60s period) 
+        from its current archiver and divides per 60.
+        
+        if from_db, it will query n values to calcullate the right frequency
+        """
+        if from_db:
+            vals = self.load_last_values(attribute,n=n)[attribute]
+            return float(n)/abs(vals[0][0]-vals[-1][0])
+        else:
+            attribute = self.is_attribute_archived(attribute)
+            archiver = fn.get_device(self.get_attribute_subscriber(attribute),keep=True)
+            freqs = dict(zip(archiver.AttributeList,archiver.AttributeRecordFreqList))
+            return freqs.get(attribute,0.)/60.
     
     def get_next_archiver(self,errors=False,use_freq=False, attrexp=''):
         """
@@ -288,7 +337,7 @@ class HDBppDB(ArchivingDB,SingletonMap):
         attrexp can be used to get archivers already archiving attributes
         """
         props = dict((a,fn.tango.get_device_property(a,'AttributeFilters'))
-                     for a in self.get_archivers())
+                     for a in self.get_archivers()) #get_archivers filters null
         if any(props.values()):
             archs = [a for a,v in props.items() if not v]
         else:
@@ -307,7 +356,7 @@ class HDBppDB(ArchivingDB,SingletonMap):
         elif attrexp:
             attrs = [a for a in self.get_attributes(True) 
                      if fn.clmatch(attrexp,a)]
-            archs = [self.get_attribute_archiver(a) for a in attrs]
+            archs = [self.get_attribute_subscriber(a) for a in attrs]
             if any(a in loads for a in archs):
                 loads = dict((k,v) for k,v in loads.items() if k in archs)
 
@@ -377,9 +426,11 @@ class HDBppDB(ArchivingDB,SingletonMap):
         """
         #print('get_archived_attributes(%s)'%str(search))
         attrs = []
-        self.get_att_conf_table()
+        if self.db is not None:
+            self.get_att_conf_table()
         [self.get_archiver_attributes(d,from_db=True) 
-            for d in self.get_subscribers()]
+            for d in self.get_subscribers()] #/null is excluded here
+        
         for d,dattrs in self.dedicated.items():
             for a in dattrs:
                 if a not in self.attributes:
@@ -389,9 +440,9 @@ class HDBppDB(ArchivingDB,SingletonMap):
                     attrs.append(a)
         return attrs        
     
-    def get_stopped_attributes(self, errors=False):
+    def get_stopped_attributes(self, errors=False, killed=False):
         r = []
-        for d in self.get_subscribers():
+        for d in self.get_subscribers(exclude='*null'): #get_subscribers filters null
             try:
                 dp = fn.get_device(d,keep=True)
                 l = dp.AttributeStoppedList
@@ -401,15 +452,27 @@ class HDBppDB(ArchivingDB,SingletonMap):
                     self.debug('adding %s error list' % d)
                     r.extend(self.get_archiver_errors(d).keys())
             except:
-                self.warning('%s not running!' % d)
-                r.extend(self.get_archiver_attributes(d,from_db=True))
+                if not fn.check_device(d):
+                    self.warning('%s not running!\n%s' % (
+                        d,traceback.format_exc()))
+                traceback.print_exc()
+                if killed:
+                    r.extend(self.get_archiver_attributes(d,from_db=True))
         return r
     
     def get_archived_attributes(self, *args, **kwargs):
         """
         alias to get_subscribed_attributes, to be overloaded in subclasses
+        
+        It gets attributes currently assigned to subscribers and updates
+        internal attribute/archiver index.
+        
+        @param search: use it as a filter
+        
+        DONT USE Manager.AttributeSearch, it is limited to 1024 attrs!        
         """
-        self.get_att_conf_table()
+        if self.db is not None:
+            self.get_att_conf_table()
         return self.get_subscribed_attributes(*args, **kwargs)
  
     def get_attribute_ID(self,attr):
@@ -436,7 +499,7 @@ class HDBppDB(ArchivingDB,SingletonMap):
             raise Exception('wrong ID %s' % ID)
       
     def get_table_name(self,attr):
-        return get_attr_id_type_table(attr)[-1]
+        return self.get_attr_id_type_table(attr)[-1]
 
     @Cached(expire=600)
     def get_att_conf_table(self):
@@ -481,13 +544,14 @@ class HDBppDB(ArchivingDB,SingletonMap):
     @Cached(depth=1000,expire=60.)
     def get_attribute_subscriber(self,attribute):
         if not self.dedicated:
-            [self.get_archiver_attributes(d) for d in self.get_archivers()]
+            [self.get_archiver_attributes(d) 
+             for d in self.get_archivers(exclude='')]
 
         #m = parse_tango_model(attribute,fqdn=True).fullname
         m = get_full_name(attribute,fqdn=True)
         for k,v in self.dedicated.items():
             for l in v:
-                if fn.inCl(m,l.split(';')):
+                if m in l.split(';'):
                     return k
         
         return None
@@ -500,8 +564,9 @@ class HDBppDB(ArchivingDB,SingletonMap):
         d = self.get_manager()
         if d and cached:
             self.get_archived_attributes()
-            if any(fn.inCl(m,self.attributes) for m 
-                   in (attribute,model.fullname,model.normalname)):
+            l = map(str.lower,self.attributes)
+            ms =  map(str.lower,(attribute,model.fullname,model.normalname))
+            if ms[0] in l or ms[1] in l:
                 return model.fullname
             else:
                 return False
@@ -515,12 +580,20 @@ class HDBppDB(ArchivingDB,SingletonMap):
             else:
                 return False
         else:
-            print('db')
             for a in self.get_attributes():
                 index = '['+attribute.split('[',1)[-1] if '[' in attribute else ''
                 if a.endswith('/'+attribute.split('[')[0].lower()):
                     return a+index
+                if a == model.fullname:
+                    return a+index
             return False
+        
+    def is_attribute_subscribed(self,attribute,exclude='.*/null'):
+        """
+        checks if attribute is archived by a valid subscriber
+        """
+        s = self.get_attribute_subscriber(attribute)
+        return s and not fn.clmatch(exclude,str(s))
     
     def start_servers(self,host='',restart=True):
         """
@@ -551,21 +624,20 @@ class HDBppDB(ArchivingDB,SingletonMap):
         time.sleep(3.)
         self.start_devices(force=True)
         
-    def start_devices(self,regexp = '*', force = False, 
+    def start_devices(self,regexp = '*', dev_list = [], force = False, 
                       do_init = False, do_restart = False):
         """
         this method starts servers if needed and launches command Start()
 
-        :param regexp:
-        :param force:
-        :param do_init:
-        :param do_restart:
+        :param regexp: filter archivers by regexp
+        :param dev_list: list of devices to restart
+        :param force: execute an Start() command
+        :param do_init: execute an Init()
+        :param do_restart: restart devices using Starter
         :return:
         """
-        #devs = fn.tango.get_class_devices('HdbEventSubscriber')
-        devs = self.get_archivers()
-        if regexp:
-            devs = fn.filtersmart(devs,regexp)
+        devs = dev_list if dev_list else self.get_archivers() #get_archivers filters null
+        devs = fn.filtersmart(devs,regexp) if regexp else devs
         off = sorted(set(d for d in devs if not fn.check_device(d)))
 
         if off and do_restart:
@@ -582,7 +654,7 @@ class HDBppDB(ArchivingDB,SingletonMap):
                 dp = fn.get_device(d, keep=True)
                 if do_init:
                     dp.init()
-                if force or dp.attributenumber != dp.attributestartednumber:
+                if force and dp.attributenumber != dp.attributestartednumber:
                     off.append(d)
                     print('%s.Start()' % d)
                     dp.start()
@@ -595,14 +667,15 @@ class HDBppDB(ArchivingDB,SingletonMap):
         if '/' not in srv: srv = 'hdb++cm-srv/'+srv
         libname = libname or self.get_hdbpp_libname()
         add_new_device(srv,'HdbConfigurationManager',dev)
-        prev = get_device_property(dev,'ArchiverList') or ''
-        put_device_property(dev,'ArchiverList',prev)
-        #put_device_property(dev,'ArchiveName','MySQL')
+        prev = get_device_property(dev,'ArchiverList') or '' #Weird, but needed
+        fn.put_device_property(dev,'ArchiverList',prev)
+        #put_device_property(dev,'ArchiverList',prev)
         put_device_property(dev,'DbHost',self.host)
         put_device_property(dev,'DbName',self.db_name)
         #put_device_property(dev,'DbUser',self.user)
         #put_device_property(dev,'DbPassword',self.passwd)
         #put_device_property(dev,'DbPort','3306')
+        #put_device_property(dev,'ArchiveName','MySQL')        
         put_device_property(dev,'LibConfiguration',[
             'libname='+libname,
             'lightschema=1',
@@ -616,8 +689,9 @@ class HDBppDB(ArchivingDB,SingletonMap):
 
     def add_event_subscriber(self,srv,dev,libname=''):
         
-        if not fn.check_device(self.manager):
-            raise Exception('%s not running!' % self.manager)
+        #if not fn.check_device(self.manager):
+            #raise Exception('%s not running!' % self.manager)
+        self.get_manager().state()
         
         if '/' not in srv: 
             srv = 'hdb++es-srv/'+srv
@@ -653,12 +727,16 @@ class HDBppDB(ArchivingDB,SingletonMap):
                             #list(set(list(props.ArchiverList)+[dev])))
         print(dev)
         dp.ArchiverAdd(dev)
+        prev = fn.get_device_property(manager,'ArchiverList') #Weird, but needed
+        prev = sorted(set(d for d in prev if d.strip()))
+        fn.put_device_property(manager,'ArchiverList',prev)
+        dp.init()
         return dev
 
     def add_attribute(self,attribute,archiver=None,period=0,
                       rel_event=None,per_event=None,abs_event=None,
                       code_event=False, ttl=None, start=False,
-                      use_freq=True,clear=False):
+                      use_freq=True,clear=False,context='RUN'):
         """
         set _event arguments to -1 to ignore them and not modify the database
         
@@ -675,6 +753,9 @@ class HDBppDB(ArchivingDB,SingletonMap):
         #if 'spectrum' in str(config.data_format).lower():
             #raise Exception('Arrays not supported yet!')
         data_type = str(PyTango.CmdArgType.values[config.data_type])
+        
+        if str(self.get_attribute_subscriber(attribute)).endswith('/null'):
+            self.stop_archiving(attribute)
 
         if not self.manager: 
             return False
@@ -707,6 +788,8 @@ class HDBppDB(ArchivingDB,SingletonMap):
                 d.write_attribute('SetTTL',ttl)
                 
             d.write_attribute('SetCodePushedEvent',code_event)
+            
+            d.write_attribute('SetStrategy',context)
 
             d.write_attribute('SetArchiver',archiver)
             time.sleep(.2)
@@ -714,7 +797,7 @@ class HDBppDB(ArchivingDB,SingletonMap):
           
             if start:
                 try:
-                    arch = archiver # self.get_attribute_archiver(attribute)
+                    arch = archiver
                     self.info('%s.Start()' % (arch))
                     fn.get_device(arch, keep=True).Start()
                 except:
@@ -748,11 +831,19 @@ class HDBppDB(ArchivingDB,SingletonMap):
         """
         try:
             attributes = sorted(attributes)
+            stops = []
+            for a in attributes:
+                if str(self.get_attribute_subscriber(a)).endswith('/null'):
+                    stops.append(a)
+            if stops:
+                self.stop_archiving(stops)
+                
             start = kwargs.get('start',True)
             devs = fn.defaultdict(list)
             [devs[fn.tango.get_dev_name(a)].append(a) for a in attributes]
             for dev,attrs in devs.items():
-                arch = self.get_next_archiver(attrexp=dev+'/*')
+                arch = kwargs.get('archiver',None)
+                arch = arch or self.get_next_archiver(attrexp=dev+'/*')
                 for a in attrs:
                     kwargs['start'] = False #Avoid recursive start
                     try:
@@ -767,7 +858,7 @@ class HDBppDB(ArchivingDB,SingletonMap):
             
             if start:
                 self.get_archivers_attributes();
-                archs = set(map(self.get_attribute_archiver,attributes))
+                archs = set(map(self.get_attribute_subscriber,attributes))
                 for h in archs:
                     try:
                         if h:
@@ -802,7 +893,7 @@ class HDBppDB(ArchivingDB,SingletonMap):
                 fullname = parse_tango_model(attribute,fqdn=True).fullname
                 archiver = fn.tango.get_full_name(archiver,fqdn=True)
                 
-                if not self.get_attribute_archiver(attribute):
+                if not self.get_attribute_subscriber(attribute):
                     
                     self.add_attribute(fullname,archiver=archiver,
                         period=period, rel_event=rel_event, 
@@ -827,19 +918,56 @@ class HDBppDB(ArchivingDB,SingletonMap):
         This method will remove the attribute from an existing archiver
         """
         try:
-            attribute = self.is_attribute_archived(attribute)
-            if attribute:
-                arch = self.get_attribute_archiver(attribute)
-                self.warning('Removing %s from %s' % (attribute,arch))
-                self.get_manager().AttributeRemove(attribute)
-                if clear:
-                    self.clear_caches()
+            if fn.isSequence(attribute):
+                [self.stop_archiving(a,clear=False) for a in attribute]
             else:
-                self.warning('%s is not archived!' % attribute)
+                attribute = self.is_attribute_archived(attribute)
+                if attribute:
+                    arch = self.get_attribute_subscriber(attribute)
+                    self.warning('Removing %s from %s' % (attribute,arch))
+                    self.get_manager().AttributeRemove(attribute)
+                else:
+                    self.warning('%s is not archived!' % attribute)
+            if clear:
+                self.clear_caches()
             return attribute
         except:
             self.warning('stop_archiving(%s) failed!: %s' %
                          (attribute, traceback.format_exc()))
+            
+    def set_attribute_context(self,attr,context):
+        attr = self.is_attribute_archived(attr)
+        curr = self.get_attribute_archiver(attr)
+        dp = fn.get_device(curr,keep=True)
+        dp.SetAttributeStrategy([attr,context])
+        
+    def get_attribute_context(self,attr):
+        attr = self.is_attribute_archived(attr)
+        curr = self.get_attribute_archiver(attr)
+        dp = fn.get_device(curr,keep=True)
+        return dp.GetAttributeStrategy(attr)  
+        
+    def get_archiver_context(self,archiver):
+        dp = fn.get_device(archiver,keep=True)
+        return dp.Context      
+            
+    def reassign_attribute(self,attr,subscriber,context=None,ttl=None):
+        """
+        moves an attribute from an existing subscriber to a new one
+        """
+        attr = self.is_attribute_archived(attr)
+        curr = self.get_attribute_archiver(attr)
+        dp = fn.get_device(curr,keep=True)
+        if context is None:
+            context = dp.GetAttributeStrategy(attr)
+        if ttl is None:
+            ttl = dp.GetAttributeTTL(attr)
+        #dp.AttributeStop(attr)
+        dp.AttributeRemove(attr)
+        nw = fn.get_device(subscriber,keep=True)
+        nw.AttributeAdd([attr,context,str(ttl)])
+        nw.AttributeStart(attr)
+        return True
     
     def restart_attribute(self,attr, d=''):
         """
@@ -850,7 +978,11 @@ class HDBppDB(ArchivingDB,SingletonMap):
             if not a:
                 raise Exception('%s is not archived!' % attr)
             attr = a
-            d = self.get_attribute_archiver(attr)
+            d = self.get_attribute_subscriber(attr)
+            if d.endswith('/null'):
+                print('%s archived by %s is ignored'% (attr,d))
+                return False
+                
             print('%s.restart_attribute(%s)' % (d,attr))
             dp = fn.get_device(d, keep=True)
 
@@ -858,54 +990,34 @@ class HDBppDB(ArchivingDB,SingletonMap):
                 self.start_devices('(.*/)?'+d,do_restart=True)
                 
             dp.AttributeStop(attr)
-            fn.wait(10.)
+            fn.wait(3.)
             dp.AttributeStart(attr)
+            return True
         except:
             print('%s.AttributeStart(%s) failed!'%(d,attr))
         
-    def restart_attributes(self,attributes=None,timewait=0.5):
+    def restart_attributes(self, attributes=None, from_db=False):
         if attributes is None:
-            attributes = self.get_attributes_not_updated()
+            if from_db:
+                attributes = self.get_attributes_not_updated()
+            else:
+                attributes = self.get_stopped_attributes()
         
-        todo = []
         for a in attributes:
-            a = self.is_attribute_archived(a)
-            if a:
-                todo.append(a)
-            else:
-                self.warning('%s is not archived!' % a)
-            
-        devs = dict(fn.kmap(self.get_attribute_archiver,todo))
-
-        for a,d in fn.randomize(sorted(devs.items())):
-            if not fn.check_device(d):
-                self.start_devices('(.*/)?'+d,do_restart=True)
-            else:
-                dp = fn.get_device(d, keep=True)
-                dp.AttributeStop(a)
-            fn.wait(timewait)
-            
-        fn.wait(10.*timewait)
-        
-        for a,d in devs.items():
-            dp = fn.get_device(d, keep=True)
-            dp.AttributeStart(a)
-            fn.wait(timewait)
+            try:
+                self.restart_attribute(a)
+            except Exception as e:
+                print(e)
             
         print('%d attributes restarted' % len(attributes))
 
-    def clear_caches(self,regexp='get*'):
+    def clear_caches(self,regexp='.*'): #'get*'
         self.info('Clear attribute lists caches ...')
         for m in dir(self):
-            if fn.clmatch(regexp,m) and hasattr(m,'cache'):
+            o = getattr(self,m)
+            if fn.clmatch(regexp,m) and fn.isCallable(o) and hasattr(o,'cache'):
+                #print('clearing %s cache' % str(m))
                 getattr(self,m).cache.clear()
-        #self.get_att_conf_table.cache.clear()
-        #self.get_subscribed_attributes.cache.clear()
-        #self.get_attributes_by_table.cache.clear()
-        #self.get_attribute_archiver.cache.clear()
-        #self.get_archiver_attributes.cache.clear()
-        #self.get_attribute_subscriber.cache.clear()
-        #self.get_archivers_attributes.cache.clear()
         self.dedicated = {}
         self.attributes = {}
     

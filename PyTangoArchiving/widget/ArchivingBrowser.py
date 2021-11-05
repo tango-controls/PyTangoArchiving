@@ -30,14 +30,30 @@ import PyTango
 import fandango as fn
 from fandango.log import tracer
 
-import taurus
-from fandango.qt import Qt,Qwt5
-from fandango.qt import QGridTable, QDictToolBar
+#############################################################################
 
-try:
-    from taurus.qt.qtgui.plot import TaurusTrend,TaurusPlot
-except:
-    from taurus.qt.qtgui.qwt5 import TaurusTrend,TaurusPlot
+import taurus
+
+QT_API=os.getenv('QT_API')
+USE_PYQTGRAPH=os.getenv('USE_PYQTGRAPH')
+USE_QWT=str(QT_API).lower() in ('pyqt','pyqt4') and not USE_PYQTGRAPH
+if USE_QWT:
+    print('Loading taurus pyqwt')
+    try:
+        from fandango.qt import Qwt5
+        from taurus.qt.qtgui.qwt5 import TaurusTrend,TaurusPlot
+    except:
+        USE_QWT=False
+
+if not USE_QWT:
+    print('Loading taurus pyqtgraph')
+    #from taurus.qt.qtgui.plot import TaurusTrend,TaurusPlot
+    from taurus.qt.qtgui.tpg import TaurusTrend,TaurusPlot
+    
+print('QT_API: %s' % QT_API)
+print('USE_PYQTGRAPH: %s' % USE_PYQTGRAPH)
+print('TaurusTrend: %s' % TaurusTrend)
+print('TaurusPlot: %s' % TaurusPlot)
     
 from taurus.qt.qtgui.panel import TaurusDevicePanel
 from taurus.qt.qtgui.panel import TaurusValue
@@ -55,12 +71,19 @@ except:
     except:
         # Taurus > 3.4
         from taurus.qt.qtgui.display import TaurusLabel
+        
+#############################################################################
+
+from fandango.qt import Qt,getColorsForValue
+from fandango.qt import QGridTable, QDictToolBar
 
 try:
     from PyTangoArchiving.widget.tree import TaurusModelChooser
 except:
     traceback.print_exc()
     TaurusModelChooser = None
+    
+#############################################################################    
 
 def get_distinct_domains(l):
     return sorted(set(str(s).upper().split('/')[0] for s in l))
@@ -71,7 +94,6 @@ def launch(script,args=[]):
     print 'launch(%s)'%f
     os.system(f)
 
-###############################################################################
 ###############################################################################
 
 class MyScrollArea(Qt.QScrollArea):
@@ -251,17 +273,19 @@ class AttributesPanel(PARENT_KLASS):
         
         for i,tc in enumerate(sorted(values)):
             #print 'setTableRow(%s,%s)'%(i,tc)
-            model,device,attribute,alias,archived,ok = tc
+            model,device,attribute,alias,archived,label = tc
             model,device,attribute,alias = map(str.upper,(model,device,attribute,alias))
             #self.vheaders.append(model)
+
             def ITEM(m,model='',size=0):
                 q = fn.qt.Draggable(Qt.QLabel)(m)
                 if size is not 0:
                     q.setMinimumWidth(size) #(.7*950/5.)
-                q._model = model
+                q._model = model or m
                 q._archived = archived
                 q.setDragEventCallback(lambda s=q:s._model)
                 return q
+            
             ###################################################################
             qf = Qt.QFrame()
             qf.setLayout(Qt.QGridLayout())
@@ -271,12 +295,21 @@ class AttributesPanel(PARENT_KLASS):
             self.setCellWidget(i+self.offset,0,qf) 
             
             #print('Adding item: %s, %s, %s, %s, %s' % (model,device,attribute,alias,archived))
-            if ok:
+            ok = fn.check_attribute(model,brief=False,timeout=500)# is not None
+            print(ok)
+            ok = ok if not isinstance(ok,Exception) else None 
+            if False:
                 tv = TaurusValue() #TaurusValueLabel()
                 qf.layout().addWidget(tv,0,0)
                 tv.setParent(qf)
+            elif ok:
+                import PyTangoArchiving.widget.panel as ptawp
+                tv = ptawp.TaurusSingleValue()
+                tv.setModel(model)
+                self.setItem(i+self.offset,0,tv)
             else:
-                self.setItem(i+self.offset,0,ITEM(model,model))
+                tv = ITEM(label+'(-)',model)
+                self.setItem(i+self.offset,0,tv)
                 
             devlabel = ITEM(device,model,self.SIZES[1])
             self.setItem(i+self.offset,1,devlabel)
@@ -296,16 +329,20 @@ class AttributesPanel(PARENT_KLASS):
               'hdb' : Archiving stopped, push to export values
               '...' : Not archived
               </pre>"""%txt)
-            self.connect(q, Qt.SIGNAL("pressed ()"), 
-                lambda a=self.reader.get_attribute_alias(model),o=q: 
-                 setattr(q,'w',show_history(a))) #showArchivingModes(a,parent=self)))
+            cb = (lambda a=self.reader.get_attribute_alias(model),o=q: 
+                 setattr(q,'w',show_history(a))) #showArchivingModes(a,parent=self)))) 
+            try:
+                self.connect(q, Qt.SIGNAL("pressed ()"), cb) 
+            except:
+                self.q.pressed.connect(cb)
+                
             self.setItem(i+self.offset,4,q)
             
             qc = Qt.QCheckBox()
             qc.setFixedWidth(self.SIZES[-1])
             self.setItem(i+self.offset,5,qc,1,1,Qt.Qt.AlignCenter,model)
 
-            if ok:
+            if isinstance(tv,TaurusValue): #ok:
                 #print('Setting Model %s'%model)
                 #ADDING WIDGETS IN BACKGROUND DIDN'T WORKED, I JUST CAN SET MODELS FROM THE WORKER
                 try:
@@ -480,7 +517,7 @@ class ArchivingBrowser(Qt.QWidget):
         self.matching_devs = devs
         print('In load_attributes(%s,%s,%s): %d devices found'%(servfilter,devfilter,attrfilter,len(devs)))
 
-        if False and not len(devs) and not archive:
+        if not len(devs) and not archive:
             #Devices do not actually exist, but may exist in archiving ...
             #Option disabled, was mostly useless
             self.dbcheck.setChecked(True)
@@ -543,7 +580,8 @@ class ArchivingBrowser(Qt.QWidget):
             if r==Qt.QMessageBox.Cancel:
                 return {}
         if not len(self.matching_attributes):
-            Qt.QMessageBox.warning(self, "Warning", "No matching attribute has been found in %s." % ('Archiving DB' if archive else 'Tango DB (try Archiving option)'))
+            Qt.QMessageBox.warning(self, "Warning", "No matching attribute has been found in %s." % ('Archiving DB' if archive else 'Tango DB (try DB Cache option)'))
+            
         if failed_devs:
             print('\t%d failed devs!!!: %s'%(len(failed_devs),failed_devs))
             if warn:
@@ -583,7 +621,7 @@ class ArchivingBrowser(Qt.QWidget):
         self.archivecheck = Qt.QCheckBox("Only archived")
         self.archivecheck.setChecked(False)
         self.dbcheck = Qt.QCheckBox("DB cache")
-        self.dbcheck.setChecked(False)
+        self.dbcheck.setChecked(True)
 
         self.searchbar.layout().addWidget(Qt.QLabel(
             'Enter Device and Attribute filters using wildcards '
@@ -652,7 +690,7 @@ class ArchivingBrowser(Qt.QWidget):
             self.toppan.layout().addWidget(self.panel)
             self.attrpanel = self.panel
             
-        self.toppan.layout().addWidget(Qt.QLabel('Drag any attribute from the first column into the trend or any taurus widget you want:'))
+        self.toppan.layout().addWidget(Qt.QLabel('If drag&drop fails, PLEASE USE RIGHT-CLICK ON THE NAME OF THE ATTRIBUTE OR CHECKBOX!!'))
         
         self.browser.layout().addWidget(self.toppan)
         self.chooser.addTab(self.browser,'Search ...')
@@ -662,17 +700,31 @@ class ArchivingBrowser(Qt.QWidget):
             self.split.setHandleWidth(25)
             self.split.addWidget(self.chooser)
             
-            from taurus.qt.qtgui.plot import TaurusTrend
-            from PyTangoArchiving.widget.trend import ArchivingTrend,ArchivingTrendWidget
-            self.trend = ArchivingTrendWidget() #TaurusArchivingTrend()
-            self.trend.setUseArchiving(True)
-            self.trend.showLegend(True)
+            if "qwt" in str(TaurusPlot.__bases__).lower():
+                from PyTangoArchiving.widget.trend import ArchivingTrend,ArchivingTrendWidget
+                self.trend = ArchivingTrendWidget() #TaurusArchivingTrend()
+                self.trend.setUseArchiving(True)
+                self.trend.showLegend(True)
+                
+            else: #PyQtGraph
+                try:
+                    from taurus_tangoarchiving.widget.tpgarchivingwidget import \
+                        ArchivingWidget
+                except:
+                    from PyTangoArchiving.widget.tpgarchivingwidget import \
+                        ArchivingWidget
+                
+                self.trend = ArchivingWidget()
+                
             self.attrpanel.trend = self.trend
 
             if TaurusModelChooser is not None:
                 self.treemodel = TaurusModelChooser(parent=self.chooser)
                 self.chooser.addTab(self.treemodel,'Tree')
-                self.treemodel.updateModels.connect(self.trend.addModels)
+                try:
+                    self.treemodel.updateModels.connect(self.trend.addModels)
+                except:
+                    traceback.print_exc()
                 #self.treemodel.connect(self.treemodel,Qt.SIGNAL('updateModels'),self.trend.addModels)      
             else:
                 tracer('TaurusModelChooser not available!')
@@ -686,7 +738,10 @@ class ArchivingBrowser(Qt.QWidget):
     def connectSignals(self):
         #self.combo.connect(self.combo, Qt.SIGNAL("currentIndexChanged (const QString&)"), self.comboIndexChanged)
         #self.connect(self.combo, Qt.SIGNAL("currentIndexChanged (const QString&)"), self.comboIndexChanged)
-        self.connect(self.update, Qt.SIGNAL("pressed ()"), self.updateSearch)
+        try:
+            self.connect(self.update, Qt.SIGNAL("pressed ()"), self.updateSearch)
+        except:
+            self.update.pressed.connect(self.updateSearch)
         #if len(self.domains)==1: self.emit(Qt.SIGNAL("currentIndexChanged (const QString&)"),Qt.QString(self.domains[0]))
         
     def open_new_trend(self):
@@ -806,9 +861,11 @@ class ArchivingBrowser(Qt.QWidget):
                   old.clear()
                   old.deleteLater() #Must be done after creating the new one!!
                   
-                table = [] #model,device,attribute,alias,archived,ok
+                table = [] #model,device,attribute,alias,archived,label
+
                 #ATTRIBUTES ARE FILTERED HERE!! <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
                 for k,v in self.load_attributes(*filters).items():
+                    #load_attributes = (d,alias,t,label)
                     try: 
                         archived = self.reader.is_attribute_archived(k)
                     except Exception,e: 
@@ -816,7 +873,8 @@ class ArchivingBrowser(Qt.QWidget):
                               %traceback.format_exc())
                         archived = []
                     #print(k,v,archived)
-                    table.append((k,v[0],v[2],v[1],archived,v[3] is not None))
+                    #model,device,attribute,alias,archived,label
+                    table.append((k,v[0],v[2],v[1],archived,v[3]))
                     
                 self.panel.setValues(sorted(table))
                 

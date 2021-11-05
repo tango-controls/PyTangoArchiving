@@ -71,7 +71,9 @@ class TaurusSingleValue(Qt.QWidget):
         self.setLayout(Qt.QHBoxLayout())
         self.model = ''
         self.device = ''
-        self.label = Qt.QLabel()
+        #self.label = Qt.QLabel()
+        self.label = fn.qt.Draggable(Qt.QLabel)()#(m)
+        self.label.setDragEventCallback(lambda s=self.label:s._model)
         self.label.setFixedWidth(250)
         self.value = Qt.QLabel()
         self.value.setFixedWidth(200)
@@ -99,6 +101,7 @@ class TaurusSingleValue(Qt.QWidget):
             self.label.setText(self.device+'/'+(
                 self.config.label or mp.attrname))
             self.label.setToolTip(self.model)
+            self.label.setModel(self.model)
             self.units.setText(self.config.unit)
             svalue = self.config.format or '%s'
             if fn.isSequence(self.rvalue.value) or '%' not in svalue:

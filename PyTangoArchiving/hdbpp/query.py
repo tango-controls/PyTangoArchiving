@@ -23,9 +23,9 @@ def get_search_model(model):
 
 RAW = None
 
-partition_prefixes = {
+PARTITION_TABLES = partition_prefixes = {
 ### BUT, NOT ALL TABLES ARE IN THIS LIST!
-# I'm partitioning only the big ones, and ignoring the others
+# I'm partitioning only the big ones, and ignoring the others 
 # boolean, encoded, enum, long64 uchar ulong64, ulong, ushort
 # b, e, n, l64, ul6, ul, us, uc
 
@@ -110,15 +110,15 @@ class HDBppReader(HDBppDB):
             last_part = None
         else:
             last_part = fn.last(sorted(p for p in parts 
-                if p and self.getPartitionSize(table,p) > min_size
-                    and (add_last or '_last' not in p)), 
+                if p and self.getPartitionSize(table,p) > min_size),
+                    #and (add_last or '_last' not in p)), 
                     default=None)
         # Gets last partition declared
         if parts and not last_part:
             last_part = fn.last(sorted(p for p in parts 
-                if (add_last and '_last' in p) 
-                    or self.get_partition_time_by_name(p) < tref),
-                        default=parts[0])
+                if #(add_last and '_last' in p) or
+                    self.get_partition_time_by_name(p) < tref),
+                        default=parts[-1])
         return last_part
     
     def generate_partition_name_for_date(self, table, date):
@@ -164,9 +164,6 @@ class HDBppReader(HDBppDB):
     def get_table_timestamp(self, table, method='max', 
             epoch = None, ignore_errors = False): #, tref = -180*86400):
         """
-        def get_table_timestamp(self, table, method='max', 
-            epoch = None, ignore_errors = False):
-            
         method should be min() for first value and max() for last
         this query goes directly to table indexes
         this doesn't access values (but it is much faster)
@@ -218,6 +215,11 @@ class HDBppReader(HDBppDB):
             last, date = None, ''
 
         return (last, date, size, fn.now() - t0)
+    
+    def get_timespan(self,table='att_scalar_devdouble_ro'):
+        """ returns table timespan (end-begin) in seconds """
+        return (self.get_table_timestamp(table,'min')[0],
+                self.get_table_timestamp(table,'max')[0])
       
     def get_last_attribute_values(self,attribute,n=1,
             check_attribute=False,epoch=None,period=90*86400):
@@ -266,7 +268,7 @@ class HDBppReader(HDBppDB):
         
         attributes: attribute name or list
         n: the number of last values to be retorned
-        tref: time from which start searching values (-1d by default)
+        tref: time from which start searching values (-90d by default)
         epoch: end of window to search values (now by default)
         """       
         if attributes is None:

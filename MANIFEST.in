@@ -1,9 +1,9 @@
 
-
 include AUTHORS
 include LICENSE
 include README
 include PyTangoArchiving/VERSION
+include PyTangoArchiving/hdbpp/*sql
 include PyTangoArchiving/widget/ui/TaurusAttributeChooser.ui
 include PyTangoArchiving/widget/resources.qrc
 include PyTangoArchiving/widget/snaps/doc/snapimg/save_dialog.png

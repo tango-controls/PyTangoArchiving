@@ -97,7 +97,7 @@ def get_tables_stats(dbs=None,tables=None,period=365*86400):
                 if date0 < fn.str2int(p) < date]
             result[(d,t)].attributes = (api.get_attributes_by_table(t) 
                 if t in api.get_data_tables() else [])
-            result[(d,t)].last = (api.get_last_partition(t)
+            result[(d,t)].last = (api.get_last_partition(t,tref=fn.now())
                 if t in api.get_data_tables() else '')
             if len(result[(d,t)].partitions) > 1:
                 result[(d,t)].size = sum(api.getPartitionSize(t,p)
@@ -343,7 +343,9 @@ def decimate_into_new_db(db_in, db_out, min_period = 3, min_array_period = 10,
                          remove_nones=True,
                          server_dec = True, 
                          bunch=86400/4,
-                         use_files=True):
+                         use_files=True,
+                         force_interval=False,
+                         tmpdir='/tmp/'):
     if tables is None:
         tables = db_in.get_data_tables() #pta.hdbpp.query.partition_prefixes.keys()
 
@@ -359,12 +361,16 @@ def decimate_into_new_db(db_in, db_out, min_period = 3, min_array_period = 10,
         if not tbegin:
             tbegin = get_first_value_in_table(db_in,table,ignore_errors=True)[0]
         print(begin,tbegin)
-        if begin is not None:
+        if force_interval:
+            tbegin = begin
+        elif begin is not None:
             tbegin = max((begin,tbegin)) #Query may start later
 
         tend = get_last_value_in_table(db_in,table,ignore_errors=True)[0]
         print(end,tend)
-        if end is not None:
+        if force_interval:
+            tend = end
+        elif end is not None:
             tend = min((end,tend)) #Query may finish earlier
         if tend is None:
             tend = tbegin
@@ -391,7 +397,8 @@ def decimate_into_new_db(db_in, db_out, min_period = 3, min_array_period = 10,
                     tbegin,tend,min_period=period, max_period = max_period,
                     method = method,remove_nones = remove_nones,
                     server_dec = server_dec, bunch = bunch,
-                    use_files = use_files)
+                    use_files = use_files,
+                    tmpdir=tmpdir)
 
                 done.append(table)
             finally:
@@ -409,6 +416,7 @@ def decimate_into_new_table(db_in, db_out, table, start, stop, ntable='',
         drop=False, method=None, 
         remove_nones=True,
         server_dec=True, insert=True, use_files=True, use_process=True,
+        tmpdir='/tmp/'
         ):
     """
     decimate by distinct value, or by fix period
@@ -615,7 +623,7 @@ def decimate_into_new_table(db_in, db_out, table, start, stop, ntable='',
     
     if insert:
         if use_files:
-            filename = '/tmp/%s.%s.bulk' % (db_out.db_name,ntable)
+            filename = tmpdir+'/%s.%s.bulk' % (db_out.db_name,ntable)
             columns = 'att_conf_id'
             if array:
                 columns += ',idx'
@@ -914,42 +922,52 @@ def copy_between_tables(api, table, source, start, stop, step = 86400):
 #
 #     return ids.split(',')
 
-def add_int_time_column(api, table):
+def add_int_time_column(api, table,do_it=True):
     # Only prefixed tables will be modified
     pref = pta.hdbpp.query.partition_prefixes.get(table,None)
+    r = []
     if not pref:
-        return
+        return 
 
     if 'int_time' not in api.getTableCols(table):
         q = ('alter table %s add column int_time INT generated always as '
                 '(TO_SECONDS(data_time)-62167222800) PERSISTENT;' % table)
-        print(q)
-        api.Query(q)
+        if do_it: 
+            print(q)
+            api.Query(q)
+        r.append(q)
 
     if not any('int_time' in idx for idx in api.getTableIndex(table).values()):
-        api.Query('drop index att_conf_id_data_time on %s' % table)
-        q = ('create index i%s on %s(att_conf_id, int_time)' % (pref,table))
-        print(1)
-        api.Query(q)
+        q = 'drop index att_conf_id_data_time on %s;' % table
+        if do_it: 
+            print(q)
+            api.Query(q)
+        r.append(q)
+        q = ('create index i%s on %s(att_conf_id, int_time);' % (pref,table))
+        if do_it: 
+            print(q)
+            api.Query(q)
+        r.append(q)
         
-    return 1
+    return '\n'.join(r)
 
-def add_idx_index(api, table):
+def add_idx_index(api, table, do_it=True):
     try:
         if not 'idx' in api.getTableCols(table):
-            return
+            return 
         if any('idx' in ix for ix in api.getTableIndex(table).values()):
-            return
+            return 
         pref = pta.hdbpp.query.partition_prefixes.get(table,None)
         if not pref:
             return
         it = 'int_time' if 'int_time' in api.getTableCols(table) else 'data_time'
         #q = ('create index ii%s on %s(att_conf_id, idx, %s)' % (pref,table,it))
         # old index (aid/time) should go first!
-        q = ('create index ii%s on %s(att_conf_id, idx, %s)' % (pref,table,it))
-        print(api.db_name,q)
-        api.Query(q)
-        return 1
+        q = ('create index ii%s on %s(att_conf_id, idx, %s);' % (pref,table,it))
+        if do_it: 
+            print(api.db_name,q)
+            api.Query(q)
+        return q
     except:
         traceback.print_exc()
     
@@ -1150,12 +1168,61 @@ def check_db_partitions(api,year='',month='',max_size=128*1e9/10):
 
     return result
 
+def create_db_partitions(api, max_parts, stop_date, do_it = False, test=False, force=True,
+                         bigs = ['att_array_devdouble_ro', 'att_scalar_devdouble_ro']):
+    """
+    nmonths, maximum number of partitions to create
+    stop_date, date of last partition
+    """
+
+    for t in pta.hdbpp.partition_prefixes:
+        
+        parts = api.getTablePartitions(t) or []
+        s = api.getTableSize(t)/1e9
+        print('')
+        print('%s size is %sG' % (t,s))
+        print('%s last partitions: %s' % (t,parts[-3:]))
+        
+        if not force and (not parts or len(parts)==1):
+            if s>15:
+                print('%s is not partitioned ... and it should!' % t)
+            continue
+        
+        last = api.get_last_partition(t,tref=fn.now())
+        if last and 'last' in last:
+            print('%s last partition is under use! manual maintenance required!' % t)
+            continue
+            
+        if s > 100 or t in bigs:
+            print('%s is huge, %sG! 2 parts/month will be created' % (t,s))
+            n = 2
+        elif s < 1 and not force:
+            if last is not None:
+                n = 0 #not adding new partitions, but at least adding _last
+            else:
+                print('%s is too small, %sG, to be partitioned!' % (t,s))
+                continue
+        else:
+            n = 1
+
+        if not parts[-2:] or api.get_partition_time_by_name(parts[-2]) < fn.str2time(stop_date)-20*86400:
+            print('%s will be partitioned' % t)
+            if do_it:
+                create_new_partitions(api,t,max_parts,partpermonth=n,stop_date=stop_date,do_it=True)
+            elif not test:
+                print(create_new_partitions(api,t,max_parts,partpermonth=n,stop_date=stop_date))
+                  
+    return
+
 def create_new_partitions(api,table,nmonths,partpermonth=1,
-                          start_date=None,add_last=True,do_it=False):
+                          start_date=None,stop_date=None,
+                          add_last=True,int_time=False,do_it=False):
     """
     This script will create new partitions for nmonths*partpermonth
     for the given table and key
     partpermonth should be 1, 2 or 3
+    start/stop dates must be strings
+    start_date better to not be used, may fail
     """
     if partpermonth > 3: 
         raise Exception('max partpermonth = 3')
@@ -1164,9 +1231,12 @@ def create_new_partitions(api,table,nmonths,partpermonth=1,
     npartitions = nmonths*partpermonth
     tables = pta.hdbpp.query.partition_prefixes
     t = table
-    pref = tables[t]
+    pref = tables.get(t,None)
+    if not pref:
+        print('table %s will not be partitioned' % t)
+        return []
     intcol = 'int_time'
-    int_time = intcol in api.getTableCols(table)   
+    #int_time = intcol in api.getTableCols(table)   
     eparts = sorted(api.getTablePartitions(t))
 
     if not start_date:
@@ -1174,7 +1244,7 @@ def create_new_partitions(api,table,nmonths,partpermonth=1,
         last = api.get_partition_time_by_name(nparts[-1]) if nparts else fn.now()
         nxt = fn.time2date(last)
         if nxt.month == 12:
-            nxt = fn.str2time('%s-%s-%s' % (nxt.year+1,nxt.month,'01'))
+            nxt = fn.str2time('%s-%s-%s' % (nxt.year+1,'01','01'))
         else:
             nxt = fn.str2time('%s-%s-%s' % (nxt.year,nxt.month+1,'01'))
         start_date = fn.time2str(nxt).split()[0]
@@ -1191,12 +1261,14 @@ def create_new_partitions(api,table,nmonths,partpermonth=1,
             m = 12
         return '%04d-%02d-%02d'%(y,m,d)
 
-    if int_time:
+    if int_time and intcol not in api.getTableCols(table):
         newc = ("alter table %s add column int_time INT "
             "generated always as (TO_SECONDS(data_time)-62167222800) PERSISTENT;")
 
         newi = ("drop index att_conf_id_data_time on %s;")
         newi += ("\ncreate index i%s on %s(att_conf_id, int_time);")
+        
+    if int_time or intcol in api.getTableCols(table):
         head = "ALTER TABLE %s "
         comm = "PARTITION BY RANGE(int_time) ("
         line = "PARTITION %s%s VALUES LESS THAN (TO_SECONDS('%s')-62167222800)"
@@ -1214,7 +1286,7 @@ def create_new_partitions(api,table,nmonths,partpermonth=1,
     lines.append(head%t)
     if not any(eparts):
         lines.append(comm)
-    elif pref+'_last' in eparts:
+    elif pref+'_last' in eparts and npartitions>0:
         lines.append('REORGANIZE PARTITION %s INTO (' % (pref+'_last'))
     else:
         lines.append('ADD PARTITION (')
@@ -1225,7 +1297,10 @@ def create_new_partitions(api,table,nmonths,partpermonth=1,
         end = inc_months(date,1)
         pp = pref+date.replace('-','') #prefix+date
         
-        if partpermonth == 1:
+        if not partpermonth:
+            continue
+        
+        elif partpermonth == 1:
             dates = [(date,end)]
             
         elif partpermonth == 2:
@@ -1242,12 +1317,14 @@ def create_new_partitions(api,table,nmonths,partpermonth=1,
             
         for jdate,jend in dates:
             jdate = jdate.replace('-','')
-            l = line%(pref,jdate,jend)
-            if counter<(npartitions-1):
-                l+=','
-            if (pref+jdate) not in eparts:
-                lines.append(l)
-            counter+=1
+            pname = (pref+jdate)
+            if not stop_date or api.get_partition_time_by_name(pname)<fn.str2time(stop_date):
+                l = line%(pref,jdate,jend)
+                if counter<(npartitions-1):
+                    l+=','
+                if not eparts or (pname not in eparts and not pname < eparts[0]):
+                    lines.append(l)
+                counter+=1
 
     if add_last and pref+'_last' not in eparts or 'REORGANIZE' in str(lines):
         if not lines[-1][-1] in ('(',','):
@@ -1256,10 +1333,139 @@ def create_new_partitions(api,table,nmonths,partpermonth=1,
             
     lines.append(');\n\n') 
     r = '\n'.join(lines)
-    if do_it:    
+    if do_it and (counter or ('last' in r)):
         print('Executing query .... %s' % r)
         api.Query(r)
     
+    return r
+
+def get_archiving_loads(schema,maxload=250):
+    r = fn.Struct()
+    if isinstance(schema,pta.hdbpp.HDBpp):
+        api,r.schema = schema,schema.db_name
+    else:
+        api,r.schema = pta.api(schema),schema
+    r.attrs = api.get_attributes()
+    r.subs = api.get_subscribers()
+    r.pers = api.get_periodic_archivers()
+    r.evsubs = [d for d in api.get_subscribers() if 'null' not in d]
+    r.nulls = [d for d in r.subs if 'null' in d]
+    r.subsloads = dict((d,api.get_archiver_attributes(d)) for d in r.subs)
+    r.subserrors = dict((d,api.get_archiver_errors(d)) for d in r.evsubs) 
+    r.persloads = dict((d,api.get_periodic_archiver_attributes(d)) for d in r.pers)
+    r.perserrors = dict((d,api.get_periodic_archiver_errors(d)) for d in r.pers)
+    r.perattrs = api.get_periodic_attributes()
+    r.pernoevs = [a for a in r.perattrs if not fn.tango.check_attribute_events(a)]
+    r.perevs = [a for a in r.perattrs if a not in r.pernoevs]
+    r.attrlists = dict((d,fn.get_device_property(d,'AttributeList'))
+                                   for d in r.subs)
+    r.perlists = dict((d,fn.get_device_property(d,'AttributeList'))
+                                   for d in r.pers)
+    r.subattrs = [a.split(';')[0] for v in r.attrlists.values() for a in v]
+    r.evattrs = [a.split(';')[0] for v in r.subattrs if v not in r.pernoevs]
+    r.miss = [a for a in r.attrs if a not in r.subattrs]
+    r.dubs = len(r.subattrs)-len(list(set(r.subattrs)))
+    r.both = r.perevs
+    print('%d attributes in %s schema' % (len(r.attrs),schema))
+    dbsize = api.getDbSize()
+    print('DbSize: %f' % (dbsize/1e9))
+    tspan = api.get_timespan()
+    print('%s - %s ; %2.1f G/day' % (fn.time2str(tspan[0]),fn.time2str(tspan[1]),
+        (dbsize/1e9)/((tspan[1]-tspan[0])/86400)))
+    print('%d repeated attributes in archiver lists' % r.dubs)
+    print('%d not on any archiver' % len(r.miss))
+    print('%d on event archiving' % len(r.evattrs))
+    print('%d on periodic archiving' % len(r.perattrs))
+    print('%d(%d) have both' % (len(r.perattrs)-len(r.pernoevs),len(r.both)))
+    print('')
+    for k,v in sorted(r.subsloads.items()):
+        print('%s: %d (%d errors)' % (k,len(v),len(r.subserrors.get(k,[]))))
+    for k,v in sorted(r.persloads.items()):
+        print('%s: %d (%d errors)' % (k,len(v),len(r.perserrors.get(k,[]))))
+    return r
+        
+    
+
+def redistribute_loads(schema,maxload=300,subscribers=True,periodics=True,
+                       do_it=True):
+    """
+    It moves periodic attributes to a /null subscriber
+    Then tries to balance load between archivers
+    """
+    if isinstance(schema,pta.hdbpp.HDBpp):
+        api,schema = schema,schema.db_name
+    else:
+        api,schema = pta.api(schema),schema
+    subs = api.get_subscribers()
+    nulls = [d for d in subs if 'null' in d]
+    if not nulls:
+        api.add_event_subscriber('hdb++es-srv/%s-null'%api.db_name,
+                                 'archiving/%s/null'%api.db_name)
+    r = get_archiving_loads(schema)
+    
+    #subsloads = dict((d,api.get_archiver_attributes(d)) for d in subs)
+    #pers = api.get_periodic_archivers()
+    #persloads = dict((d,api.get_periodic_archiver_attributes(d)) for d in pers)
+    #perattrs = api.get_periodic_attributes()
+    #pernoevs = [a for a in perattrs if not fn.tango.check_attribute_events(a)]
+    #subattrs = [a for a in api.get_attributes() if a not in perattrs]
+    #attrlists = sorted(set(fn.join(fn.get_device_property(d,'AttributeList') 
+                                   #for d in subs)))
+    #evsubs = [d for d in api.get_subscribers() if 'null' not in d]
+    
+    #print('%d attributes, %d subscribed, %d periodic, %d subscribers, %d pollers' % 
+          #(len(attrlists),len(subattrs),len(perattrs),len(evsubs),len(pers)))
+    #print('Current loads')
+    #print([(k,len(v)) for k,v in subsloads.items()])
+
+
+    sublist = []
+    # get generic archivers only
+    for d in r.subs:
+        if fn.clmatch('*([0-9]|null)$',d):
+            sublist.extend(fn.get_device_property(d,'AttributeList'))
+        
+    nulllist = [a for a in sublist if a.split(';')[0] in r.pernoevs]
+    sublist = [a for a in sublist if a.split(';')[0] not in r.pernoevs]
+    
+    if subscribers:
+        print('Moving %d periodics to /null' % len(nulllist))
+        if do_it:
+            fn.tango.put_device_property('archiving/%s/null'%api.db_name,
+                'AttributeList',nulllist)
+        
+        evsubs = [d for d in r.subs if fn.clmatch('*[0-9]$',d)]
+        avgload = 1+len(sublist)/(len(evsubs))
+        print('Subscriber load = %d' % avgload)
+        if avgload>maxload:
+            raise Exception('Load too high!, create archivers!')
+        
+        for i,d in enumerate(evsubs):
+            attrs = sublist[i*avgload:(i+1)*avgload]
+            print(d,len(attrs))
+            if do_it:
+                fn.tango.put_device_property(d,'AttributeList',attrs)
+    
+    r.nulllist = nulllist
+    r.sublist = sublist
+    
+    if periodics:
+        sublist = []
+        for d in r.pers:
+            sublist.extend(fn.get_device_property(d,'AttributeList'))        
+        avgload = 1+len(sublist)/(len(r.pers))
+        print('Periodic archiver load = %d' % avgload)
+        if avgload>maxload:
+            raise Exception('Load too high!, create archivers!')
+        
+        for i,d in enumerate(r.pers):
+            attrs = sublist[i*avgload:(i+1)*avgload]
+            print(d,len(attrs))
+            if do_it:
+                fn.tango.put_device_property(d,'AttributeList',attrs)        
+    
+    if not do_it:
+        print('It was just a dry run, nothing done')
     return r
 
 """

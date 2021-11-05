@@ -236,48 +236,73 @@ def get_archivers_filters(archivers=''):
     return filters
             
 
-def get_archivers_for_attributes(attrs=[],archs='archiving/es/*'):
+def get_archivers_for_attributes(attrs=[],archs='archiving/*/es*'):
     """
     This method returns matching archivers for a list of attributes
     in simplename format (no tango host).
     
     It applies AttributeFilters as defined in Tango DB (sorted)
     """
-    if isString(attrs):
-        attrs = ft.find_attributes(attrs)
-    else:
-        attrs = attrs or get_schema_attributes('*')
-    
-    devattrs = fn.dicts.defaultdict(set)
-    [devattrs[a.rsplit('/',1)[0]].add(a) for a in attrs];    
-
-    if isSequence(archs): archs = '(%s)'%')|('.join(archs)
-    filters = get_archivers_filters(archs)
-    r = devattrs.keys()
-    archattrs = {}
-    
-    for i,k in enumerate(filters):
-        v = filters[k] # k is the archiver name
-        k = fn.tango.parse_tango_model(k, fqdn = True).fullname
-        if 'DEFAULT' in v:
-            df = k
+    archs = {}
+    hdbpp = pta.hdbpp.get_hdbpp_databases()
+    if len(hdbpp) == 1:
+        api = pta.api(hdbpp[0])
+        return dict((a,api.get_next_archiver()) for a in attrs)
+    for a in attrs:
+        d = a.lower().split('/')[-3]
+        if d == 'vc':
+            archs[a] = pta.api('hdbvc').get_next_archiver()
+        elif d == 'di':
+            archs[a] = pta.api('hdbdi').get_next_archiver()
+        elif d == 'rf':
+            archs[a] = pta.api('hdbrf').get_next_archiver()
+        elif d in ('pc','ma'):
+            archs[a] = pta.api('hdbpc').get_next_archiver()
+        elif d in ('ct','eps','pss'):
+            archs[a] = pta.api('hdbct').get_next_archiver()
         else:
-            #filtersmart(list,regexp): returns a clsearch on the list
-            m = fn.filtersmart(r,v)
-            currattrs = set(fn.join(*[devattrs[d] for d in m]))
-            if len(currattrs):
-                print(k,len(currattrs),sorted(set(i.split('/')[-2] for i in m)))
-                archattrs[k] = currattrs
-                print('\n')
-            r = [a for a in r if a not in m]
+            archs[a] = pta.api('hdbacc').get_next_archiver()
             
-        if i == len(filters)-1:
-            k = df
-            m = r
-            currattrs = fn.join(*[devattrs[d] for d in m])
-            if len(currattrs):
-                print(k,len(currattrs),sorted(set(i.split('/')[-2] for i in m)))
-                archattrs[k] = currattrs
+    return archs
+            
+        
+    
+    
+    #if isString(attrs):
+        #attrs = ft.find_attributes(attrs)
+    #else:
+        #attrs = attrs or get_schema_attributes('*')
+    
+    #devattrs = fn.dicts.defaultdict(set)
+    #[devattrs[a.rsplit('/',1)[0]].add(a) for a in attrs];    
+
+    #if isSequence(archs): archs = '(%s)'%')|('.join(archs)
+    #filters = get_archivers_filters(archs)
+    #r = devattrs.keys()
+    #archattrs = {}
+    
+    #for i,k in enumerate(filters):
+        #v = filters[k] # k is the archiver name
+        #k = fn.tango.parse_tango_model(k, fqdn = True).fullname
+        #if 'DEFAULT' in v:
+            #df = k
+        #else:
+            ##filtersmart(list,regexp): returns a clsearch on the list
+            #m = fn.filtersmart(r,v)
+            #currattrs = set(fn.join(*[devattrs[d] for d in m]))
+            #if len(currattrs):
+                #print(k,len(currattrs),sorted(set(i.split('/')[-2] for i in m)))
+                #archattrs[k] = currattrs
+                #print('\n')
+            #r = [a for a in r if a not in m]
+            
+        #if i == len(filters)-1:
+            #k = df
+            #m = r
+            #currattrs = fn.join(*[devattrs[d] for d in m])
+            #if len(currattrs):
+                #print(k,len(currattrs),sorted(set(i.split('/')[-2] for i in m)))
+                #archattrs[k] = currattrs
             
     return archattrs
 

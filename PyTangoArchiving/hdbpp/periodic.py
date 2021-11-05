@@ -7,7 +7,7 @@ class HDBppPeriodic(HDBppDB):
     
     @Cached(depth=1000,expire=60.)
     def get_attribute_archiver(self,attribute):
-        r = HDBppDB.get_attribute_archiver(self,attribute)
+        r = self.get_attribute_subscriber(attribute)
         if not r:
             r = self.get_periodic_attribute_archiver(attribute)
         return r
@@ -83,8 +83,27 @@ class HDBppPeriodic(HDBppDB):
     
     is_periodic_archived = get_periodic_attribute_archiver
     
+    def get_archiver_errors(self,archiver):
+        dp = fn.get_device(archiver,keep=True)
+        if dp.info().dev_class == 'PyHdbppPeriodicArchiver':
+            return self.get_periodic_archiver_errors(archiver)
+        else:
+            return self.get_subscriber_errors(archiver)
+    
+    def get_periodic_archiver_errors(self,archiver):
+        try:
+            dp = fn.get_device(archiver,keep=True)
+            #al = dp.AttributeList
+            er = dp.AttributesErrorList or []
+            return dict.fromkeys(er,True)
+        except:
+            print('Unable to get %s errors' % archiver)
+            traceback.print_exc()
+            return {}
+
+    
     @Cached(expire=10.)
-    def get_periodic_attributes(self):
+    def get_periodic_attributes(self,search=''):
         self.periodic_attributes = {}
         for v in self.get_periodic_archivers_attributes().values():
             for k,p in v.items():
@@ -93,7 +112,8 @@ class HDBppPeriodic(HDBppDB):
                     self.periodic_attributes[k.lower()] = int(p.split('=')[-1])
                 except:
                     print(fn.except2str())
-        return self.periodic_attributes
+        return [a for a in self.periodic_attributes 
+                if not search or fn.clmatch(search,a)]
     
     @Cached(depth=10,expire=60.)
     def get_archived_attributes(self,search='',periodic=True):
@@ -106,7 +126,7 @@ class HDBppPeriodic(HDBppDB):
         #print('get_archived_attributes(%s)'%str(search))
         attrs = HDBppDB.get_subscribed_attributes(self, search)
         if periodic:
-            attrs.extend(self.get_periodic_attributes())
+            attrs.extend(self.get_periodic_attributes(search=search))
         return sorted(set(fn.tango.get_full_name(a,fqdn=True).lower()
                           for a in attrs))
     
@@ -114,6 +134,13 @@ class HDBppPeriodic(HDBppDB):
         """
         attrexp can be used to get archivers already archiving attributes
         """
+        props = dict((a,fn.tango.get_device_property(a,'AttributeFilters'))
+                     for a in self.get_periodic_archivers()) #get_archivers filters null
+        if any(props.values()):
+            archs = [a for a,v in props.items() if not v]
+        else:
+            archs = [a for a in props if fn.clmatch('*[0-9]$',a)]
+            
         loads = self.get_periodic_archivers_attributes()
                 
         if attrexp:
@@ -126,15 +153,20 @@ class HDBppPeriodic(HDBppDB):
         loads = sorted((len(v),k) for k,v in loads.items())
         return loads[0][-1]    
     
-    def add_periodic_attribute(self,attribute,period,archiver=None,wait=3.):
+    def add_periodic_attribute(self,attribute,period,archiver=None,wait=3.
+                               ,force=False):
+        
+        if not force and period<500:
+            raise Exception('periods below 500 ms are not allowed!')
         
         attribute = parse_tango_model(attribute,fqdn=True).fullname.lower()
+        evs = fn.tango.check_attribute_events(attribute)
         
         arch = self.get_periodic_attribute_archiver(attribute)
         if arch:
+            print('%s is already archived by %s!' % (attribute,arch))
             p = self.get_periodic_attribute_period(attribute)
             if p == period:
-                print('%s is already archived by %s!' % (attribute,arch))
                 return False
             else:
                 archiver = arch
@@ -145,7 +177,13 @@ class HDBppPeriodic(HDBppDB):
         if not self.is_attribute_archived(attribute):
             self.info('Attribute %s does not exist in %s database, adding it'
                       % (attribute, self.db_name))
-            self.add_attribute(attribute,code_event=True)
+            ctx = 'RUN' if evs else 'SERVICE'
+            nulls = [d for d in self.get_subscribers(from_db=True,exclude='') 
+                        if 'null' in d.lower()]
+
+            self.add_attribute(attribute,
+                archiver=(nulls[0] if not evs and nulls else None),
+                code_event=True, context=ctx)
 
         self.info('%s.AttributeAdd(%s,%s)' % (archiver,attribute,period))            
         dp = fn.get_device(archiver,keep=True)
@@ -174,14 +212,40 @@ class HDBppPeriodic(HDBppDB):
             for attribute in attrs:
                 try:
                     period = periods[attribute]
-                    self.add_periodic_attribute(attribute,period,archiver,wait)
+                    self.info('add_periodic_attribute(%s,%s,%s)'
+                              % (attribute,period,archiver))
+                    self.add_periodic_attribute(attribute,period=period,
+                                            archiver=archiver,wait=wait)
                     done.append((attribute,period,archiver))
                 except:
                     self.warning(fn.except2str())
                 
         return done
+    
+    def stop_archiving(self, attribute, clear=True):
+        """
+        This method will remove the attribute from an existing archiver
+        """        
+        try:
+            if fn.isSequence(attribute):
+                [self.stop_archiving(a,clear=False) for a in attribute]        
+            else:
+                if self.is_periodic_archived(attribute):
+                    self.stop_periodic_archiving(attribute,clear=clear)
 
-    def stop_periodic_archiving(self, attribute):
+                HDBppDB.stop_archiving(self,attribute,clear)
+        except:
+            self.warning('stop_archiving(%s) failed!: %s' %
+                         (attribute, traceback.format_exc()))            
+        finally:
+            if clear:
+                self.clear_caches()              
+
+
+    def stop_periodic_archiving(self, attribute, clear=True):
+        """
+        This method will remove the attribute from an existing archiver
+        """        
         try:
             attribute = parse_tango_model(attribute, fqdn=True).fullname.lower()
             arch = self.get_periodic_attribute_archiver(attribute)
@@ -189,14 +253,34 @@ class HDBppPeriodic(HDBppDB):
                 self.warning('%s is not archived!' % attribute)
             else:
                 self.info('Removing %s from %s' % (attribute, arch))
-                dp = fn.get_device(archiver)
-                v = dp.AttributeRemove([attribute, str(int(float(period)))])
+                dp = fn.get_device(arch)
+                v = dp.AttributeRemove(attribute)
                 dp.UpdateAttributeList()
-                fn.wait(wait)
                 return v
         except:
-            self.warning('stop_periodic_archiving(%s) failed!' %
+            self.warning('stop_periodic_archiving(%s) failed!\n%s' %
                          (attribute, traceback.format_exc()))
+        finally:
+            if clear:
+                self.clear_caches()            
+            
+    def restart_periodic_archiving(self, attribute):
+        try:
+            attribute = parse_tango_model(attribute, fqdn=True).fullname.lower()
+            arch = self.get_periodic_attribute_archiver(attribute)
+            if not arch:
+                self.warning('%s is not archived!' % attribute)
+            else:
+                self.info('Restarting %s at %s' % (attribute, arch))
+                dp = fn.get_device(arch)
+                v = dp.AttributeStop(attribute)
+                dp.ResetErrorAttributes()
+                fn.wait(.5)
+                v = dp.AttributeStart(attribute)
+                return v
+        except:
+            self.warning('restart_periodic_archiving(%s) failed!\n%s' %
+                         (attribute, traceback.format_exc()))        
 
     def clear_periodic_caches(self):
         self.get_periodic_archiver_attributes.cache.clear()
