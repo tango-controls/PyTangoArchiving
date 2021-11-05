@@ -211,7 +211,6 @@ def main(apiclass=AbstractReader,timeformatter=None):
                 else:
                     print(l)
         else:
-            print(reader.get_attribute_id_table(args[0]))
             print(reader.get_last_attribute_value(args[0]))
             
 if __name__ == '__main__':
