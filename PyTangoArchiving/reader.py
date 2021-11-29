@@ -805,6 +805,9 @@ class Reader(Object,SingletonMap):
         n: number of values to return
         """
         result = dict()
+        if not schema and self.db_name != '*':
+            schema = self.db_name
+            
         if fandango.isSequence(attribute):
             result.update((a,self.load_last_values(a, n=n, active=active, 
                 schema = schema, epoch = epoch, brief=brief)) for a in attribute)
@@ -822,7 +825,7 @@ class Reader(Object,SingletonMap):
         
         for s in schemas:
             api = Schemas.getApi(s)
-            #print('Reader(%s).load_last_values(%s,%s,%s)' % (s,attribute,n,epoch))
+            self.log.debug('Reader(%s).load_last_values(%s,%s,%s)' % (s,attribute,n,epoch))
             vs = api.load_last_values(attribute, n=n, epoch=epoch)
             vs = vs.values() if hasattr(vs,'values') else vs
             r = vs and vs[0]

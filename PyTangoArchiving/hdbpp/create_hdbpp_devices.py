@@ -37,6 +37,7 @@ try:
         fn.tango.put_free_property('PyTangoArchiving',db_name,[
             #"reader=PyTangoArchiving.hdbpp.HDBpp('%s','%s','%s','%s')" % (
                 #db_name,host,user,passwd),
+            "reader=PyTangoArchiving.Reader('%s')" % db_name,
             "api=PyTangoArchiving.hdbpp.HDBpp",
             "check=True",
             "method=get_attribute_values",
@@ -80,7 +81,7 @@ try:
                 api.add_periodic_archiver(db_name+'-%02d'%i,per)
             
         astor = fn.Astor('archiving/%s/*' % db_name) 
-        [astor.set_server_level(s,host,3) for s in astor.keys() if 'event' in s.lower()] 
+        [astor.set_server_level(s,host,3) for s in astor.keys() if 'es' in s.lower()] 
         [astor.set_server_level(s,host,4) for s in astor.keys() if 'period' in s.lower()] 
         #print('starting devices')
         ##astor.start_servers(host=host)
