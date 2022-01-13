@@ -102,6 +102,9 @@ class HDBppReader(HDBppDB):
         """
         Return the last partition updated (size > min_size)
         Returns None if the table is not partitioned
+        
+        :params: table, min_size, add_last (not used), 
+            tref (last date to be considered)
         """    
         parts = self.getTablePartitions(table)
         tref = fn.END_OF_TIME if tref is None else tref

@@ -1194,51 +1194,56 @@ def create_db_partitions(api, max_parts, stop_date, do_it = False,
     int_time: it creates and int_time column and index
     """
 
-    for t in pta.hdbpp.partition_prefixes:
-        
-        parts = api.getTablePartitions(t) or []
-        s = api.getTableSize(t)/1e9
-        print('')
-        print('%s size is %sG' % (t,s))
-        print('%s last partitions: %s' % (t,parts[-3:]))
-        
-        if not force and (not parts or len(parts)==1):
-            if s>15:
-                print('%s is not partitioned ... and it should!' % t)
-            continue
-        
-        last = api.get_last_partition(t,tref=fn.now())
-        if last and 'last' in last:
-            print('%s last partition is under use! manual maintenance required!' % t)
-            continue
+    for t in sorted(pta.hdbpp.partition_prefixes):
+        try:
+            parts = api.getTablePartitions(t) or []
+            s = api.getTableSize(t)/1e9
+            print('')
+            print('%s size is %sG' % (t,s))
+            print('%s last partitions: %s' % (t,parts[-3:]))
             
-        if s > 100 or t in bigs:
-            print('%s is huge, %sG! 2 parts/month will be created' % (t,s))
-            n = 2
-        elif s < 1 and not force:
-            if last is not None:
-                n = 0 #not adding new partitions, but at least adding _last
-            else:
-                print('%s is too small, %sG, to be partitioned!' % (t,s))
+            if not force and (not parts or len(parts)==1):
+                if s>15:
+                    print('%s is not partitioned ... and it should!' % t)
                 continue
-        else:
-            n = 1
             
-        if int_time:
-            r = add_int_time_column(api, t, do_it=do_it)
-            api.getTables(load=True)
-            if not do_it and not test:
-                print(r)
+            last = api.get_last_partition(t,tref=fn.now())
+            if last and 'last' in last:
+                print('%s last partition is under use! manual maintenance required!' % t)
+                continue
+                
+            if s > 100 or t in bigs:
+                print('%s is huge, %sG! 2 parts/month will be created' % (t,s))
+                n = 2
+            elif s < 1 and not force:
+                if last is not None:
+                    n = 0 #not adding new partitions, but at least adding _last
+                else:
+                    print('%s is too small, %sG, to be partitioned!' % (t,s))
+                    continue
+            else:
+                n = 1
+                
+            if int_time:
+                r = add_int_time_column(api, t, do_it=do_it)
+                api.getTables(load=True)
+                if not do_it and not test:
+                    print(r)
 
-        if not parts[-2:] or api.get_partition_time_by_name(parts[-2]) < fn.str2time(stop_date)-20*86400:
-            print('%s will be partitioned' % t)
-            if do_it:
-                create_new_partitions(api,t,n*max_parts,partpermonth=n,
-                    stop_date=stop_date,int_time=int_time,do_it=True)
-            elif not test:
-                print(create_new_partitions(api,t,n*max_parts,partpermonth=n,
-                    stop_date=stop_date,int_time=int_time))
-                  
+            if not parts[-2:] or api.get_partition_time_by_name(parts[-2]) < fn.str2time(stop_date)-20*86400:
+                print('%s will be partitioned' % t)
+                if do_it:
+                    create_new_partitions(api,t,n*max_parts,partpermonth=n,
+                        stop_date=stop_date,int_time=int_time,do_it=True)
+                elif not test:
+                    print(create_new_partitions(api,t,n*max_parts,partpermonth=n,
+                        stop_date=stop_date,int_time=int_time))
+
+        except Exception as e:
+            if test or do_it:
+                raise e
+            else:
+                traceback.print_exc()
     return
 
 def create_new_partitions(api,table,nmonths,partpermonth=1,
