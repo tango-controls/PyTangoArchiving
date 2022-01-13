@@ -941,20 +941,20 @@ def add_int_time_column(api, table, do_it=True):
     if 'int_time' not in api.getTableCols(table):
         q = ('alter table %s add column int_time INT generated always as '
                 '(TO_SECONDS(data_time)-62167222800) PERSISTENT;' % table)
+        print(q)
         if do_it: 
-            print(q)
             api.Query(q)
         r.append(q)
 
     if not any('int_time' in idx for idx in api.getTableIndex(table).values()):
         q = 'drop index att_conf_id_data_time on %s;' % table
+        print(q)
         if do_it: 
-            print(q)
             api.Query(q)
         r.append(q)
         q = ('create index i%s on %s(att_conf_id, int_time);' % (pref,table))
+        print(q)
         if do_it: 
-            print(q)
             api.Query(q)
         r.append(q)
         
@@ -977,8 +977,8 @@ def add_idx_index(api, table, do_it=True):
         #q = ('create index ii%s on %s(att_conf_id, idx, %s)' % (pref,table,it))
         # old index (aid/time) should go first!
         q = ('create index ii%s on %s(att_conf_id, idx, %s);' % (pref,table,it))
+        print(api.db_name,q)
         if do_it: 
-            print(api.db_name,q)
             api.Query(q)
         return q
     except:
