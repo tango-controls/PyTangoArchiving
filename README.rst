@@ -1,4 +1,19 @@
-   
+MOVED TO GITLAB!
+
+PyTangoArchiving project (python 2 only) has been moved to gitlab, please go to: 
+
+https://gitlab.com/tango-controls/hdbpp/libhdbpp-pytangoarchiving
+
+PyPi:
+
+https://pypi.org/project/PyTangoArchiving/
+
+If you're searching for python3 extraction from hdb++, try:
+
+https://gitlab.com/tango-controls/hdbpp/libhdbpp-python
+
+----
+
 PyTangoArchiving allows to:
 
 * Integrate Hdb and Snap archiving with other python/PyTango tools.
